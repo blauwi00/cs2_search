@@ -80,6 +80,7 @@ input:focus,select:focus{border-color:var(--accent)}
 .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--hint);margin-top:6px}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 .big-num{font-size:28px;font-weight:800;letter-spacing:-.5px}
+details.more{margin:8px 0 12px}details.more>summary{list-style:none;cursor:pointer;color:var(--link);font-size:14px;padding:8px 2px}details.more>summary::-webkit-details-marker{display:none}details.more[open]>summary .chev{transform:rotate(90deg)}details.more .chev{display:inline-block;transition:transform .15s}
 .seg{display:flex;background:var(--card);border-radius:11px;padding:3px;margin-bottom:10px}
 .seg button{flex:1;border:0;background:none;padding:7px;border-radius:9px;font-size:14px;color:var(--hint)}
 .seg button.on{background:var(--bg);color:var(--text);font-weight:600}
@@ -163,7 +164,7 @@ applySafeTop();
 var INIT = tg ? tg.initData : '';
 var $ = function (s, r) { return (r || document).querySelector(s); };
 var view = $('#view');
-var state = { tab: 'home', ideas: 'recs', mkAct: 'all', edit: false, sel: {}, dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
+var state = { tab: 'home', ideas: 'recs', invTab: 'steam', mkAct: 'all', edit: false, sel: {}, dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // Все суммы приходят в копейках гривны; показываем и вводим в валюте человека (CUR — из ответа сервера).
@@ -315,34 +316,30 @@ function home() {
     state.health = hs;
     $('#dot').className = 'dot ' + hs.cls;
     var h = '';
-    h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + hs.icon + '</div><div style="flex:1"><div style="font-weight:600">' + hs.title +
-      '</div><div class="mut" style="font-size:13px">' + (hs.note ? esc(hs.note) + '<br>' : '') + 'Цены обновлены ' + ago(s.lastPriceAt) + ' · предметов: ' + s.watched + '<br>Новые цены — примерно каждые 10 минут · <a id="howoft" style="color:var(--link)">как часто пишет бот?</a></div></div></div>';
+    // Всё в порядке — одна строка; проблема — заметная карточка с объяснением.
+    if (hs.cls === 'ok') h += '<div class="mut" style="font-size:13px;margin:0 2px 10px">✅ Цены обновлены ' + ago(s.lastPriceAt) + ' · <a id="howoft" style="color:var(--link)">как часто?</a></div>';
+    else h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + hs.icon + '</div><div style="flex:1"><div style="font-weight:600">' + hs.title +
+      '</div><div class="mut" style="font-size:13px">' + (hs.note ? esc(hs.note) + '<br>' : '') + 'Цены обновлены ' + ago(s.lastPriceAt) + ' · <a id="howoft" style="color:var(--link)">как часто?</a></div></div></div>';
     h += setupCard(s.setup);
-    h += '<div class="sec">Что делать сейчас</div>';
+    h += '<div class="sec">Мои предметы</div>';
     h += s.actions && s.actions.length ? s.actions.map(function (x) {
       return '<div class="row" data-item="' + x.itemId + '">' + pic(x.img, ACT_ICON[x.advice.action]) + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d" style="white-space:normal">' + esc(x.advice.reason) + '</div></div><div class="r">' + actPill(x.advice) + '</div></div>';
-    }).join('') : '<div class="card mut">Сейчас нечего покупать или продавать — цены обычные. Бот пришлёт уведомление, когда появится выгодный момент.</div>';
-    h += '<div class="grid2" style="margin-top:12px">';
-    h += stat('Инвентарь (оценка)', uahShort(s.inventory.valueKop), s.inventory.lots ? 'позиций: ' + s.inventory.lots + (s.inventory.unknown ? ', без цены: ' + s.inventory.unknown : '') : 'пусто');
-    var diff = s.inventory.valueKop - s.inventory.costKop;
-    h += stat('Оценочная разница', '<span class="' + cls(diff) + '">' + uah(diff, true) + '</span>', 'это ещё не прибыль');
-    h += stat('Сегодня · Steam Wallet', '<span class="' + cls(s.today.steamKop) + '">' + uah(s.today.steamKop, true) + '</span>', 'реальные продажи');
-    h += stat('Сегодня · деньги', '<span class="' + cls(s.today.cashKop) + '">' + uah(s.today.cashKop, true) + '</span>', 'внешние площадки');
-    h += '</div>';
+    }).join('') : '<div class="card mut" style="font-size:14px">' + (s.watched ? 'Ничего срочного — цены обычные. Напишу, когда будет выгодно купить или продать.' : 'Список пуст — добавь предметы во вкладке «Рынок», и бот подскажет, когда покупать и продавать.') + '</div>';
+    if (s.inventory.lots) {
+      var diff = s.inventory.valueKop - s.inventory.costKop;
+      h += '<div class="row" id="h-inv"><div class="ic">🎒</div><div class="m"><div class="n">Мои покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
+    }
+    if (s.today.sales) h += '<div class="mut" style="font-size:13px;margin:2px 2px 0">Сегодня продано: ' + s.today.sales + ' · Steam ' + uah(s.today.steamKop, true) + ' · деньгами ' + uah(s.today.cashKop, true) + '</div>';
     var rc = s.recs || { deals: [], trends: [] };
-    state.cache.homeRecs = rc.deals.concat(rc.trends);
-    h += '<div class="sec">Что купить сейчас<a id="alld">Все идеи</a></div>';
-    h += s.deals.slice(0, 3).map(dealRow).join('');
+    state.cache.homeRecs = rc.deals.concat(rc.trends).slice(0, 2);
+    h += '<div class="sec">Что купить<a id="alld">Все идеи ›</a></div>';
     h += state.cache.homeRecs.map(recCard).join('');
-    if (!s.deals.length && !state.cache.homeRecs.length) h += '<div class="card mut" style="text-align:center">' + (rc.fetchedAt ? 'Сейчас на рынке нет вариантов, которые проходят твои пороги прибыли.' : 'Сканирование рынка ещё не прошло — первые идеи появятся после следующего запуска сборщика (до 10 минут).') + '</div>';
-    h += '<div class="sec">Источники</div><div class="card">' + s.sources.filter(function (x) { return x.source !== 'nbu'; }).map(function (x) {
-      return '<div class="kv"><span class="k">' + (SRC[x.source] || esc(x.source)) + '</span><span class="v">' + srcStatus(x) + '</span></div>';
-    }).join('') + '</div>';
+    if (!state.cache.homeRecs.length) h += '<div class="card mut" style="font-size:14px">' + (rc.fetchedAt ? 'Сейчас нет выгодных вариантов — бот проверяет рынок каждые 10 минут.' : 'Первые идеи появятся после проверки рынка (до 10 минут).') + '</div>';
     view.innerHTML = h;
     bindSetup();
     $('#alld').onclick = function () { go('deals'); };
     $('#howoft').onclick = function (e) { e.stopPropagation(); howOften(s.notify); };
-    bindDeals(s.deals);
+    if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('inv'); };
     bindRecs(state.cache.homeRecs);
     Array.prototype.forEach.call(document.querySelectorAll('[data-item]'), function (el) { el.onclick = function () { haptic(); itemSheet(+el.getAttribute('data-item')); }; });
   }).catch(fail);
@@ -413,49 +410,31 @@ function recSheet(r) {
   $('#r-bought').onclick = function () { buyForm({ name: r.name, priceKop: r.payKop, platform: plat }); };
   $('#r-watch').onclick = function () { api('watch', { method: 'POST', body: { name: r.name } }).then(function () { haptic('ok'); toast('Добавлено в «Рынок»'); }).catch(function (e) { toast(e.message); }); };
 }
-function ideasSwitch() {
-  return '<div class="seg" id="ideas">' + [['recs', 'Весь рынок'], ['mine', 'Мои предметы']].map(function (o) {
-    return '<button data-v="' + o[0] + '" class="' + (state.ideas === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
-}
-function bindIdeas() {
-  Array.prototype.forEach.call(document.querySelectorAll('#ideas button'), function (b) { b.onclick = function () { haptic(); state.ideas = b.getAttribute('data-v'); deals(); }; });
-}
 function deals() {
-  if (state.ideas === 'recs') return recsView();
-  loading(5);
-  api('deals?order=' + state.dealOrder).then(function (r) {
-    var list = r.deals.filter(function (d) { return state.dealSrc === 'all' || d.buySource === state.dealSrc; });
-    var h = ideasSwitch() + '<div class="seg" id="ord">' + [['spread', 'По сумме'], ['roi', 'По %'], ['priority', 'По качеству']].map(function (o) {
-      return '<button data-o="' + o[0] + '" class="' + (state.dealOrder === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
-    h += '<div class="chips" id="srcs">' + [['all', 'Все площадки'], ['skinport', 'Skinport'], ['csfloat', 'CSFloat']].map(function (o) {
-      return '<button class="chip ' + (state.dealSrc === o[0] ? 'on' : '') + '" data-s="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
-    h += list.length ? list.map(dealRow).join('') : '<div class="empty"><div class="e">🔎</div>Активных сделок нет.<br>Сделка появляется, когда разница после комиссий Steam выше твоих порогов (Ещё → Настройки).</div>';
-    h += '<div class="note">Разница — это прирост баланса Steam, не наличные. Это оценка, а не гарантированный заработок.</div>';
-    view.innerHTML = h;
-    bindIdeas();
-    Array.prototype.forEach.call(document.querySelectorAll('#ord button'), function (b) { b.onclick = function () { state.dealOrder = b.getAttribute('data-o'); deals(); }; });
-    Array.prototype.forEach.call(document.querySelectorAll('#srcs .chip'), function (b) { b.onclick = function () { state.dealSrc = b.getAttribute('data-s'); deals(); }; });
-    bindDeals(list);
-  }).catch(fail);
-}
-function recsView() {
   loading(6);
-  api('recs').then(function (r) {
-    var h = ideasSwitch();
+  Promise.all([api('recs'), api('deals?order=spread').catch(function () { return { deals: [] }; })]).then(function (res) {
+    var r = res[0], mine = res[1].deals || [];
+    var h = '';
     if (!r.fetchedAt) {
-      h += '<div class="empty"><div class="e">⏳</div>Сканирование рынка ещё не прошло.<br>Сборщик проверяет рынок каждые 10 минут — загляни чуть позже.</div>';
+      h += '<div class="empty"><div class="e">⏳</div>Рынок ещё не проверен.<br>Бот проверяет цены каждые 10 минут — загляни чуть позже.</div>';
     } else {
-      h += '<div class="mut" style="font-size:13px;margin:2px 2px 8px">Сравнил цены Steam, Skinport, Market.CSGO, Waxpeer и LIS-SKINS · отобрано ' + r.scanned + ' предметов · ' + ago(r.fetchedAt) + (r.stale ? ' ⚠️ данные устарели' : '') + '</div>';
-      h += '<div class="sec">Купить и перепродать дороже</div>';
       state.cache.recsAt = r.fetchedAt;
-      h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut">Сейчас нет вариантов, где после всех комиссий остаётся прибыль выше твоих порогов (Ещё → Настройки).</div>';
+      h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale ? ' ⚠️ данные устарели' : '') + '</div>';
+      h += '<div class="sec">Купить и продать дороже</div>';
+      h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
+      if (mine.length) {
+        h += '<div class="sec">Из твоего списка: купить → продать в Steam</div>';
+        h += mine.slice(0, 10).map(dealRow).join('');
+      }
       h += '<div class="sec">Растут в цене</div>';
-      h += r.trends.length ? r.trends.map(recCard).join('') : '<div class="card mut">Нет предметов с заметным ростом за последнюю неделю.</div>';
+      h += r.trends.length ? r.trends.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас ничего заметно не дорожает.</div>';
     }
-    h += '<div class="note"><b>Честно:</b> «100% вырастет» не бывает — любой прогноз может не сбыться. Здесь только факты: где купить дешевле, чем потом можно продать с учётом комиссий, и что уже дорожает последнюю неделю. «Получишь деньгами» — можно вывести, «на Steam» — останется на балансе Steam.</div>';
     view.innerHTML = h;
-    bindIdeas();
+    if ($('#r-how')) $('#r-how').onclick = function () {
+      sheet('<h2>Как бот ищет идеи</h2><div class="card info"><p>Каждые 10 минут бот сравнивает цены Steam, Skinport, Market.CSGO, Waxpeer и LIS-SKINS.</p><p>💸 <b>Купить и продать дороже</b> — где купить дешевле, чем потом можно продать, <b>после всех комиссий</b>. Только предметы, которые реально покупают (не меньше 7 продаж за неделю).</p><p>📈 <b>Растут в цене</b> — что уже дорожает последнюю неделю. Рост может развернуться.</p><p>«Получишь деньгами» — можно вывести с сайта. «На Steam» — останется на балансе Steam, вывести нельзя.</p></div><div class="note"><b>Честно:</b> «100% вырастет» не бывает. Цены — на момент проверки, перед покупкой проверь на сайте. Бот ничего не покупает сам. Свои пороги прибыли и комиссии банка — в Ещё → Настройки.</div>');
+    };
     bindRecs(r.deals.concat(r.trends));
+    bindDeals(mine);
   }).catch(fail);
 }
 function dealSheet(d) {
@@ -498,7 +477,7 @@ function market() {
       h += '<div class="editbar"><button class="btn sec2" id="e-done">Готово</button><button class="btn sec2" id="e-all">Выбрать все</button><span style="flex:1"></span><button class="btn danger" id="e-del"' + (k ? '' : ' disabled') + '>🗑 Удалить (' + k + ')</button></div>';
     } else {
       h += '<div class="tool"><button class="btn" id="m-add">＋ Добавить</button><button class="btn sec2" id="m-edit">✏️ Изменить список</button></div>';
-      if (r.limit) h += '<div class="mut" style="font-size:13px;margin:-4px 2px 8px">В списке ' + r.own + ' из ' + r.limit + ' предметов' + (r.own >= r.limit ? ' — лимит, удали ненужные, чтобы добавить новые' : '') + '. Предметы из инвентаря в лимит не входят.</div>';
+      if (r.limit) h += '<div class="mut" style="font-size:13px;margin:-4px 2px 8px">' + r.own + ' из ' + r.limit + (r.own >= r.limit ? ' — лимит, удали ненужные' : '') + '</div>';
     }
     h += '<div class="chips" id="acts"><button class="chip ' + (state.mkAct === 'all' ? 'on' : '') + '" data-a="all">Все · ' + cnt.all + '</button>' +
       ['buy', 'sell', 'avoid', 'hold', 'nodata'].filter(function (a) { return cnt[a]; }).map(function (a) {
@@ -515,7 +494,7 @@ function market() {
         (x.advice && x.advice.action !== 'hold' && x.advice.action !== 'nodata' ? esc(x.advice.reason) : (x.skinportKop != null ? 'Skinport ' + uahShort(x.skinportKop) : 'Skinport —') + (x.sales24h != null ? ' · продаж ' + x.sales24h.toLocaleString('ru-RU') : '')) +
         '</div></div>' + right + '</div>';
     }).join('') : '<div class="empty"><div class="e">📭</div>Список пуст. Нажми «＋ Добавить».</div>';
-    h += '<div class="note">Сверху — то, где нужно действие: <b class="pos">Купить</b>, <b style="color:var(--violet)">Продать</b>, <b class="neg">Дорого</b>. Ниже — «Ждать» и «Мало данных» (у предмета почти нет продаж). Цена справа — самое дешёвое объявление в Steam; «≈» — средняя цена продаж Steam, пока живой цены нет.</div>';
+    h += '<div class="note">Цена справа — самое дешёвое объявление в Steam («≈» — средняя цена продаж). Нажми на предмет — график и подсказка.</div>';
     view.innerHTML = h;
     Array.prototype.forEach.call(document.querySelectorAll('#acts .chip'), function (b) { b.onclick = function () { haptic(); state.mkAct = b.getAttribute('data-a'); market(); }; });
     Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function (el) {
@@ -603,25 +582,27 @@ function itemSheet(id, days) {
     var q = r.quotes, it = r.item;
     var h = (it.img ? '<img class="hero-img" src="' + esc(it.img) + '" alt="">' : '') + '<h2>' + esc(it.name) + '</h2><div class="sub">' + (ICON[it.category] || '') + ' ' + esc(it.categoryRu) + (it.stattrak ? ' · StatTrak™' : '') + (it.souvenir ? ' · Souvenir' : '') + '</div>';
     h += verdict(r.advice);
-    if (it.uniquePriced) h += '<div class="card" style="color:var(--amber)">⚠️ Цена зависит от экземпляра (паттерн, фаза, float) — общие цены ориентировочные.</div>';
+    if (it.uniquePriced) h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ Цена зависит от экземпляра (паттерн, фаза, float) — общие цены ориентировочные.</div>';
+    var avg7 = r.steamAvg && r.steamAvg.d7;
     h += '<div class="grid2">' +
-      stat('Steam · объявление', uahShort(q.steamLow && q.steamLow.kop), q.steamLow ? ago(q.steamLow.at) : 'нет данных') +
-      stat('Steam · медиана 24ч', uahShort(q.steamMed && q.steamMed.kop), q.steamMed && q.steamMed.volume != null ? 'продаж: ' + q.steamMed.volume.toLocaleString('ru-RU') : '') +
-      stat('Skinport · объявление', q.skinport ? (q.skinport.kop == null ? (q.skinport.qty === 0 ? 'нет лотов' : '—') : uahShort(q.skinport.kop)) : '—', q.skinport && q.skinport.minor != null ? (q.skinport.minor / 100).toFixed(2).replace('.', ',') + ' ' + q.skinport.currency + (q.skinport.qty != null ? ' · лотов ' + q.skinport.qty : '') : '') +
-      stat('Ликвидность', esc(r.liquidity.ru), r.liquidity.perDay != null ? '~' + Math.round(r.liquidity.perDay) + ' продаж/день' : esc(r.liquidity.basis)) + '</div>';
+      stat('Steam сейчас', uahShort(q.steamLow && q.steamLow.kop), q.steamLow ? 'самый дешёвый лот · ' + ago(q.steamLow.at) : 'нет данных') +
+      stat('Обычно продают за', avg7 ? '≈ ' + uahShort(avg7) : uahShort(q.steamMed && q.steamMed.kop), avg7 ? 'средняя за неделю' : 'медиана за сутки') + '</div>';
     h += '<div class="seg" id="dd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>';
     h += '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>';
-    if (r.steamAvg) {
-      h += '<div class="sec">Средняя цена продаж в Steam</div><div class="card">' +
-        [['за сутки', r.steamAvg.d1], ['за неделю', r.steamAvg.d7], ['за месяц', r.steamAvg.d30], ['за 3 месяца', r.steamAvg.d90]].filter(function (x) { return x[1]; })
-          .map(function (x) { return kv(x[0], '≈ ' + uah(x[1])); }).join('') + '</div>';
-      h += '<div class="note">По открытому прайсу CSGO Trader (обновляется раз в сутки), из долларов по курсу НБУ — поэтому «≈». Видно, дорожает предмет или дешевеет.</div>';
-    }
-    h += '<div class="note">Как читать: фиолетовая линия — цена в Steam, пунктир — средняя за 7 дней. Линия ниже пунктира — сейчас дешевле обычного, выше — дороже. Решение уже посчитано в плашке сверху.</div>';
-    if (r.stats && r.stats.count > 1) h += '<div class="note">Мин ' + uahShort(r.stats.min) + ' · медиана ' + uahShort(r.stats.median) + ' · макс ' + uahShort(r.stats.max) + ' · данных за ' + r.stats.spanDays.toFixed(1).replace('.', ',') + ' дн' + (r.stats.spanDays < days - 0.5 ? ' (из ' + days + ')' : '') + '</div>';
+    // Всё остальное — для тех, кому интересно, под «Подробнее».
+    var more = '';
+    more += '<div class="card">' +
+      kv('Skinport, объявление', q.skinport ? (q.skinport.kop == null ? (q.skinport.qty === 0 ? 'нет лотов' : '—') : uah(q.skinport.kop) + (q.skinport.qty != null ? '<div class="mut" style="font-size:12px;font-weight:400">лотов ' + q.skinport.qty + '</div>' : '')) : '—') +
+      kv('Steam, медиана за сутки', uah(q.steamMed && q.steamMed.kop) + (q.steamMed && q.steamMed.volume != null ? '<div class="mut" style="font-size:12px;font-weight:400">продаж: ' + q.steamMed.volume.toLocaleString('ru-RU') + '</div>' : '')) +
+      kv('Как быстро продаётся', esc(r.liquidity.ru) + (r.liquidity.perDay != null ? '<div class="mut" style="font-size:12px;font-weight:400">~' + Math.round(r.liquidity.perDay) + ' продаж/день</div>' : '')) + '</div>';
+    if (r.steamAvg) more += '<div class="sec">Средняя цена продаж в Steam</div><div class="card">' +
+      [['за сутки', r.steamAvg.d1], ['за неделю', r.steamAvg.d7], ['за месяц', r.steamAvg.d30], ['за 3 месяца', r.steamAvg.d90]].filter(function (x) { return x[1]; })
+        .map(function (x) { return kv(x[0], '≈ ' + uah(x[1])); }).join('') + '</div>';
+    if (r.stats && r.stats.count > 1) more += '<div class="note">На графике: мин ' + uahShort(r.stats.min) + ' · медиана ' + uahShort(r.stats.median) + ' · макс ' + uahShort(r.stats.max) + '</div>';
     var bt = r.backtest;
-    h += '<div class="sec">Проверка на истории</div><div class="card">' + (bt.decisions < 3 ? '<span class="mut">Мало истории — проверка станет полезной через несколько дней.</span>' :
-      kv('Правило сработало бы', bt.signals + ' раз') + kv('Выгода сохранилась через 24 ч', bt.held) + kv('Стала убытком', bt.reversed) + kv('Не хватило данных', bt.noData)) + '</div>';
+    if (bt.decisions >= 3) more += '<div class="sec">Проверка подсказок на истории</div><div class="card">' + kv('Сигнал был бы', bt.signals + ' раз') + kv('Выгода сохранилась через 24 ч', bt.held) + kv('Стала убытком', bt.reversed) + '</div>';
+    more += '<div class="note">Линия — цена в Steam, пунктир — средняя за 7 дней: ниже пунктира — дешевле обычного. «≈» — пересчёт из долларов по курсу.</div>';
+    h += '<details class="more"><summary><span class="chev">›</span> Подробнее: другие площадки, средние цены</summary>' + more + '</details>';
     h += '<div class="btns"><button class="btn sec2" id="i-steam">Steam Market</button>' + (r.links.skinport ? '<button class="btn sec2" id="i-sp">Skinport</button>' : '') + '</div>';
     if (r.watchId) {
       h += '<label class="f"><span>🎯 Уведомить, когда в Steam будет не дороже (' + CUR.sign + ')</span><input id="tg" inputmode="decimal" placeholder="например 120" value="' + (r.targetKop ? units(r.targetKop) : '') + '"></label>';
@@ -666,7 +647,7 @@ function chart(series, days, avg) {
     flush();
   });
   s += '</svg><div class="legend">' + defs.filter(function (d) { return (series[d[0]] || []).length; }).map(function (d) { return '<span><i style="background:' + d[2] + '"></i>' + d[1] + '</span>'; }).join('') + '</div>';
-  return s + '<div class="note" style="margin:4px 0 0">Разрывы линии — периоды без данных, они не дорисовываются.</div>';
+  return s;
 }
 
 // ---------- Инвентарь ----------
@@ -677,19 +658,25 @@ function inventory() {
     state.cache.platforms = r.platforms;
     var cost = 0, val = 0, unk = 0;
     r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
-    var h = steamBlock(st);
-    h += '<div class="sec">Мой учёт покупок</div><div class="mut" style="font-size:13px;margin:-2px 2px 8px">Здесь — с ценой покупки: бот считает прибыль и говорит, когда продавать.</div>';
-    h += '<div class="grid2">' + stat('Оценка в Steam', uahShort(val), 'на баланс, после комиссий') + stat('Разница', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без цены: ' + unk : 'это ещё не прибыль') + '</div>';
-    h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
-    h += r.lots.length ? r.lots.map(function (l) {
-      return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + ' · ' + esc(l.platformRu) + '</div></div>' +
-        '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
-    }).join('') : '<div class="empty"><div class="e">🎒</div>Пусто. Добавь предметы, которые у тебя есть или которые ты купил.</div>';
-    h += '<button class="btn sec2" id="hist">🧾 История сделок</button>';
+    var stN = st && st.items ? st.items.length : 0;
+    var h = '<div class="seg" id="invseg"><button data-v="steam" class="' + (state.invTab === 'steam' ? 'on' : '') + '">🎮 Steam' + (stN ? ' · ' + stN : '') + '</button><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Мои покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button></div>';
+    if (state.invTab === 'steam') {
+      h += steamBlock(st);
+    } else {
+      h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
+      if (r.lots.length) h += '<div class="grid2">' + stat('Если продать в Steam', uahShort(val), 'после комиссии') + stat('Разница', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без цены: ' + unk : 'это ещё не прибыль') + '</div>';
+      h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
+      h += r.lots.length ? r.lots.map(function (l) {
+        return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + '</div></div>' +
+          '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
+      }).join('') : '<div class="empty"><div class="e">🧾</div>Пока пусто.</div>';
+    }
+    if (state.invTab === 'mine') h += '<button class="btn sec2" id="hist">🧾 История продаж</button>';
     view.innerHTML = h;
-    bindSteamBlock(st);
-    $('#add').onclick = function () { buyForm({}); };
-    $('#hist').onclick = history;
+    Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); inventory(); }; });
+    if (state.invTab === 'steam') bindSteamBlock(st);
+    if ($('#add')) $('#add').onclick = function () { buyForm({}); };
+    if ($('#hist')) $('#hist').onclick = history;
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
       el.onclick = function () { haptic(); var id = +el.getAttribute('data-lot'); lotSheet(r.lots.filter(function (x) { return x.id === id; })[0]); };
     });
@@ -698,7 +685,7 @@ function inventory() {
 // ---------- Инвентарь Steam (вход через Steam — только номер аккаунта) ----------
 var INV_ST = { private: '🔒 Инвентарь закрыт. Открой его: Steam → Профиль → Изменить профиль → Приватность → «Инвентарь: Открытый», потом нажми «Обновить».', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Steam временно ограничил запросы — бот повторит сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
 function steamBlock(st) {
-  var h = '<div class="sec">Инвентарь Steam</div>';
+  var h = '';
   if (!st) return h + '<div class="card mut">Не удалось загрузить.</div>';
   if (!st.linked) {
     h += '<div class="card"><div style="font-weight:700;margin-bottom:4px">Подключи Steam — бот сам подтянет твои предметы</div>' +
@@ -720,7 +707,7 @@ function steamBlock(st) {
         '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
     }).join('');
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
-    h += '<div class="note">«≈» — по средней цене продаж Steam за неделю (суточный прайс, из долларов по курсу НБУ). Бот не знает, за сколько ты покупал — чтобы считать прибыль, запиши покупку ниже.</div>';
+    h += '<div class="note">«≈» — средняя цена продаж в Steam (живой цены пока нет). Нажми на предмет — за сколько выставить.</div>';
   } else if (!st.pending && st.status === 'ok') h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
   h += '<button class="btn sec2" id="st-off" style="margin-top:4px">Отключить Steam</button>';
   return h;

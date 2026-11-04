@@ -22,11 +22,15 @@ button{font:inherit;color:inherit}
 .top{position:sticky;top:0;z-index:5;background:var(--bg2);padding:calc(12px + var(--safe-top)) 16px 8px;display:flex;align-items:center;gap:10px}
 :root{--safe-top:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
 .top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px;flex:1}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--hint)}
-.dot.ok{background:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 20%,transparent)}
-.dot.bad{background:var(--red)}
-.dot.warn{background:var(--amber)}
-.dot{cursor:pointer}
+.top{flex-wrap:wrap}
+.ticker{flex:0 0 calc(100% + 32px);margin:2px -16px 0;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--hint);cursor:pointer;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
+.ticker:empty{display:none}
+.tk-in{display:inline-block;padding-left:16px;animation:tk var(--tk-dur,40s) linear infinite}
+.tk-in span{margin-right:28px}
+.tk-in .warn{color:var(--amber)}.tk-in .bad{color:var(--red)}.tk-in .pos{color:var(--green)}
+@keyframes tk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tk-in{animation:none}.ticker{overflow-x:auto}}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -134,7 +138,7 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 </style>
 </head>
 <body>
-<div class="top"><h1 id="title">CS2 Market</h1><span class="dot" id="dot"></span></div>
+<div class="top"><h1 id="title">CS2 Market</h1><div class="ticker" id="ticker"></div></div>
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
@@ -263,10 +267,35 @@ function health(s) {
   if (sp && sp.status !== 'ok') return { cls: 'warn', icon: '🟡', title: 'Работает, но Skinport отвечает с ошибками', note: 'Остальные площадки обновляются.' };
   return { cls: 'ok', icon: '🟢', title: 'Всё работает', note: '' };
 }
-$('#dot').onclick = function () {
-  var hs = state.health; if (!hs) return go('home');
-  sheet('<h2>' + hs.icon + ' ' + esc(hs.title) + '</h2>' + (hs.note ? '<div class="card">' + esc(hs.note) + '</div>' : '') +
-    '<div class="note">🟢 — всё работает · 🟡 — работает, но один источник временно ограничен · 🔴 — цены не обновляются.</div>');
+// ---------- Бегущая строка: состояние бота, идеи, твои предметы. Нажатие — подробности. ----------
+function tickerItems(s) {
+  var hs = health(s), out = [];
+  out.push(hs.cls === 'ok' ? '<span>✅ Цены обновлены ' + ago(s.lastPriceAt) + '</span>' : '<span class="' + hs.cls + '">' + (hs.cls === 'bad' ? '🔴 ' : '⚠️ ') + esc(hs.title) + '</span>');
+  (s.actions || []).slice(0, 3).forEach(function (x) { out.push('<span>' + ACT_ICON[x.advice.action] + ' ' + esc(x.name) + ' — ' + esc(x.advice.title.toLowerCase()) + '</span>'); });
+  var rc = s.recs || { deals: [], trends: [] };
+  rc.deals.slice(0, 3).forEach(function (r) { out.push('<span>💸 ' + esc(r.name) + ': <b class="pos">+' + uahShort(r.profitKop) + '</b> (' + esc(r.buyName) + ' → ' + esc(r.sellName) + ')</span>'); });
+  rc.trends.slice(0, 2).forEach(function (r) { out.push('<span>📈 ' + esc(r.name) + ' <b class="pos">+' + Math.round(r.trendBp / 100) + '%</b> за неделю</span>'); });
+  if (s.today && s.today.sales) out.push('<span>🧾 Сегодня продаж: ' + s.today.sales + '</span>');
+  out.push('<span>⏱ Рынок проверяется каждые ~10 минут</span>');
+  return out.join('');
+}
+function renderTicker(s) {
+  state.health = health(s); state.tickerData = s;
+  var items = tickerItems(s), el = $('#ticker');
+  el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
+  // Скорость постоянная, независимо от длины: ~45 px/с.
+  var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(15, Math.round(w / 45)) + 's');
+}
+function refreshTicker() { api('summary').then(renderTicker).catch(function () {}); }
+setInterval(function () { if (!document.hidden && state.tickerData) refreshTicker(); }, 180000);
+$('#ticker').onclick = function () {
+  var hs = state.health, s = state.tickerData; if (!hs || !s) return;
+  var h = '<h2>' + hs.icon + ' ' + esc(hs.title) + '</h2><div class="sub">Цены обновлены ' + ago(s.lastPriceAt) + '</div>';
+  if (hs.note) h += '<div class="card">' + esc(hs.note) + '</div>';
+  h += '<div class="card info">' + tickerItems(s).replace(/<span/g, '<p').replace(/<\/span>/g, '</p>') + '</div>';
+  h += '<button class="btn sec2" id="tk-how">⏱ Как часто обновляется и пишет бот</button>';
+  sheet(h);
+  $('#tk-how').onclick = function () { howOften(s.notify); };
 };
 
 // ---------- Главная ----------
@@ -312,14 +341,8 @@ function privacy() {
 function home() {
   loading(5);
   api('summary').then(function (s) {
-    var hs = health(s);
-    state.health = hs;
-    $('#dot').className = 'dot ' + hs.cls;
+    renderTicker(s);
     var h = '';
-    // Всё в порядке — одна строка; проблема — заметная карточка с объяснением.
-    if (hs.cls === 'ok') h += '<div class="mut" style="font-size:13px;margin:0 2px 10px">✅ Цены обновлены ' + ago(s.lastPriceAt) + ' · <a id="howoft" style="color:var(--link)">как часто?</a></div>';
-    else h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + hs.icon + '</div><div style="flex:1"><div style="font-weight:600">' + hs.title +
-      '</div><div class="mut" style="font-size:13px">' + (hs.note ? esc(hs.note) + '<br>' : '') + 'Цены обновлены ' + ago(s.lastPriceAt) + ' · <a id="howoft" style="color:var(--link)">как часто?</a></div></div></div>';
     h += setupCard(s.setup);
     h += '<div class="sec">Мои предметы</div>';
     h += s.actions && s.actions.length ? s.actions.map(function (x) {
@@ -338,7 +361,6 @@ function home() {
     view.innerHTML = h;
     bindSetup();
     $('#alld').onclick = function () { go('deals'); };
-    $('#howoft').onclick = function (e) { e.stopPropagation(); howOften(s.notify); };
     if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('inv'); };
     bindRecs(state.cache.homeRecs);
     Array.prototype.forEach.call(document.querySelectorAll('[data-item]'), function (el) { el.onclick = function () { haptic(); itemSheet(+el.getAttribute('data-item')); }; });
@@ -927,7 +949,7 @@ function termsGate(t, first) {
   h += '<div class="note" style="text-align:center">Не согласен — просто не пользуйся ботом. Удалить данные: /deletemydata в чате с ботом.</div>';
   view.innerHTML = h;
   $('#t-ok').onclick = function () {
-    api('terms', { method: 'POST' }).then(function () { haptic('ok'); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); }).catch(function (e) { toast(e.message); });
+    api('terms', { method: 'POST' }).then(function () { haptic('ok'); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); if (first !== 'home') refreshTicker(); }).catch(function (e) { toast(e.message); });
   };
 }
 function termsSheet() {
@@ -1009,7 +1031,7 @@ var start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
 var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : 'home';
 // Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
 loading(3);
-api('terms').then(function (t) { if (t.accepted) go(first); else termsGate(t, first); }).catch(function () { go(first); });
+api('terms').then(function (t) { if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });
 })();
 </script>
 </body>

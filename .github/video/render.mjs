@@ -21,7 +21,15 @@ if (T.single) {
   // Одна дорожка на весь текст: слова делим по сегментам по количеству слов.
   const f = join(dir, T.single); const d = dur(f);
   audio.push({ f, at: LEAD });
-  const W = T.words; const need = T.segments.reduce((a, x) => a + x.nwords, 0);
+  // Тайминги по предложениям → по словам (пропорционально длине слова).
+  const W = [];
+  for (const b of T.words) {
+    if (b.type === 'WordBoundary') { W.push(b); continue; }
+    const toks = b.text.split(/\s+/).filter(Boolean); const tot = toks.reduce((x, y) => x + y.length + 1, 0); let acc = 0;
+    for (const tk of toks) { W.push({ text: tk.replace(/[.,!?…:;«»"]/g, ''), start: b.start + (acc / tot) * b.dur, dur: ((tk.length + 1) / tot) * b.dur }); acc += tk.length + 1; }
+  }
+  const need = T.segments.reduce((a, x) => a + x.nwords, 0);
+  console.log('слов в озвучке', W.length, 'в сценарии', need);
   let wi = 0;
   T.segments.forEach((sg, si) => {
     const n = W.length === need ? sg.nwords : Math.round((sg.nwords / need) * W.length);

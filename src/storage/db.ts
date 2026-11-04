@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   sig_change: '1',
   sig_target: '1',
   sig_inventory: '1',
+  notify_recs: '1',         // горячие рекомендации по всему рынку
+  recs_per_day: '3',        // не больше в сутки
   max_stale_min: '30',
   daily_report: '1',
   daily_hour: '20',

@@ -228,6 +228,10 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
+  if (a === 'nr' && b === 'off') {
+    await db.setSetting(h.d, h.uid, 'notify_recs', '0', h.now);
+    return say(h, '🔕 Горячие рекомендации больше не приходят. Включить снова: приложение → Ещё → Настройки → «Горячие рекомендации по всему рынку».');
+  }
   if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
   if (a === 'm') {
     switch (b) {

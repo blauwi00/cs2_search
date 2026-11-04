@@ -26,6 +26,8 @@ export const SETTINGS_META: SettingMeta[] = [
   { key: 'sig_change', label: 'Сигналы изменения цены', kind: 'toggle' },
   { key: 'sig_target', label: 'Целевые цены', kind: 'toggle' },
   { key: 'sig_inventory', label: 'Уведомления по инвентарю', kind: 'toggle' },
+  { key: 'notify_recs', label: 'Горячие рекомендации по всему рынку', kind: 'toggle', hint: 'Новая выгодная сделка «купи → продай» по твоим порогам прибыли, даже если предмета нет в твоём списке' },
+  { key: 'recs_per_day', label: 'Горячих рекомендаций в сутки, не больше', kind: 'int', min: 1, max: 10 },
   { key: 'daily_report', label: 'Ежедневная сводка', kind: 'toggle' },
   { key: 'daily_hour', label: 'Час сводки (Варшава)', kind: 'hour' },
   { key: 'src_steam', label: 'Источник Steam', kind: 'toggle' },

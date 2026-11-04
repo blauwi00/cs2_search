@@ -1006,7 +1006,7 @@ function settings() {
   sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   api('settings').then(function (r) {
     var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в ' + esc(CUR.code) + '.</div>';
-    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
+    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'notify_recs', 'recs_per_day', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
     var by = {}; r.settings.forEach(function (s) { by[s.key] = s; });
     if (r.currencies && r.currencies.length) {
       h += '<div class="sec">Валюта</div><div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Показывать цены в<div class="mut" style="font-size:12px">Пересчёт по курсу НБУ (RUB, BRL, ARS — через доллар). В Steam цена в твоём кошельке может немного отличаться.</div></span><select id="curSel" style="width:auto;max-width:46%;padding:7px 10px">' +
@@ -1060,7 +1060,8 @@ function status() {
 
 if (!INIT) { view.innerHTML = '<div class="empty"><div class="e">🔒</div>Открой приложение из своего бота в Telegram — кнопкой «Приложение» рядом с полем ввода.</div>'; return; }
 var start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : 'home';
+var hashTab = (location.hash || '').replace('#', '');
+var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : ['deals', 'market', 'inv', 'more'].indexOf(hashTab) >= 0 ? hashTab : 'home';
 // Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
 loading(3);
 api('terms').then(function (t) { if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });

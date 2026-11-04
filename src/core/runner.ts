@@ -10,6 +10,7 @@ import { TelegramClient } from '../telegram/api.ts';
 import type { Fetcher } from '../utils/http.ts';
 import { moneyResolver } from '../currency/display.ts';
 import { reportCopy } from './origin.ts';
+import { jobHotRecs } from './hotrecs.ts';
 
 /** Порядок важен: при нехватке лимита раньше выполняются верхние задачи. */
 export const JOBS: (JobDef & { minD1: number })[] = [
@@ -24,6 +25,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'kick_collector', intervalSec: 10 * 60, lockSec: 60, minD1: 2 },
   { name: 'channel', intervalSec: 5 * 60, lockSec: 60, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'ideas', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 3 * 60 },
+  { name: 'hot_recs', intervalSec: 5 * 60, lockSec: 90, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },
   { name: 'daily_report', intervalSec: 5 * 60, lockSec: 60, minD1: 3, firstDelaySec: 3 * 60 },
@@ -95,6 +97,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
         case 'channel': await P.jobChannel(ctx); break;
         case 'origin': await reportCopy(ctx.db, (u) => (ctx.fetcher ?? fetch)(u)); break;
         case 'ideas': await P.jobIdeas(ctx); break;
+        case 'hot_recs': await jobHotRecs(ctx); break;
         case 'health': await P.jobHealth(ctx); break;
         case 'quality': await P.jobQuality(ctx); break;
         case 'daily_report': await P.jobDailyReport(ctx); break;

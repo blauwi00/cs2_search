@@ -51,6 +51,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
           AND (inv_synced_at IS NULL OR inv_requested_at > inv_synced_at) ORDER BY inv_requested_at LIMIT 3`).all<{ tid: number; steamId: string | null; vanity: string | null }>(),
       ideasToTrack(d, now),
     ]);
+    // Адрес Worker (для кнопок «Открыть приложение» в уведомлениях из Cron, где адреса запроса нет).
+    if ((await getMeta(d, 'public_origin')) !== url.origin) await setMetaStmt(d, 'public_origin', url.origin).run();
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
     // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
     return json({

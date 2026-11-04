@@ -1,6 +1,6 @@
 import type { Fetcher } from '../utils/http.ts';
 
-export interface InlineButton { text: string; callback_data?: string; url?: string }
+export interface InlineButton { text: string; callback_data?: string; url?: string; web_app?: { url: string } }
 export type Keyboard = InlineButton[][];
 
 export class TelegramClient {
@@ -46,6 +46,11 @@ export class TelegramClient {
       // "message is not modified" — не ошибка.
       if (!String((e as Error).message).includes('not modified')) throw e;
     }
+  }
+
+  /** Кнопка «Приложение» слева от поля ввода в чате с ботом. */
+  setMenuButton(chatId: number, url: string): Promise<unknown> {
+    return this.call('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'web_app', text: 'Приложение', web_app: { url } } });
   }
 
   answerCallback(id: string, text?: string): Promise<unknown> {

@@ -31,3 +31,8 @@ interface ScheduledController {
   cron: string;
   noRetry(): void;
 }
+
+declare module '*.html' {
+  const content: string;
+  export default content;
+}

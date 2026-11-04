@@ -6,7 +6,7 @@ import { esc, type Keyboard } from './api.ts';
 import { say, show, type H, type View } from './context.ts';
 import { formatUah, formatSignedUah, formatBp, parseUahInput } from '../utils/money.ts';
 import { warsawDate } from '../utils/time.ts';
-import { searchSteam } from '../api/steam.ts';
+import { searchCatalog } from '../catalog.ts';
 import { CATEGORY_RU } from '../core/normalization.ts';
 import { steamSellerProceeds } from '../core/fees.ts';
 import {
@@ -191,11 +191,10 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
   switch (st.awaiting) {
     case 'inv_search': {
       if (t.length < 2) { await say(h, 'Слишком короткий запрос.'); return true; }
-      let hits;
-      try { hits = await searchSteam(t, h.fetcher); } catch (e) { await say(h, `⚠️ Поиск в Steam не удался: ${esc((e as Error).message)}`); return true; }
-      if (!hits.length) { await say(h, 'Ничего не найдено, попробуй другое название (на английском, как в Steam).'); return true; }
-      await db.setState(h.d, h.adminId, 'inv_pick', hits.map((x) => x.marketHashName), h.now);
-      await say(h, 'Выбери предмет:', [...hits.map((x, i) => [{ text: x.marketHashName.slice(0, 60), callback_data: `ip:${i}` }]), [{ text: 'Отмена', callback_data: 'm:inv' }]]);
+      const hits = await searchCatalog(h.d, t, 12);
+      if (!hits.length) { await say(h, 'Ничего не найдено. Попробуй другое название на английском или /addlist с точным названием.'); return true; }
+      await db.setState(h.d, h.adminId, 'inv_pick', hits, h.now);
+      await say(h, 'Выбери предмет:', [...hits.map((x, i) => [{ text: x.slice(0, 60), callback_data: `ip:${i}` }]), [{ text: 'Отмена', callback_data: 'm:inv' }]]);
       return true;
     }
     case 'inv_qty': {

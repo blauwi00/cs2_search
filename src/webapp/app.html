@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>CS2 Market</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#0f1115);--bg2:var(--tg-theme-secondary_bg_color,#171a21);
+  --card:var(--tg-theme-section_bg_color,#1c2029);--text:var(--tg-theme-text_color,#eef1f6);
+  --hint:var(--tg-theme-hint_color,#8a93a6);--link:var(--tg-theme-link_color,#6aa9ff);
+  --accent:var(--tg-theme-button_color,#5b8cff);--accent-t:var(--tg-theme-button_text_color,#fff);
+  --sep:color-mix(in srgb,var(--hint) 22%,transparent);
+  --green:#2fbf71;--red:#ef5350;--amber:#f2a93b;--violet:#8b6cff;
+  --r:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg2);color:var(--text);font:15px/1.38 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+button{font:inherit;color:inherit}
+.top{position:sticky;top:0;z-index:5;background:var(--bg2);padding:12px 16px 8px;display:flex;align-items:center;gap:10px}
+.top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px;flex:1}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--hint)}
+.dot.ok{background:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 20%,transparent)}
+.dot.bad{background:var(--red)}
+.wrap{padding:0 12px}
+.card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.stat{background:var(--card);border-radius:var(--r);padding:12px 14px}
+.stat .l{color:var(--hint);font-size:12.5px}
+.stat .v{font-size:19px;font-weight:700;margin-top:2px;letter-spacing:-.2px}
+.stat .s{color:var(--hint);font-size:12px;margin-top:2px}
+.sec{color:var(--hint);font-size:13px;text-transform:uppercase;letter-spacing:.4px;margin:16px 6px 8px;display:flex;justify-content:space-between;align-items:center}
+.sec a{color:var(--link);text-transform:none;letter-spacing:0;font-size:14px}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--card);border-radius:var(--r);margin-bottom:8px;cursor:pointer}
+.row:active{opacity:.75}
+.row .m{flex:1;min-width:0}
+.row .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .d{color:var(--hint);font-size:13px;margin-top:2px}
+.row .r{text-align:right;white-space:nowrap}
+.row .r .big{font-weight:700}
+.ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:19px;background:color-mix(in srgb,var(--accent) 16%,transparent);flex:none}
+.pos{color:var(--green)}.neg{color:var(--red)}.mut{color:var(--hint)}
+.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:999px;vertical-align:1px}
+.b-high{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green)}
+.b-medium{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
+.b-low{background:color-mix(in srgb,var(--hint) 22%,transparent);color:var(--hint)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:0 4px 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;padding:7px 13px;border-radius:999px;background:var(--card);color:var(--text);font-size:14px;border:0}
+.chip.on{background:var(--accent);color:var(--accent-t)}
+.search{display:flex;gap:8px;margin-bottom:10px}
+input,select{width:100%;background:var(--card);border:1px solid var(--sep);color:var(--text);border-radius:12px;padding:12px 13px;font:inherit;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+.btn{display:block;width:100%;border:0;border-radius:13px;padding:13px;font-weight:600;background:var(--accent);color:var(--accent-t);margin-top:10px}
+.btn.sec2{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--link)}
+.btn.danger{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.btns{display:flex;gap:8px}.btns .btn{flex:1}
+.empty{text-align:center;color:var(--hint);padding:30px 18px}
+.empty .e{font-size:38px;margin-bottom:8px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--sep)}
+.kv:last-child{border-bottom:0}.kv .k{color:var(--hint)}.kv .v{text-align:right;font-weight:500}
+.note{color:var(--hint);font-size:12.5px;margin:6px 4px 0}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--sep);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.tab{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--hint);padding:4px 0}
+.tab .t{font-size:21px;line-height:1.1;filter:grayscale(1);opacity:.7}
+.tab.on{color:var(--accent)}.tab.on .t{filter:none;opacity:1}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
+.sheet-bg.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:92vh;overflow-y:auto;background:var(--bg2);border-radius:20px 20px 0 0;padding:8px 14px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.sheet.on{transform:none}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--sep);margin:4px auto 12px}
+.sheet h2{font-size:18px;margin:0 0 4px;line-height:1.25}
+.sheet .sub{color:var(--hint);font-size:13px;margin-bottom:12px}
+.chart{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;color:var(--hint);margin-top:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.big-num{font-size:28px;font-weight:800;letter-spacing:-.5px}
+.seg{display:flex;background:var(--card);border-radius:11px;padding:3px;margin-bottom:10px}
+.seg button{flex:1;border:0;background:none;padding:7px;border-radius:9px;font-size:14px;color:var(--hint)}
+.seg button.on{background:var(--bg);color:var(--text);font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;transition:.2s;z-index:30;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.skel{height:64px;border-radius:var(--r);background:linear-gradient(90deg,var(--card),color-mix(in srgb,var(--card) 70%,var(--hint)),var(--card));background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:8px}
+@keyframes sk{to{background-position:-200% 0}}
+label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hint);font-size:13px;margin:0 0 5px 3px}
+.sw{position:relative;width:48px;height:29px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw b{position:absolute;inset:0;border-radius:999px;background:var(--sep);transition:.2s}
+.sw b:after{content:"";position:absolute;left:3px;top:3px;width:23px;height:23px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw input:checked+b{background:var(--green)}.sw input:checked+b:after{left:22px}
+.list-s .row{cursor:default}
+</style>
+</head>
+<body>
+<div class="top"><h1 id="title">CS2 Market</h1><span class="dot" id="dot"></span></div>
+<div class="wrap" id="view"></div>
+<nav class="tabs" id="tabs">
+  <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
+  <button class="tab" data-t="deals"><span class="t">💰</span>Сделки</button>
+  <button class="tab" data-t="market"><span class="t">📊</span>Рынок</button>
+  <button class="tab" data-t="inv"><span class="t">🎒</span>Инвентарь</button>
+  <button class="tab" data-t="more"><span class="t">⚙️</span>Ещё</button>
+</nav>
+<div class="sheet-bg" id="sbg"></div>
+<div class="sheet" id="sheet"><div class="grab"></div><div id="sc"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+'use strict';
+var tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('secondary_bg_color'); tg.setBackgroundColor('secondary_bg_color'); } catch (e) {} }
+var INIT = tg ? tg.initData : '';
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var view = $('#view');
+var state = { tab: 'home', dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function uah(k, sign) {
+  if (k == null || isNaN(k)) return '—';
+  var neg = k < 0, a = Math.abs(Math.round(k)), w = Math.floor(a / 100), f = String(a % 100).padStart(2, '0');
+  var s = String(w).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ',' + f + ' ₴';
+  return (neg ? '−' : (sign && k > 0 ? '+' : '')) + s;
+}
+function uahShort(k) { if (k == null) return '—'; var v = k / 100; return (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : v.toFixed(2).replace('.', ',')) + ' ₴'; }
+function pct(bp, sign) { if (bp == null) return '—'; var v = bp / 100; return (v > 0 && sign !== false ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; }
+function cls(v) { return v == null ? 'mut' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut'; }
+function ago(t) { if (!t) return 'нет данных'; var d = Math.max(0, Date.now() / 1000 - t); if (d < 60) return 'только что'; if (d < 3600) return Math.floor(d / 60) + ' мин назад'; if (d < 86400) return Math.floor(d / 3600) + ' ч назад'; return Math.floor(d / 86400) + ' дн назад'; }
+function haptic(t) { try { tg && tg.HapticFeedback && (t === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : tg.HapticFeedback.impactOccurred('light')); } catch (e) {} }
+function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('on'); }, 2400); }
+function openLink(u) { if (!u) return; if (tg && tg.openLink) tg.openLink(u); else window.open(u, '_blank'); }
+var ICON = { case: '📦', capsule: '💊', sticker: '🏷️', knife: '🔪', gloves: '🧤', weapon: '🔫', agent: '🕴️', patch: '🪡', other: '🎲', key: '🔑', graffiti: '🎨', music_kit: '🎵', pin: '📌' };
+var SRC = { steam: 'Steam', skinport: 'Skinport', csfloat: 'CSFloat', nbu: 'Курсы НБУ', collector: 'Сборщик GitHub' };
+var PRI = { high: 'высокий', medium: 'средний', low: 'низкий' };
+var LIQ = { high: 'высокая', medium: 'средняя', low: 'низкая', unknown: 'нет данных' };
+
+function api(path, opt) {
+  opt = opt || {};
+  return fetch('/app/api/' + path, {
+    method: opt.method || 'GET',
+    headers: { 'X-Init-Data': INIT, 'Content-Type': 'application/json' },
+    body: opt.body ? JSON.stringify(opt.body) : undefined
+  }).then(function (r) {
+    return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }).then(function (j) {
+      if (r.status === 403) throw new Error('Нет доступа. Открой приложение кнопкой в своём боте.');
+      if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
+    });
+  });
+}
+function loading(n) { var s = ''; for (var i = 0; i < (n || 4); i++) s += '<div class="skel"></div>'; view.innerHTML = s; }
+function fail(e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</div>' + esc(e.message || e) + '<br><br><button class="btn sec2" id="retry">Повторить</button></div>'; $('#retry').onclick = function () { go(state.tab); }; }
+
+// ---------- Шторка ----------
+var sheetStack = 0;
+function sheet(html) {
+  $('#sc').innerHTML = html; $('#sheet').scrollTop = 0;
+  $('#sheet').classList.add('on'); $('#sbg').classList.add('on'); sheetStack = 1;
+  if (tg && tg.BackButton) tg.BackButton.show();
+}
+function closeSheet() {
+  $('#sheet').classList.remove('on'); $('#sbg').classList.remove('on'); sheetStack = 0;
+  if (tg && tg.BackButton) tg.BackButton.hide();
+}
+$('#sbg').onclick = closeSheet;
+if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
+
+// ---------- Навигация ----------
+var TITLES = { home: 'CS2 Market', deals: 'Выгодные сделки', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
+Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+  b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
+});
+function go(t) {
+  state.tab = t; closeSheet();
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); });
+  $('#title').textContent = TITLES[t];
+  window.scrollTo(0, 0);
+  ({ home: home, deals: deals, market: market, inv: inventory, more: more })[t]();
+}
+
+// ---------- Главная ----------
+function home() {
+  loading(5);
+  api('summary').then(function (s) {
+    var priceSrc = s.sources.filter(function (x) { return x.source === 'steam' || x.source === 'skinport'; });
+    var okAll = priceSrc.length && priceSrc.every(function (x) { return x.status === 'ok'; }) && s.cronAlive;
+    $('#dot').className = 'dot ' + (okAll ? 'ok' : 'bad');
+    var h = '';
+    h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + (okAll ? '🟢' : '🟠') + '</div><div style="flex:1"><div style="font-weight:600">' +
+      (okAll ? 'Мониторинг работает' : 'Есть проблемы с источниками') + '</div><div class="mut" style="font-size:13px">Цены обновлены ' + ago(s.lastPriceAt) + ' · предметов: ' + s.watched + '</div></div></div>';
+    h += '<div class="grid2">';
+    h += stat('Инвентарь (оценка)', uahShort(s.inventory.valueKop), s.inventory.lots ? 'позиций: ' + s.inventory.lots + (s.inventory.unknown ? ', без цены: ' + s.inventory.unknown : '') : 'пусто');
+    var diff = s.inventory.valueKop - s.inventory.costKop;
+    h += stat('Оценочная разница', '<span class="' + cls(diff) + '">' + uah(diff, true) + '</span>', 'это ещё не прибыль');
+    h += stat('Сегодня · Steam Wallet', '<span class="' + cls(s.today.steamKop) + '">' + uah(s.today.steamKop, true) + '</span>', 'реальные продажи');
+    h += stat('Сегодня · деньги', '<span class="' + cls(s.today.cashKop) + '">' + uah(s.today.cashKop, true) + '</span>', 'внешние площадки');
+    h += '</div>';
+    h += '<div class="sec">Лучшие сделки<a id="alld">Все</a></div>';
+    h += s.deals.length ? s.deals.slice(0, 3).map(dealRow).join('') : '<div class="card mut" style="text-align:center">Сейчас выгодных сделок нет. Бот пришлёт уведомление, когда найдёт.</div>';
+    h += '<div class="sec">Источники</div><div class="card">' + s.sources.filter(function (x) { return x.source !== 'nbu'; }).map(function (x) {
+      return '<div class="kv"><span class="k">' + (SRC[x.source] || esc(x.source)) + '</span><span class="v">' + srcStatus(x) + '</span></div>';
+    }).join('') + '</div>';
+    view.innerHTML = h;
+    $('#alld').onclick = function () { go('deals'); };
+    bindDeals(s.deals);
+  }).catch(fail);
+}
+function stat(l, v, s) { return '<div class="stat"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="s">' + (s || '') + '</div></div>'; }
+function srcStatus(x) {
+  var m = { ok: '✅ ' + ago(x.lastOk), disabled: '⏸ выключен', rate_limited: '⏳ лимит', degraded: '⚠️ ошибки', down: '❌ недоступен' };
+  return m[x.status] || esc(x.status);
+}
+
+// ---------- Сделки ----------
+function dealRow(d) {
+  return '<div class="row" data-deal="' + d.id + '"><div class="ic">' + (ICON[guessCat(d.name)] || '💰') + '</div><div class="m"><div class="n">' + esc(d.name) + '</div><div class="d">' +
+    (SRC[d.buySource] || d.buySource) + ' ' + uahShort(d.buyKop) + ' → Steam ' + uahShort(d.proceedsKop) + '</div></div><div class="r"><div class="big pos">' + uah(d.spreadKop, true) +
+    '</div><div><span class="badge b-' + d.priority + '">' + pct(d.roiBp) + '</span></div></div></div>';
+}
+function guessCat(n) { n = n || ''; if (n.indexOf('★') === 0) return /Gloves|Wraps/.test(n) ? 'gloves' : 'knife'; if (/Capsule/.test(n)) return 'capsule'; if (/^Sticker/.test(n)) return 'sticker'; if (/Case$/.test(n)) return 'case'; if (/\(/.test(n)) return 'weapon'; return 'other'; }
+function bindDeals(list) {
+  Array.prototype.forEach.call(document.querySelectorAll('[data-deal]'), function (el) {
+    el.onclick = function () { haptic(); var id = +el.getAttribute('data-deal'); dealSheet(list.filter(function (x) { return x.id === id; })[0]); };
+  });
+}
+function deals() {
+  loading(5);
+  api('deals?order=' + state.dealOrder).then(function (r) {
+    var list = r.deals.filter(function (d) { return state.dealSrc === 'all' || d.buySource === state.dealSrc; });
+    var h = '<div class="seg" id="ord">' + [['spread', 'По сумме'], ['roi', 'По %'], ['priority', 'По качеству']].map(function (o) {
+      return '<button data-o="' + o[0] + '" class="' + (state.dealOrder === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += '<div class="chips" id="srcs">' + [['all', 'Все площадки'], ['skinport', 'Skinport'], ['csfloat', 'CSFloat']].map(function (o) {
+      return '<button class="chip ' + (state.dealSrc === o[0] ? 'on' : '') + '" data-s="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    h += list.length ? list.map(dealRow).join('') : '<div class="empty"><div class="e">🔎</div>Активных сделок нет.<br>Сделка появляется, когда разница после комиссий Steam выше твоих порогов (Ещё → Настройки).</div>';
+    h += '<div class="note">Разница — это прирост баланса Steam, не наличные. Это оценка, а не гарантированный заработок.</div>';
+    view.innerHTML = h;
+    Array.prototype.forEach.call(document.querySelectorAll('#ord button'), function (b) { b.onclick = function () { state.dealOrder = b.getAttribute('data-o'); deals(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('#srcs .chip'), function (b) { b.onclick = function () { state.dealSrc = b.getAttribute('data-s'); deals(); }; });
+    bindDeals(list);
+  }).catch(fail);
+}
+function dealSheet(d) {
+  if (!d) return;
+  var h = '<h2>' + esc(d.name) + '</h2><div class="sub"><span class="badge b-' + d.priority + '">приоритет: ' + (PRI[d.priority] || d.priority) + '</span> · обновлено ' + ago(d.updatedAt) + '</div>';
+  h += '<div class="card" style="text-align:center"><div class="mut" style="font-size:13px">Разница после комиссий</div><div class="big-num pos">' + uah(d.spreadKop, true) + '</div><div class="mut">' + pct(d.roiBp) + ' к затратам · баланс Steam</div></div>';
+  h += '<div class="card">' +
+    kv('Покупка, ' + (SRC[d.buySource] || d.buySource), uah(d.buyKop) + (d.buyOriginal ? '<div class="mut" style="font-size:12px">' + (d.buyOriginal.minor / 100).toFixed(2).replace('.', ',') + ' ' + esc(d.buyOriginal.currency) + '</div>' : '')) +
+    kv('Цена покупателя в Steam', uah(d.sellKop)) +
+    kv('Придёт на баланс Steam', uah(d.proceedsKop)) +
+    (d.breakEven ? kv('Без убытка, если продать от', uah(d.breakEven)) : '') +
+    kv('Ликвидность', (LIQ[d.liquidity] || '—') + (d.salesPerDay != null ? ' · ~' + Math.round(d.salesPerDay) + ' продаж/день' : '')) +
+    (d.fx ? kv('Курс НБУ', d.fx.rate.toFixed(4).replace('.', ',') + ' ₴ за 1 ' + esc(d.fx.base) + ' (' + esc(d.fx.date) + ')') : '') + '</div>';
+  if (d.downside && d.downside.length) h += '<div class="card">' + d.downside.map(function (x) { return kv('Если Steam подешевеет на ' + x.dropBp / 100 + '%', '<span class="' + cls(x.spreadKop) + '">' + uah(x.spreadKop, true) + '</span>'); }).join('') + '</div>';
+  if (d.basis) h += '<div class="note">Ориентир продажи: ' + esc(d.basis.replace(/\.$/, '')) + '.</div>';
+  if (d.reasons && d.reasons.length && d.priority !== 'high') h += '<div class="note">Почему не выше: ' + esc(d.reasons.join('; ')) + '.</div>';
+  h += '<div class="note">После покупки предмет может несколько дней быть недоступен для продажи в Steam. Цена продажи не гарантирована.</div>';
+  h += '<div class="btns">' + (d.buyUrl ? '<button class="btn" id="b-buy">Открыть покупку</button>' : '') + '<button class="btn sec2" id="b-steam">Steam Market</button></div>';
+  h += '<button class="btn sec2" id="b-bought">✅ Я купил — записать в инвентарь</button>';
+  h += '<div class="btns"><button class="btn sec2" id="b-item">📈 График</button><button class="btn danger" id="b-hide">Скрыть</button></div>';
+  sheet(h);
+  if (d.buyUrl) $('#b-buy').onclick = function () { openLink(d.buyUrl); };
+  $('#b-steam').onclick = function () { openLink(d.steamUrl); };
+  $('#b-item').onclick = function () { itemSheet(d.itemId); };
+  $('#b-bought').onclick = function () { buyForm({ name: d.name, priceKop: d.buyKop, platform: d.buySource, signalId: d.id }); };
+  $('#b-hide').onclick = function () { api('deals/' + d.id + '/hide', { method: 'POST' }).then(function () { haptic('ok'); toast('Скрыто'); closeSheet(); go(state.tab); }).catch(function (e) { toast(e.message); }); };
+}
+function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+
+// ---------- Рынок (наблюдение) ----------
+function market() {
+  loading(6);
+  api('watch').then(function (r) {
+    state.cache.watch = r.items;
+    var cats = {}; r.items.forEach(function (x) { cats[x.category] = x.categoryRu; });
+    var h = '<div class="search"><input id="q" placeholder="🔍 Найти и добавить предмет…" autocomplete="off"></div><div id="sr"></div>';
+    h += '<div class="chips" id="cats"><button class="chip ' + (state.mkCat === 'all' ? 'on' : '') + '" data-c="all">Все · ' + r.items.length + '</button>' +
+      Object.keys(cats).map(function (c) { return '<button class="chip ' + (state.mkCat === c ? 'on' : '') + '" data-c="' + c + '">' + (ICON[c] || '') + ' ' + esc(cats[c]) + '</button>'; }).join('') + '</div>';
+    var list = r.items.filter(function (x) { return state.mkCat === 'all' || x.category === state.mkCat; });
+    h += list.length ? list.map(function (x) {
+      return '<div class="row" data-item="' + x.itemId + '"><div class="ic">' + (ICON[x.category] || '🎲') + '</div><div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' +
+        (x.skinportKop != null ? 'Skinport ' + uahShort(x.skinportKop) : 'Skinport —') + (x.sales24h != null ? ' · продаж ' + x.sales24h.toLocaleString('ru-RU') : '') + (x.targetKop ? ' · 🎯 ' + uahShort(x.targetKop) : '') +
+        '</div></div><div class="r"><div class="big">' + uahShort(x.steamLowKop) + '</div><div class="' + cls(x.change24hBp) + '" style="font-size:13px">' + (x.change24hBp == null ? '<span class="mut">24ч —</span>' : pct(x.change24hBp)) + '</div></div></div>';
+    }).join('') : '<div class="empty"><div class="e">📭</div>Список пуст. Найди предмет в поиске выше.</div>';
+    h += '<div class="note">Цена — самое дешёвое объявление в Steam. Изменение — к цене сутки назад (появится, когда накопится история).</div>';
+    view.innerHTML = h;
+    Array.prototype.forEach.call(document.querySelectorAll('#cats .chip'), function (b) { b.onclick = function () { state.mkCat = b.getAttribute('data-c'); market(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-item]'), function (el) { el.onclick = function () { haptic(); itemSheet(+el.getAttribute('data-item')); }; });
+    bindSearch($('#q'), $('#sr'), function (name) {
+      api('watch', { method: 'POST', body: { name: name } }).then(function () { haptic('ok'); toast('Добавлено: ' + name); market(); }).catch(function (e) { toast(e.message); });
+    }, '＋');
+  }).catch(fail);
+}
+function bindSearch(input, out, onPick, mark) {
+  var timer;
+  input.oninput = function () {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (q.length < 2) { out.innerHTML = ''; return; }
+    timer = setTimeout(function () {
+      api('search?q=' + encodeURIComponent(q)).then(function (r) {
+        if (!r.results.length) { out.innerHTML = '<div class="card mut">' + (r.catalog.count ? 'Ничего не найдено. Пиши по-английски, как в Steam.' : 'Каталог названий ещё загружается сборщиком (до 10–20 минут).') + '</div>'; return; }
+        out.innerHTML = '<div class="card" style="padding:4px 0">' + r.results.map(function (n, i) {
+          return '<div class="kv" style="padding:11px 14px;cursor:pointer" data-pick="' + i + '"><span>' + (ICON[guessCat(n)] || '') + ' ' + esc(n) + '</span><span class="v" style="color:var(--link)">' + (mark || '') + '</span></div>';
+        }).join('') + '</div>';
+        Array.prototype.forEach.call(out.querySelectorAll('[data-pick]'), function (el) {
+          el.onclick = function () { var n = r.results[+el.getAttribute('data-pick')]; input.value = ''; out.innerHTML = ''; onPick(n); };
+        });
+      }).catch(function (e) { out.innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; });
+    }, 250);
+  };
+}
+
+// ---------- Карточка предмета ----------
+function itemSheet(id, days) {
+  days = days || 7;
+  sheet('<div class="skel"></div><div class="skel" style="height:180px"></div><div class="skel"></div>');
+  api('item/' + id + '?days=' + days).then(function (r) {
+    var q = r.quotes, it = r.item;
+    var h = '<h2>' + esc(it.name) + '</h2><div class="sub">' + (ICON[it.category] || '') + ' ' + esc(it.categoryRu) + (it.stattrak ? ' · StatTrak™' : '') + (it.souvenir ? ' · Souvenir' : '') + '</div>';
+    if (it.uniquePriced) h += '<div class="card" style="color:var(--amber)">⚠️ Цена зависит от экземпляра (паттерн, фаза, float) — общие цены ориентировочные.</div>';
+    h += '<div class="grid2">' +
+      stat('Steam · объявление', uahShort(q.steamLow && q.steamLow.kop), q.steamLow ? ago(q.steamLow.at) : 'нет данных') +
+      stat('Steam · медиана 24ч', uahShort(q.steamMed && q.steamMed.kop), q.steamMed && q.steamMed.volume != null ? 'продаж: ' + q.steamMed.volume.toLocaleString('ru-RU') : '') +
+      stat('Skinport · объявление', q.skinport ? (q.skinport.kop == null ? (q.skinport.qty === 0 ? 'нет лотов' : '—') : uahShort(q.skinport.kop)) : '—', q.skinport && q.skinport.minor != null ? (q.skinport.minor / 100).toFixed(2).replace('.', ',') + ' ' + q.skinport.currency + (q.skinport.qty != null ? ' · лотов ' + q.skinport.qty : '') : '') +
+      stat('Ликвидность', esc(r.liquidity.ru), r.liquidity.perDay != null ? '~' + Math.round(r.liquidity.perDay) + ' продаж/день' : esc(r.liquidity.basis)) + '</div>';
+    h += '<div class="seg" id="dd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>';
+    h += '<div class="card">' + chart(r.series, days) + '</div>';
+    if (r.stats && r.stats.count > 1) h += '<div class="note">Мин ' + uahShort(r.stats.min) + ' · медиана ' + uahShort(r.stats.median) + ' · макс ' + uahShort(r.stats.max) + ' · данных за ' + r.stats.spanDays.toFixed(1).replace('.', ',') + ' дн' + (r.stats.spanDays < days - 0.5 ? ' (из ' + days + ')' : '') + '</div>';
+    var bt = r.backtest;
+    h += '<div class="sec">Проверка на истории</div><div class="card">' + (bt.decisions < 3 ? '<span class="mut">Мало истории — проверка станет полезной через несколько дней.</span>' :
+      kv('Правило сработало бы', bt.signals + ' раз') + kv('Выгода сохранилась через 24 ч', bt.held) + kv('Стала убытком', bt.reversed) + kv('Не хватило данных', bt.noData)) + '</div>';
+    h += '<div class="btns"><button class="btn sec2" id="i-steam">Steam Market</button>' + (r.links.skinport ? '<button class="btn sec2" id="i-sp">Skinport</button>' : '') + '</div>';
+    if (r.watchId) {
+      h += '<label class="f"><span>🎯 Уведомить, когда в Steam будет не дороже (₴)</span><input id="tg" inputmode="decimal" placeholder="например 120" value="' + (r.targetKop ? (r.targetKop / 100).toString().replace('.', ',') : '') + '"></label>';
+      h += '<div class="btns"><button class="btn" id="i-tg">Сохранить цель</button><button class="btn danger" id="i-del">Убрать</button></div>';
+    } else h += '<button class="btn" id="i-add">＋ Добавить в наблюдение</button>';
+    h += '<button class="btn sec2" id="i-buy">🎒 Записать покупку</button>';
+    $('#sc').innerHTML = h;
+    Array.prototype.forEach.call(document.querySelectorAll('#dd button'), function (b) { b.onclick = function () { itemSheet(id, +b.getAttribute('data-d')); }; });
+    $('#i-steam').onclick = function () { openLink(r.links.steam); };
+    if (r.links.skinport) $('#i-sp').onclick = function () { openLink(r.links.skinport); };
+    $('#i-buy').onclick = function () { buyForm({ name: it.name }); };
+    if (r.watchId) {
+      $('#i-tg').onclick = function () {
+        var v = $('#tg').value.trim(); var kop = v ? Math.round(parseFloat(v.replace(/\s/g, '').replace(',', '.')) * 100) : null;
+        if (v && !(kop > 0)) return toast('Введи цену, например 120');
+        api('watch/' + r.watchId + '/target', { method: 'POST', body: { kop: kop } }).then(function () { haptic('ok'); toast(kop ? 'Цель сохранена' : 'Цель убрана'); }).catch(function (e) { toast(e.message); });
+      };
+      $('#i-del').onclick = function () { api('watch/' + r.watchId, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Убрано из наблюдения'); closeSheet(); if (state.tab === 'market') market(); }); };
+    } else $('#i-add').onclick = function () { api('watch', { method: 'POST', body: { name: it.name } }).then(function () { haptic('ok'); toast('Добавлено'); itemSheet(id, days); }); };
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
+function chart(series, days) {
+  var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22;
+  var defs = [['steamLow', 'Steam объявление', '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b']];
+  var all = []; defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
+  if (all.length < 2) return '<div class="empty" style="padding:22px">📉 История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен.</span></div>';
+  var now = Date.now() / 1000, from = now - days * 86400;
+  var mn = Math.min.apply(null, all), mx = Math.max.apply(null, all); if (mn === mx) { mn -= 100; mx += 100; }
+  var pad = (mx - mn) * .1; mn = Math.max(0, mn - pad); mx += pad;
+  function x(t) { return L + (t - from) / (now - from) * (W - L - R); }
+  function y(v) { return T + (1 - (v - mn) / (mx - mn)) * (H - T - B); }
+  var s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '">';
+  for (var i = 0; i <= 3; i++) { var v = mn + (mx - mn) * i / 3; s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v).toFixed(1) + '" y2="' + y(v).toFixed(1) + '" stroke="currentColor" stroke-opacity=".1"/><text x="' + (L - 5) + '" y="' + (y(v) + 3).toFixed(1) + '" font-size="9" text-anchor="end" fill="currentColor" fill-opacity=".55">' + Math.round(v / 100) + '</text>'; }
+  for (var j = 0; j <= 3; j++) { var t = from + (now - from) * j / 3, dt = new Date(t * 1000); s += '<text x="' + x(t).toFixed(1) + '" y="' + (H - 6) + '" font-size="9" text-anchor="middle" fill="currentColor" fill-opacity=".55">' + String(dt.getDate()).padStart(2, '0') + '.' + String(dt.getMonth() + 1).padStart(2, '0') + '</text>'; }
+  var gap = Math.max(3 * 3600, days * 86400 / 40);
+  defs.forEach(function (d) {
+    var pts = (series[d[0]] || []).filter(function (p) { return p.v != null && p.t >= from; }), seg = [], last = null;
+    function flush() { if (seg.length > 1) s += '<polyline fill="none" stroke="' + d[2] + '" stroke-width="2" stroke-linejoin="round" points="' + seg.join(' ') + '"/>'; else if (seg.length === 1) { var c = seg[0].split(','); s += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="2.2" fill="' + d[2] + '"/>'; } seg = []; }
+    pts.forEach(function (p) { if (last != null && p.t - last > gap) flush(); seg.push(x(p.t).toFixed(1) + ',' + y(p.v).toFixed(1)); last = p.t; });
+    flush();
+  });
+  s += '</svg><div class="legend">' + defs.filter(function (d) { return (series[d[0]] || []).length; }).map(function (d) { return '<span><i style="background:' + d[2] + '"></i>' + d[1] + '</span>'; }).join('') + '</div>';
+  return s + '<div class="note" style="margin:4px 0 0">Разрывы линии — периоды без данных, они не дорисовываются.</div>';
+}
+
+// ---------- Инвентарь ----------
+function inventory() {
+  loading(4);
+  api('inventory').then(function (r) {
+    state.cache.platforms = r.platforms;
+    var cost = 0, val = 0, unk = 0;
+    r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
+    var h = '<div class="grid2">' + stat('Оценка в Steam', uahShort(val), 'на баланс, после комиссий') + stat('Разница', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без цены: ' + unk : 'это ещё не прибыль') + '</div>';
+    h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
+    h += r.lots.length ? r.lots.map(function (l) {
+      return '<div class="row" data-lot="' + l.id + '"><div class="ic">' + (ICON[guessCat(l.name)] || '🎒') + '</div><div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + ' · ' + esc(l.platformRu) + '</div></div>' +
+        '<div class="r"><div class="big">' + uahShort(l.valueKop) + '</div><div class="' + cls(l.roiBp) + '" style="font-size:13px">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div></div></div>';
+    }).join('') : '<div class="empty"><div class="e">🎒</div>Пусто. Добавь предметы, которые у тебя есть или которые ты купил.</div>';
+    h += '<button class="btn sec2" id="hist">🧾 История сделок</button>';
+    view.innerHTML = h;
+    $('#add').onclick = function () { buyForm({}); };
+    $('#hist').onclick = history;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
+      el.onclick = function () { haptic(); var id = +el.getAttribute('data-lot'); lotSheet(r.lots.filter(function (x) { return x.id === id; })[0]); };
+    });
+  }).catch(fail);
+}
+function platformOptions(sel, noGift) {
+  var p = state.cache.platforms || [{ v: 'steam', t: 'Steam Market' }, { v: 'skinport', t: 'Skinport' }, { v: 'csfloat', t: 'CSFloat' }, { v: 'other', t: 'Другая площадка' }, { v: 'gift', t: 'Получено бесплатно' }];
+  return p.filter(function (x) { return !(noGift && x.v === 'gift'); }).map(function (x) { return '<option value="' + x.v + '"' + (x.v === sel ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
+}
+function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function toKop(v) { v = String(v || '').replace(/\s/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100); }
+function buyForm(pre) {
+  var h = '<h2>Записать покупку</h2><div class="sub">Бот ничего не покупает сам — это учёт твоих реальных сделок.</div>';
+  h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Начни вводить название…" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';
+  h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт., ₴</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? (pre.priceKop / 100).toFixed(2).replace('.', ',') : '') + '" placeholder="0 — бесплатно"></label></div>';
+  h += '<label class="f"><span>Где куплено</span><select id="bpl">' + platformOptions(pre.platform || 'skinport') + '</select></label>';
+  h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего, ₴</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
+  h += '<button class="btn" id="bsave">Сохранить</button>';
+  sheet(h);
+  var name = pre.name || null;
+  if (!pre.name) bindSearch($('#bq'), $('#bsr'), function (n) { name = n; $('#bq').parentNode.style.display = 'none'; $('#bname').style.display = 'block'; $('#bname').textContent = n; }, '✓');
+  $('#bsave').onclick = function () {
+    var price = toKop($('#bpr').value), fee = toKop($('#bfee').value) || 0;
+    if (!name) return toast('Выбери предмет');
+    if (price == null || isNaN(price) || price < 0) return toast('Введи цену');
+    api('inventory', { method: 'POST', body: { name: name, qty: +$('#bqty').value, priceKop: price, feeKop: fee, platform: $('#bpl').value, date: $('#bdt').value, signalId: pre.signalId || null } })
+      .then(function () { haptic('ok'); toast('Записано в инвентарь'); go('inv'); }).catch(function (e) { toast(e.message); });
+  };
+}
+function lotSheet(l) {
+  if (!l) return;
+  var h = '<h2>' + esc(l.name) + '</h2><div class="sub">Куплено ' + esc(l.date) + ' · ' + esc(l.platformRu) + '</div>';
+  h += '<div class="card">' + kv('Количество', l.openQty + (l.sold ? ' (продано ' + l.sold + ')' : '')) + kv('Цена покупки', uah(l.buyKop) + ' / шт.') + (l.feeKop ? kv('Комиссия покупки', uah(l.feeKop)) : '') +
+    kv('Себестоимость остатка', uah(l.costKop)) + kv('Придёт в Steam сейчас', l.steamUnitKop == null ? 'нет цены' : uah(l.steamUnitKop) + ' / шт.') +
+    kv('Skinport, объявление', l.externalUnitKop == null ? '—' : uah(l.externalUnitKop) + ' / шт.') +
+    kv('Оценочная разница', '<span class="' + cls(l.unrealizedKop) + '">' + uah(l.unrealizedKop, true) + (l.roiBp != null ? ' (' + pct(l.roiBp) + ')' : '') + '</span>') + '</div>';
+  h += '<div class="note">Оценка — не прибыль: прибыль появляется только после продажи.</div>';
+  h += '<label class="f"><span>🎯 Цель продажи в Steam за 1 шт., ₴</span><input id="ltg" inputmode="decimal" value="' + (l.targetKop ? (l.targetKop / 100).toString().replace('.', ',') : '') + '" placeholder="уведомлю, когда цена дойдёт"></label>';
+  h += '<button class="btn sec2" id="lsavet">Сохранить цель</button>';
+  h += '<button class="btn" id="lsell">💸 Я продал</button>';
+  h += '<div class="btns"><button class="btn sec2" id="lchart">📈 График</button>' + (l.sold ? '' : '<button class="btn danger" id="ldel">Удалить запись</button>') + '</div>';
+  sheet(h);
+  $('#lchart').onclick = function () { itemSheet(l.itemId); };
+  $('#lsell').onclick = function () { sellForm(l); };
+  $('#lsavet').onclick = function () {
+    var k = toKop($('#ltg').value); if (k != null && !(k > 0)) return toast('Введи цену');
+    api('inventory/' + l.id + '/target', { method: 'POST', body: { kop: k } }).then(function () { haptic('ok'); toast(k ? 'Цель сохранена' : 'Цель убрана'); });
+  };
+  if (!l.sold) $('#ldel').onclick = function () {
+    var del = function () { api('inventory/' + l.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); go('inv'); }); };
+    if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
+  };
+}
+function sellForm(l) {
+  var h = '<h2>Продажа</h2><div class="sub">' + esc(l.name) + ' · осталось ' + l.openQty + ' шт.</div>';
+  h += '<div class="grid2"><label class="f" style="margin:0"><span>Количество</span><input id="sq" inputmode="numeric" value="' + (l.openQty === 1 ? 1 : '') + '"></label><label class="f" style="margin:0"><span>Цена покупателя, ₴/шт.</span><input id="sp" inputmode="decimal"></label></div>';
+  h += '<label class="f"><span>Где продал</span><select id="spl">' + platformOptions('steam', true) + '</select></label>';
+  h += '<label class="f"><span>Получено всего после комиссий, ₴</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
+  h += '<label class="f"><span>Дата</span><input id="sd" type="date" value="' + today() + '" max="' + today() + '"></label>';
+  h += '<div class="note" id="shint"></div><button class="btn" id="ssave">Записать продажу</button>';
+  sheet(h);
+  var hint = function () {
+    var p = toKop($('#sp').value), q = +$('#sq').value || 1;
+    $('#shint').textContent = $('#spl').value === 'steam' && p > 0 ? 'Steam: покупатель платит ' + uah(p) + ', тебе придёт примерно ' + uah(Math.floor(p / 1.15) * q) + ' (точно посчитает сервер).' : '';
+  };
+  $('#sp').oninput = hint; $('#spl').onchange = hint; $('#sq').oninput = hint;
+  $('#ssave').onclick = function () {
+    var p = toKop($('#sp').value), rcv = toKop($('#srcv').value);
+    if (!(p > 0)) return toast('Введи цену продажи');
+    api('inventory/' + l.id + '/sell', { method: 'POST', body: { qty: +$('#sq').value, priceKop: p, receivedKop: rcv == null ? null : rcv, platform: $('#spl').value, date: $('#sd').value } })
+      .then(function (r) {
+        haptic('ok');
+        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (r.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>Продажа записана</h2><div class="sub">' + (r.wallet === 'steam_wallet' ? 'Steam Wallet — вывести нельзя' : 'Реальные деньги (External Cash)') + '</div>' +
+          '<div class="big-num ' + cls(r.resultKop) + '">' + uah(r.resultKop, true) + '</div><div class="card" style="text-align:left;margin-top:12px">' + kv('Получено', uah(r.receivedKop)) + kv('Себестоимость', uah(r.costKop)) + '</div><button class="btn" id="okb">Готово</button></div>');
+        $('#okb').onclick = function () { go('inv'); };
+      }).catch(function (e) { toast(e.message); });
+  };
+}
+function history() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('trades').then(function (r) {
+    var s = r.stats;
+    var h = '<h2>История сделок</h2><div class="sub">Только твои реальные покупки и продажи</div>';
+    h += '<div class="grid2">' + stat('Steam Wallet', '<span class="' + cls(s.realizedSteamKop) + '">' + uah(s.realizedSteamKop, true) + '</span>', 'получено ' + uahShort(s.receivedSteamKop)) +
+      stat('External Cash', '<span class="' + cls(s.realizedCashKop) + '">' + uah(s.realizedCashKop, true) + '</span>', 'получено ' + uahShort(s.receivedCashKop)) + '</div>';
+    h += '<div class="card">' + kv('Покупок / продаж', s.buys + ' / ' + s.sales) + kv('В плюс / в минус', '<span class="pos">' + s.profitable + '</span> / <span class="neg">' + s.losing + '</span>') +
+      kv('Средняя доходность', pct(s.avgRoiBp)) + kv('Среднее удержание', s.avgHoldDays == null ? '—' : s.avgHoldDays.toFixed(1).replace('.', ',') + ' дн') + '</div>';
+    h += '<div class="note">Steam Wallet и реальные деньги не складываются — это разные деньги.</div>';
+    if (r.sales.length) h += '<div class="sec">Продажи</div><div class="list-s">' + r.sales.map(function (x) {
+      return '<div class="row"><div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' + esc(x.date) + ' · ×' + x.qty + ' · ' + (x.wallet === 'steam_wallet' ? 'Steam' : 'деньги') + '</div></div><div class="r big ' + cls(x.resultKop) + '">' + uah(x.resultKop, true) + '</div></div>';
+    }).join('') + '</div>';
+    $('#sc').innerHTML = h;
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
+
+// ---------- Ещё: настройки и состояние ----------
+function more() {
+  view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
+    '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Все суммы — в гривне по курсу НБУ.</div>';
+  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history;
+}
+function settings() {
+  sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
+  api('settings').then(function (r) {
+    var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в гривнах.</div>';
+    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Уведомления', ['notify_enabled', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
+    var by = {}; r.settings.forEach(function (s) { by[s.key] = s; });
+    groups.forEach(function (g) {
+      h += '<div class="sec">' + g[0] + '</div><div class="card" style="padding:4px 14px">';
+      g[1].forEach(function (k) {
+        var s = by[k]; if (!s) return;
+        if (s.kind === 'toggle') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><label class="sw"><input type="checkbox" data-k="' + k + '"' + (s.value === '1' ? ' checked' : '') + '><b></b></label></div>';
+        else if (s.kind === 'choice') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><select data-k="' + k + '" style="width:auto;padding:7px 10px">' + s.choices.map(function (c) { return '<option value="' + c.v + '"' + (c.v === s.value ? ' selected' : '') + '>' + esc(c.t) + '</option>'; }).join('') + '</select></div>';
+        else {
+          var raw = s.kind === 'uah' ? (Number(s.value) / 100).toString().replace('.', ',') : s.kind === 'percent' ? (Number(s.value) / 100).toString().replace('.', ',') : s.value;
+          h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + (s.hint ? '<div class="mut" style="font-size:12px">' + esc(s.hint) + '</div>' : '') + '</span><input data-k="' + k + '" inputmode="decimal" value="' + esc(raw) + '" style="width:96px;text-align:right;padding:8px 10px">' + '</div>';
+        }
+      });
+      h += '</div>';
+    });
+    $('#sc').innerHTML = h;
+    Array.prototype.forEach.call($('#sc').querySelectorAll('[data-k]'), function (el) {
+      var k = el.getAttribute('data-k');
+      var save = function () {
+        var val = el.type === 'checkbox' ? el.checked : el.value;
+        api('settings', { method: 'POST', body: { key: k, value: val } }).then(function () { haptic('ok'); toast('Сохранено'); }).catch(function (e) { toast(e.message); });
+      };
+      if (el.tagName === 'INPUT' && el.type !== 'checkbox') el.onchange = save; else el.onchange = save;
+    });
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
+function status() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('status').then(function (r) {
+    var h = '<h2>Состояние системы</h2><div class="sub">' + (r.collector ? 'Steam и Skinport опрашивает сборщик GitHub Actions' : '') + '</div>';
+    h += '<div class="card">' + r.sources.map(function (s) {
+      return '<div class="kv"><span class="k">' + (SRC[s.source] || esc(s.source)) + (s.status !== 'ok' && (s.error || s.disabled) ? '<div style="font-size:12px;color:var(--hint)">' + esc(s.disabled || s.error) + '</div>' : '') + '</span><span class="v">' + srcStatus(s) + '</span></div>';
+    }).join('') + '</div>';
+    h += '<div class="sec">Курсы НБУ</div><div class="card">' + (r.fx.length ? r.fx.map(function (f) { return kv('1 ' + f.base, f.rate.toFixed(4).replace('.', ',') + ' ₴ <span class="mut">(' + f.date + ')</span>'); }).join('') : '<span class="mut">ещё не загружены</span>') + '</div>';
+    h += '<div class="sec">Задачи</div><div class="card">' + r.jobs.map(function (j) { return kv(esc(j.name), j.enabled ? (j.fails ? '⚠️ ошибок: ' + j.fails : '✅') : '⏸ выключена'); }).join('') + '</div>';
+    if (r.jobs.some(function (j) { return !j.enabled; })) h += '<button class="btn sec2" id="jen">Включить отключённые задачи</button>';
+    h += '<div class="sec">Сегодня</div><div class="card">' + kv('Снимков цен', r.counters.snapshots || 0) + kv('Уведомлений', r.counters.notifications || 0) + kv('Каталог для поиска', r.catalog.count ? r.catalog.count.toLocaleString('ru-RU') + ' названий' : 'ещё не загружен') + '</div>';
+    if (r.errors.length) h += '<div class="sec">Последние ошибки</div><div class="card">' + r.errors.map(function (e) { return '<div class="kv"><span class="k">' + ago(e.at) + ' · ' + esc(e.source || '') + '</span><span class="v" style="font-size:13px;font-weight:400">' + esc(e.message.slice(0, 90)) + '</span></div>'; }).join('') + '</div>';
+    $('#sc').innerHTML = h;
+    if ($('#jen')) $('#jen').onclick = function () { api('jobs/enable', { method: 'POST' }).then(function () { toast('Включено'); status(); }); };
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
+
+if (!INIT) { view.innerHTML = '<div class="empty"><div class="e">🔒</div>Открой приложение из своего бота в Telegram — кнопкой «Приложение» рядом с полем ввода.</div>'; return; }
+var start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
+go(['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : 'home');
+})();
+</script>
+</body>
+</html>

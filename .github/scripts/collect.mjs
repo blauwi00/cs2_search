@@ -38,18 +38,28 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items } = await toWorker('/ingest/items');
+const { items, needCatalog } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
-if (items.length === 0) process.exit(0);
+if (items.length === 0 && !needCatalog) process.exit(0);
 
 // 1. Skinport: весь каталог одним запросом (лимит 8 запросов / 5 мин), отправляем только нужные предметы.
 try {
   const res = await fetch('https://api.skinport.com/v1/items?app_id=730&currency=EUR&tradable=0', { headers: { 'Accept-Encoding': 'br', 'User-Agent': UA } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const all = await readJson(res);
+  if (needCatalog) {
+    // Раз в сутки: все названия CS2 для поиска в боте и приложении.
+    const names = [...new Set(all.map((x) => x.market_hash_name).filter(Boolean))].sort();
+    const size = 5000;
+    const parts = Math.ceil(names.length / size);
+    for (let p = 0; p < parts; p++) {
+      const r = await toWorker('/ingest', { kind: 'catalog', fetchedAt: now(), part: p, parts, items: names.slice(p * size, (p + 1) * size) });
+      console.log(`Каталог названий ${p + 1}/${parts}:`, r);
+    }
+  }
   const wanted = new Set(items);
   const rows = all.filter((x) => wanted.has(x.market_hash_name));
-  const r = await toWorker('/ingest', { kind: 'skinport_items', fetchedAt: now(), items: rows });
+  const r = rows.length || items.length ? await toWorker('/ingest', { kind: 'skinport_items', fetchedAt: now(), items: rows }) : 'нет предметов';
   console.log(`Skinport каталог: найдено ${rows.length} из ${items.length}`, r);
 } catch (e) {
   console.error('Skinport каталог:', e.message);

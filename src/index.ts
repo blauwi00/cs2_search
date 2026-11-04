@@ -5,6 +5,8 @@ import { runCycle } from './core/runner.ts';
 import { nowSec } from './utils/time.ts';
 import { handleChart } from './chart.ts';
 import { handleIngest } from './ingest.ts';
+import { handleAppApi } from './webapp/api.ts';
+import APP_HTML from './webapp/app.html';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -12,6 +14,10 @@ export default {
     if (url.pathname === '/telegram') return handleWebhook(req, env, nowSec());
     if (url.pathname.startsWith('/admin/')) return handleAdmin(req, env, nowSec());
     if (url.pathname === '/ingest' || url.pathname === '/ingest/items') return handleIngest(req, env, nowSec());
+    if (url.pathname === '/app' && req.method === 'GET') {
+      return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex' } });
+    }
+    if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
     if (url.pathname === '/chart' && req.method === 'GET') return handleChart(req, env, nowSec());
     // Публичный адрес ничего не раскрывает.
     if (url.pathname === '/') return new Response('CS2 Market Bot: OK', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });

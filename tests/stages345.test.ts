@@ -10,6 +10,7 @@ import { asOf, backtest, outcomeAfter } from '../src/core/quality.ts';
 import { steamSellerProceeds } from '../src/core/fees.ts';
 import { runCycle } from '../src/core/runner.ts';
 import { dealsView, toggleDealFilter } from '../src/telegram/menus.ts';
+import { catalogPartStmts, searchChunks, catalogLines } from '../src/catalog.ts';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z') / 1000;
 type Sent = { method: string; body: Record<string, unknown> };
@@ -88,7 +89,8 @@ test('Telegram: добавить покупку в инвентарь и зап�
   const d = migratedDb();
   const env = testEnv(d);
   const sent: Sent[] = [];
-  const { fetcher } = mockFetch([telegramRoute(sent), { match: (u) => u.includes('/market/search/render/'), respond: () => json(fixtureJson('steam_search.json')) }]);
+  const { fetcher } = mockFetch([telegramRoute(sent)]);
+  await d.batch(catalogPartStmts(d as unknown as D1Database, 0, 1, ['AK-47 | Redline (Field-Tested)', 'StatTrak™ AK-47 | Redline (Field-Tested)', 'Revolution Case'], NOW));
   const { cb, msg } = hooks(env);
   const run = async (r: Request) => { const res = await handleWebhook(r, env, NOW, fetcher); assert.equal(res.status, 200); };
   await run(cb('ia'));
@@ -309,4 +311,25 @@ test('/addlist на 40 предметов укладывается в лимит
   assert.ok(String(sent.at(-1)!.body.text).includes('Добавлено в наблюдение: 40'));
   await handleWebhook(msg('/addlist\nTest Case 1'), env, NOW, fetcher);
   assert.ok(String(sent.at(-1)!.body.text).includes('уже были: 1'));
+});
+
+test('каталог: поиск по словам без учёта регистра, ™ и порядка; StatTrak ниже обычного', () => {
+  const text = catalogLines(['StatTrak™ AK-47 | Redline (Field-Tested)', 'AK-47 | Redline (Field-Tested)', 'AK-47 | Redline (Minimal Wear)', 'Revolution Case', 'Sticker | Redline']);
+  const r = searchChunks([text], 'redline ak');
+  assert.equal(r[0], 'AK-47 | Redline (Field-Tested)');
+  assert.ok(r.indexOf('StatTrak™ AK-47 | Redline (Field-Tested)') > r.indexOf('AK-47 | Redline (Minimal Wear)'));
+  assert.ok(!r.includes('Revolution Case'));
+  assert.deepEqual(searchChunks([text], 'revolution'), ['Revolution Case']);
+  assert.ok(searchChunks([text], 'stattrak redline')[0].startsWith('StatTrak'));
+  assert.deepEqual(searchChunks([text], 'zzz'), []);
+});
+
+test('каталог: 20 тыс. названий ищутся быстро', () => {
+  const names = Array.from({ length: 20000 }, (_, i) => `Item ${i} | Skin ${i % 300} (Field-Tested)`);
+  names.push('Revolution Case');
+  const text = catalogLines(names);
+  const t0 = performance.now();
+  for (let i = 0; i < 20; i++) searchChunks([text], 'revolution case');
+  const per = (performance.now() - t0) / 20;
+  assert.ok(per < 5, `поиск ${per.toFixed(2)} мс`);
 });

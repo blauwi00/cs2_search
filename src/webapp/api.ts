@@ -17,39 +17,65 @@ import { warsawDate } from '../utils/time.ts';
 import { steamListingUrl, safeLink } from '../utils/http.ts';
 import { backtest } from '../core/quality.ts';
 import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
-import { buildRecs, type Rec } from '../core/recs.ts';
+import { buildRecs, MARKETS, type Rec } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
   const [scan, fx, st] = await Promise.all([loadScan(d), db.loadLatestFx(d), db.getSettings(d, tid)]);
   if (!scan || now - scan.fetchedAt > 86400) return { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[] };
-  const r = buildRecs(scan.entries, fx.get('EUR') ?? null, { minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp) });
+  const r = buildRecs(scan.entries, fx, {
+    minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp),
+  });
   return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: r.deals.map(recDto), trends: r.trends.map(recDto) };
 }
-type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string };
+type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string; buyName: string; sellName: string };
 function recDto(r: Rec): RecDto {
-  const sp = `https://skinport.com/market?search=${encodeURIComponent(r.name)}&sort=price&order=asc`;
-  const url = (m: 'skinport' | 'steam') => (m === 'steam' ? steamListingUrl(r.name) : sp);
-  return { ...r, buyUrl: url(r.buyAt), sellUrl: url(r.sellAt), category: CATEGORY_RU[parseMarketHashName(r.name).category] ?? '' };
+  return { ...r, buyUrl: MARKETS[r.buyAt].url(r.name), sellUrl: MARKETS[r.sellAt].url(r.name), buyName: MARKETS[r.buyAt].name, sellName: MARKETS[r.sellAt].name,
+    category: CATEGORY_RU[parseMarketHashName(r.name).category] ?? '' };
 }
 
 /** Подсказки «что делать» для набора предметов: 4 запроса к D1 на весь набор. */
+/** Запросы по списку id кусками по 90 (лимит параметров D1 — 100). */
+async function quotesChunked(d: D1Database, ids: number[]): Promise<Map<number, db.QuoteRow[]>> {
+  const out = new Map<number, db.QuoteRow[]>();
+  const parts = [];
+  for (let i = 0; i < ids.length; i += 90) parts.push(db.quotesForItems(d, ids.slice(i, i + 90)));
+  for (const m of await Promise.all(parts)) for (const [k, v] of m) out.set(k, v);
+  return out;
+}
+async function chunkedAll<T>(ids: number[], q: (part: number[], ph: string) => Promise<T[]>): Promise<T[]> {
+  const parts: Promise<T[]>[] = [];
+  for (let i = 0; i < ids.length; i += 90) { const p = ids.slice(i, i + 90); parts.push(q(p, p.map(() => '?').join(','))); }
+  return (await Promise.all(parts)).flat();
+}
+/** Картинки предметов по названиям. */
+export async function imagesFor(d: D1Database, names: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const uniq = [...new Set(names)].slice(0, 400);
+  const parts = [];
+  for (let i = 0; i < uniq.length; i += 90) {
+    const p = uniq.slice(i, i + 90);
+    parts.push(d.prepare(`SELECT name, url FROM item_images WHERE name IN (${p.map(() => '?').join(',')})`).bind(...p).all<{ name: string; url: string }>());
+  }
+  for (const r of await Promise.all(parts)) for (const x of r.results) out.set(x.name, x.url);
+  return out;
+}
+
 async function adviceFor(d: D1Database, tid: number, now: number, items: { id: number; name: string }[]): Promise<Map<number, Advice>> {
   const out = new Map<number, Advice>();
-  const ids = items.map((x) => x.id).slice(0, 90);
+  const ids = items.map((x) => x.id).slice(0, 360);
   if (!ids.length) return out;
-  const ph = ids.map(() => '?').join(',');
-  const [quotes, agg, deals, lots, s] = await Promise.all([
-    db.quotesForItems(d, ids),
-    d.prepare(`SELECT item_id, CAST(AVG(price_kop) AS INTEGER) AS avg, MIN(observed_at) AS first FROM price_snapshots
+  const [quotes, aggRows, deals, lots, s] = await Promise.all([
+    quotesChunked(d, ids),
+    chunkedAll(ids, async (p, ph) => (await d.prepare(`SELECT item_id, CAST(AVG(price_kop) AS INTEGER) AS avg, MIN(observed_at) AS first FROM price_snapshots
       WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ? AND item_id IN (${ph}) GROUP BY item_id`)
-      .bind(now - 7 * 86400, ...ids).all<{ item_id: number; avg: number | null; first: number }>(),
+      .bind(now - 7 * 86400, ...p).all<{ item_id: number; avg: number | null; first: number }>()).results),
     db.activeSignals(d, 'spread', 90, now - 2 * 3600),
     T.openTrades(d, tid),
     db.getSettings(d, tid),
   ]);
-  const aggBy = new Map(agg.results.map((r) => [r.item_id, r]));
+  const aggBy = new Map(aggRows.map((r) => [r.item_id, r]));
   for (const it of items) {
     const q = quotes.get(it.id) ?? [];
     const g = (src: string, t: string) => q.find((x) => x.source === src && x.price_type === t);
@@ -100,7 +126,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const [sources, watched, deals, lots, jobs] = await Promise.all([
         db.listSourceStatus(d), db.countActiveWatched(d), db.activeSignals(d, 'spread', 5, now - 2 * 3600), T.openTrades(d, tid), listJobs(d),
       ]);
-      const quotes = await db.quotesForItems(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 90));
+      const quotes = await quotesChunked(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 360));
       let cost = 0, value = 0, unknown = 0;
       for (const l of lots) {
         const q = quotes.get(l.item_id) ?? [];
@@ -115,11 +141,16 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const lastRun = Math.max(0, ...jobs.map((j) => j.last_run_at ?? 0));
       const wl = await db.listWatch(d, tid);
       const adv = await adviceFor(d, tid, now, wl.map((w) => ({ id: w.item_id, name: w.market_hash_name })));
-      const actions = wl.map((w) => ({ itemId: w.item_id, name: w.market_hash_name, category: w.category, advice: adv.get(w.item_id)! }))
+      const imgs = await imagesFor(d, wl.map((w) => w.market_hash_name));
+      const actions = wl.map((w) => ({ itemId: w.item_id, name: w.market_hash_name, category: w.category, advice: adv.get(w.item_id)!, img: imgs.get(w.market_hash_name) ?? null }))
         .filter((x) => x.advice && (x.advice.action === 'buy' || x.advice.action === 'sell'))
         .sort((a, b) => ACTION_RANK[a.advice.action] - ACTION_RANK[b.advice.action]).slice(0, 8);
-      const recs = await recsFor(d, tid, now);
+      const [recs, st] = await Promise.all([recsFor(d, tid, now), db.getSettings(d, tid)]);
       return json({
+        notify: {
+          enabled: st.notify_enabled === '1', maxPerHour: db.num(st.max_per_hour) || 6, quietStart: db.num(st.quiet_start), quietEnd: db.num(st.quiet_end),
+          daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
+        },
         ok: true, now, watched, actions,
         recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 3), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
         cronAlive: lastRun > 0 && now - lastRun < 300,
@@ -159,26 +190,32 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     }
     if (path === 'watch' && method === 'GET') {
       const w = await db.listWatch(d, tid);
-      const ids = w.map((x) => x.item_id).slice(0, 90);
-      const quotes = await db.quotesForItems(d, ids);
-      const hist = ids.length ? (await d.prepare(
-        `SELECT item_id, observed_at, price_minor FROM price_snapshots WHERE source = 'steam' AND price_type = 'lowest_listing'
-         AND observed_at BETWEEN ? AND ? AND item_id IN (${ids.map(() => '?').join(',')}) ORDER BY observed_at`,
-      ).bind(now - 30 * 3600, now - 20 * 3600, ...ids).all<{ item_id: number; observed_at: number; price_minor: number | null }>()).results : [];
-      const adv = await adviceFor(d, tid, now, w.map((x) => ({ id: x.item_id, name: x.market_hash_name })));
+      const ids = w.map((x) => x.item_id).slice(0, 360);
+      const [quotes, histAll, adv, imgs] = await Promise.all([
+        quotesChunked(d, ids),
+        chunkedAll(ids, async (p, ph) => (await d.prepare(
+          `SELECT item_id, observed_at, price_minor FROM price_snapshots WHERE source = 'steam' AND price_type = 'lowest_listing'
+           AND observed_at BETWEEN ? AND ? AND item_id IN (${ph}) ORDER BY observed_at`,
+        ).bind(now - 30 * 3600, now - 20 * 3600, ...p).all<{ item_id: number; observed_at: number; price_minor: number | null }>()).results),
+        adviceFor(d, tid, now, w.map((x) => ({ id: x.item_id, name: x.market_hash_name }))),
+        imagesFor(d, w.map((x) => x.market_hash_name)),
+      ]);
+      const histBy = new Map<number, typeof histAll>();
+      for (const h of histAll) { const l = histBy.get(h.item_id) ?? []; l.push(h); histBy.set(h.item_id, l); }
       return json({
         ok: true,
         items: w.map((x) => {
           const q = quotes.get(x.item_id) ?? [];
           const g = (s: string, t: string) => q.find((y) => y.source === s && y.price_type === t);
           const low = g('steam', 'lowest_listing');
-          const ref = [...hist].reverse().find((hh) => hh.item_id === x.item_id && hh.observed_at <= now - 24 * 3600) ?? hist.find((hh) => hh.item_id === x.item_id);
+          const hist = histBy.get(x.item_id) ?? [];
+          const ref = [...hist].reverse().find((hh) => hh.observed_at <= now - 24 * 3600) ?? hist[0];
           const ch = ref?.price_minor && low?.price_minor ? Math.trunc(((low.price_minor - ref.price_minor) * 10000) / ref.price_minor) : null;
           return {
             watchId: x.id, itemId: x.item_id, name: x.market_hash_name, category: x.category, categoryRu: CATEGORY_RU[x.category as 'case'] ?? x.category,
             steamLowKop: low?.price_kop ?? null, steamMedKop: g('steam', 'median_24h')?.price_kop ?? null, sales24h: g('steam', 'median_24h')?.volume ?? null,
             skinportKop: g('skinport', 'lowest_listing')?.price_kop ?? null, skinportQty: g('skinport', 'lowest_listing')?.quantity ?? null,
-            change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null,
+            change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null, img: imgs.get(x.market_hash_name) ?? null,
           };
         }),
       });
@@ -194,6 +231,17 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       }
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
       return json({ ok: true, added: names.length });
+    }
+    if (path === 'watch/delete' && method === 'POST') {
+      const ids = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter((x) => Number.isSafeInteger(x) && x > 0).slice(0, 400);
+      if (!ids.length) return bad('ids_required');
+      const stmts: D1PreparedStatement[] = [];
+      for (let i = 0; i < ids.length; i += 90) {
+        const p = ids.slice(i, i + 90);
+        stmts.push(d.prepare(`UPDATE watchlist SET active = 0 WHERE telegram_id = ? AND id IN (${p.map(() => '?').join(',')})`).bind(tid, ...p));
+      }
+      await d.batch(stmts);
+      return json({ ok: true, removed: ids.length });
     }
     if (seg[0] === 'watch' && seg[1] && !seg[2] && method === 'DELETE') {
       await db.removeWatch(d, tid, Number(seg[1]));
@@ -234,7 +282,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const q = (r: db.QuoteRow | null) => (r ? { kop: r.price_kop, minor: r.price_minor, currency: r.currency, qty: r.quantity, volume: r.volume, at: r.fetched_at } : null);
       return json({
         ok: true,
-        item: { id: item.id, name: item.market_hash_name, category: p.category, categoryRu: CATEGORY_RU[p.category], stattrak: p.stattrak, souvenir: p.souvenir, uniquePriced: p.uniquePriced },
+        item: { id: item.id, name: item.market_hash_name, img: (await imagesFor(d, [item.market_hash_name])).get(item.market_hash_name) ?? null, category: p.category, categoryRu: CATEGORY_RU[p.category], stattrak: p.stattrak, souvenir: p.souvenir, uniquePriced: p.uniquePriced },
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
         series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing') },
@@ -246,8 +294,11 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     // ---------- Инвентарь и сделки ----------
     if (path === 'inventory' && method === 'GET') {
       const lots = await T.openTrades(d, tid);
-      const quotes = await db.quotesForItems(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 90));
-      const adv = await adviceFor(d, tid, now, [...new Map(lots.map((l) => [l.item_id, { id: l.item_id, name: l.market_hash_name }])).values()]);
+      const [quotes, adv, imgs] = await Promise.all([
+        quotesChunked(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 360)),
+        adviceFor(d, tid, now, [...new Map(lots.map((l) => [l.item_id, { id: l.item_id, name: l.market_hash_name }])).values()]),
+        imagesFor(d, lots.map((l) => l.market_hash_name)),
+      ]);
       return json({
         ok: true,
         platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
@@ -257,7 +308,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
           const val = valuation(g('steam', 'lowest_listing'), g('steam', 'median_24h'), g('skinport', 'lowest_listing'));
           const v = viewLot(l, val);
           return {
-            id: l.id, itemId: l.item_id, name: l.market_hash_name, qty: l.quantity, openQty: v.openQty, buyKop: l.buy_price_kop, feeKop: l.buy_fee_kop,
+            id: l.id, itemId: l.item_id, name: l.market_hash_name, img: imgs.get(l.market_hash_name) ?? null, qty: l.quantity, openQty: v.openQty, buyKop: l.buy_price_kop, feeKop: l.buy_fee_kop,
             platform: l.buy_platform, platformRu: PLATFORM_RU[l.buy_platform] ?? l.buy_platform, date: l.buy_date, targetKop: l.target_sell_kop,
             costKop: v.openCostKop, steamUnitKop: val.steamProceedsPerUnit, externalUnitKop: val.externalPricePerUnit, valueKop: v.steamValueKop,
             unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity, advice: adv.get(l.item_id) ?? null,

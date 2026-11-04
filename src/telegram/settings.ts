@@ -10,6 +10,8 @@ export const SETTINGS_META: SettingMeta[] = [
   { key: 'max_buy_kop', label: 'Макс. цена покупки', kind: 'uah', hint: '0 — без ограничения' },
   { key: 'min_profit_kop', label: 'Мин. разница после комиссий', kind: 'uah' },
   { key: 'min_roi_bp', label: 'Мин. доходность', kind: 'percent', min: 0, max: 1000 },
+  { key: 'deposit_fee_bp', label: 'Комиссия при оплате', kind: 'percent', min: 0, max: 30, hint: 'Сколько % берёт банк/способ оплаты при пополнении площадки (карта, крипта). Добавляется к цене покупки на сайтах.' },
+  { key: 'withdraw_fee_bp', label: 'Комиссия при выводе', kind: 'percent', min: 0, max: 30, hint: 'Сколько % теряешь при выводе денег с площадки. Вычитается из выручки на сайтах (не Steam).' },
   { key: 'min_liquidity', label: 'Мин. ликвидность для высокого приоритета', kind: 'choice',
     choices: [{ v: 'high', t: 'высокая' }, { v: 'medium', t: 'средняя' }, { v: 'low', t: 'низкая' }] },
   { key: 'min_priority', label: 'Уведомлять с приоритета', kind: 'choice',

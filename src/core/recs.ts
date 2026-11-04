@@ -1,54 +1,72 @@
 // Рекомендации по всему рынку (не только по списку наблюдения).
-// Данные: каталог Skinport (самое дешёвое объявление), история продаж Skinport (медиана и объём за 7/30 дней)
-// и цены Steam для части кандидатов. Сборщик GitHub присылает их как kind=scan.
-// Важно: ничто не растёт «на 100%». Тренд — это только то, что уже произошло за последние недели.
+// Сборщик GitHub присылает (kind=scan) для ~80 кандидатов: самые дешёвые объявления на площадках
+// (Skinport, Market.CSGO, Waxpeer, LIS-SKINS), историю продаж Skinport за 7/30 дней и, для части, цены Steam.
+// Здесь считаем: «Купи на X за A → продай на Y за B → получишь C» со всеми комиссиями.
+// Важно: ничто не растёт «на 100%». Тренд — только то, что уже произошло за последние недели.
 
 import { steamSellerProceeds } from './fees.ts';
 import { parseMarketHashName } from './normalization.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
 import { parseSteamPriceString } from '../utils/money.ts';
+import type { Currency } from '../types/market.ts';
+
+export type Market = 'steam' | 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins';
 
 /**
- * Комиссия продавца Skinport: 8% (6% для продаж дороже 1000 €).
- * Источник — сводка комиссий csdb.gg (снижение с 12% 18.07.2025); официальной таблицы в API нет — это ДОПУЩЕНИЕ,
- * поэтому в интерфейсе стоит пометка «проверь на сайте».
+ * Комиссии продавца. Покупатель на этих площадках платит цену объявления (0%).
+ * Steam — официально (5% + 10%). Остальное — по обзорам steamanalyst.com / csdb.gg (проверено 04.11.2026),
+ * официальных таблиц в API нет: это ДОПУЩЕНИЕ, в интерфейсе стоит пометка «проверь на сайте».
+ * Комиссии пополнения и вывода зависят от способа оплаты — их вводит пользователь в настройках.
  */
-export const SKINPORT_SELL_FEE_BP = 800;
-export const SKINPORT_SELL_FEE_HIGH_BP = 600;
+export const MARKETS: Record<Market, { name: string; sellFeeBp: number; wallet: 'steam_wallet' | 'cash'; url: (n: string) => string }> = {
+  steam: { name: 'Steam', sellFeeBp: 1500, wallet: 'steam_wallet', url: (n) => `https://steamcommunity.com/market/listings/730/${encodeURIComponent(n)}` },
+  skinport: { name: 'Skinport', sellFeeBp: 800, wallet: 'cash', url: (n) => `https://skinport.com/market?search=${encodeURIComponent(n)}&sort=price&order=asc` },
+  csgomarket: { name: 'Market.CSGO', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://market.csgo.com/?search=${encodeURIComponent(n)}` },
+  waxpeer: { name: 'Waxpeer', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://waxpeer.com/?search=${encodeURIComponent(n)}&sort=ASC&order=price` },
+  lisskins: { name: 'LIS-SKINS', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://lis-skins.com/market/csgo/?query=${encodeURIComponent(n)}` },
+};
+export const SKINPORT_SELL_FEE_HIGH_BP = 600;      // Skinport: 6% для продаж дороже 1000 €
 export const SKINPORT_HIGH_EUR_CENTS = 100_000;
 
+export interface ScanOffer { m: Exclude<Market, 'steam'>; cur: Currency; minor: number; qty: number | null }
 export interface ScanPeriod { median: number | null; volume: number | null }
 export interface ScanEntry {
   name: string;
-  minEur: number | null;            // самое дешёвое объявление Skinport, EUR
-  qty: number | null;               // сколько объявлений на Skinport
-  s7: ScanPeriod | null;            // продажи Skinport за 7 дней (EUR)
-  s30: ScanPeriod | null;           // за 30 дней
+  img?: string | null;
+  offers: ScanOffer[];
+  s7: ScanPeriod | null;            // продажи Skinport за 7 дней (EUR, центы)
+  s30: ScanPeriod | null;
   steam: { lowestKop: number | null; medianKop: number | null; volume24h: number | null; at: number } | null;
 }
 
-export type RecKind = 'sp_to_steam' | 'sp_flip' | 'steam_to_sp' | 'trend';
-export interface Rec {
-  kind: RecKind; name: string;
-  buyAt: 'skinport' | 'steam'; sellAt: 'skinport' | 'steam';
-  buyKop: number; sellKop: number | null; proceedsKop: number | null; profitKop: number | null; roiBp: number | null;
-  trendBp: number | null; sales7: number | null; wallet: 'steam_wallet' | 'cash' | null;
-  title: string; reason: string; risk: string;
-}
-
-const eurCents = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1e6 ? Math.round(x * 100) : null);
-const int = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.trunc(x) : null);
+const cents = (x: unknown, scale = 100): number | null => {
+  const n = typeof x === 'string' ? Number(x) : x;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * scale) : null;
+};
+const int = (x: unknown): number | null => {
+  const n = typeof x === 'string' ? Number(x) : x;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+};
 const period = (p: unknown): ScanPeriod | null => {
   const o = p as { median?: unknown; volume?: unknown } | null;
-  return o && typeof o === 'object' ? { median: eurCents(o.median), volume: int(o.volume) } : null;
+  return o && typeof o === 'object' ? { median: cents(o.median), volume: int(o.volume) } : null;
 };
+const OFFER_CUR: Record<ScanOffer['m'], Currency> = { skinport: 'EUR', csgomarket: 'USD', waxpeer: 'USD', lisskins: 'USD' };
+const IMG_OK = /^https:\/\/(community\.(akamai|cloudflare|fastly)\.steamstatic\.com|steamcommunity-a\.akamaihd\.net|raw\.githubusercontent\.com)\//;
+export const safeImg = (u: unknown): string | null => (typeof u === 'string' && u.length < 600 && IMG_OK.test(u) ? u : null);
 
-/** Проверка и нормализация того, что прислал сборщик (никаким полям не доверяем). */
+/** Проверка того, что прислал сборщик (никаким полям не доверяем). Цены площадок — в долларах/евро (числа). */
 export function parseScan(items: unknown, now: number): ScanEntry[] {
   if (!Array.isArray(items)) return [];
   const out: ScanEntry[] = [];
   for (const r of items.slice(0, 400) as Record<string, unknown>[]) {
     if (!r || typeof r.name !== 'string' || r.name.length > 200) continue;
+    const offers: ScanOffer[] = [];
+    const raw = r.offers && typeof r.offers === 'object' ? (r.offers as Record<string, { p?: unknown; q?: unknown }>) : {};
+    for (const m of Object.keys(OFFER_CUR) as ScanOffer['m'][]) {
+      const minor = cents(raw[m]?.p);
+      if (minor) offers.push({ m, cur: OFFER_CUR[m], minor, qty: int(raw[m]?.q) });
+    }
     const st = r.steam as { lowest_price?: unknown; median_price?: unknown; volume?: unknown } | null | undefined;
     const steam = st && typeof st === 'object' ? {
       lowestKop: parseSteamPriceString(typeof st.lowest_price === 'string' ? st.lowest_price : null),
@@ -56,97 +74,127 @@ export function parseScan(items: unknown, now: number): ScanEntry[] {
       volume24h: typeof st.volume === 'string' && st.volume.replace(/[^\d]/g, '') ? Number(st.volume.replace(/[^\d]/g, '')) : null,
       at: now,
     } : null;
-    out.push({ name: r.name, minEur: eurCents(r.minEur), qty: int(r.qty), s7: period(r.s7), s30: period(r.s30), steam });
+    out.push({ name: r.name, img: safeImg(r.img), offers, s7: period(r.s7), s30: period(r.s30), steam });
   }
   return out;
 }
 
-/** Новое сканирование + цены Steam из прошлых (если свежее 3 часов), чтобы проверенные раньше предметы не пропадали. */
+/** Новый скан + то, чего в нём нет, из прошлого: цены Steam (если свежее 3 часов) и картинка. */
 export function mergeScan(fresh: ScanEntry[], old: ScanEntry[], now: number): ScanEntry[] {
-  const prev = new Map(old.map((e) => [e.name, e.steam]));
+  const prev = new Map(old.map((e) => [e.name, e]));
   return fresh.map((e) => {
-    if (e.steam) return e;
     const p = prev.get(e.name);
-    return p && now - p.at < 3 * 3600 ? { ...e, steam: p } : e;
+    if (!p) return e;
+    const steam = e.steam ?? (p.steam && now - p.steam.at < 3 * 3600 ? p.steam : null);
+    return { ...e, steam, img: e.img ?? p.img ?? null };
   });
 }
 
-export interface RecSettings { minProfitKop: number; minRoiBp: number }
+export interface RecSettings { minProfitKop: number; minRoiBp: number; depositFeeBp: number; withdrawFeeBp: number }
 
-const fmt = (k: number) => `${(k / 100).toFixed(2).replace('.', ',')} ₴`;
-const pct = (bp: number) => `${Math.round(bp / 100)}%`;
-const roi = (profit: number, cost: number) => (cost > 0 ? Math.trunc((profit * 10000) / cost) : 0);
-
-function skinportNet(eurCentsPrice: number): number {
-  const fee = eurCentsPrice > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : SKINPORT_SELL_FEE_BP;
-  return Math.floor((eurCentsPrice * (10000 - fee)) / 10000);
+export type RecKind = 'flip' | 'trend';
+export interface Rec {
+  kind: RecKind; name: string; img: string | null;
+  buyAt: Market; sellAt: Market;
+  buyKop: number;          // цена объявления
+  payKop: number;          // сколько реально заплатишь (с комиссией оплаты)
+  sellKop: number | null;  // за сколько выставить
+  getKop: number | null;   // сколько получишь после всех комиссий
+  profitKop: number | null; roiBp: number | null;
+  trendBp: number | null; sales7: number | null; wallet: 'steam_wallet' | 'cash' | null;
+  fees: string[];          // расшифровка комиссий простыми словами
+  sellBasis: string;
+  title: string; reason: string; risk: string;
 }
 
-export function buildRecs(entries: ScanEntry[], eur: FxRate | null, s: RecSettings): { deals: Rec[]; trends: Rec[] } {
+const fmt = (k: number) => `${(k / 100).toFixed(2).replace('.', ',')} ₴`;
+const pct = (bp: number) => `${(bp / 100).toString().replace('.', ',')}%`;
+const roiOf = (profit: number, cost: number) => (cost > 0 ? Math.trunc((profit * 10000) / cost) : 0);
+const MIN_QTY = 5;   // меньше объявлений — цена «самого дешёвого» случайна, продать по ней сложно
+
+interface SellSide { m: Market; listKop: number; netKop: number; basis: string; fees: string[] }
+
+export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: RecSettings): { deals: Rec[]; trends: Rec[] } {
   const deals: Rec[] = [];
   const trends: Rec[] = [];
-  if (!eur) return { deals, trends };
-  const kop = (c: number) => toKop(c, 'EUR', eur)!;
+  const kop = (minor: number, cur: Currency) => toKop(minor, cur, fx.get(cur) ?? null);
+  const afterWithdraw = (k: number) => Math.floor((k * (10000 - s.withdrawFeeBp)) / 10000);
   for (const e of entries) {
     if (parseMarketHashName(e.name).uniquePriced) continue; // цена зависит от паттерна — общая цена ненадёжна
     const sales7 = e.s7?.volume ?? null;
-    const options: Rec[] = [];
-    const spBuy = e.minEur ? kop(e.minEur) : null;
-    // Перепродажа на Skinport: реалистичная цена продажи — медиана реальных продаж за 7 дней.
-    const spSellNet = e.s7?.median && sales7 !== null && sales7 >= 7 ? kop(skinportNet(e.s7.median)) : null;
-    const spSellGross = e.s7?.median ? kop(e.s7.median) : null;
-    const st = e.steam;
-    const steamLiquid = st?.volume24h != null && st.volume24h >= 5;
+    // ---- Где купить: цена объявления + комиссия оплаты.
+    const buys: { m: Market; listKop: number; payKop: number; qty: number | null }[] = [];
+    for (const o of e.offers ?? []) {
+      const k = kop(o.minor, o.cur);
+      if (k) buys.push({ m: o.m, listKop: k, payKop: Math.ceil((k * (10000 + s.depositFeeBp)) / 10000), qty: o.qty });
+    }
+    if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null });
+    // ---- Где продать: реалистичная цена − комиссия площадки − комиссия вывода.
+    const sells: SellSide[] = [];
+    const wFee = s.withdrawFeeBp ? [`вывод ${pct(s.withdrawFeeBp)}`] : [];
+    if (e.steam?.lowestKop && (e.steam.volume24h ?? 0) >= 5) {
+      const list = e.steam.lowestKop - 1;
+      const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
+      sells.push({ m: 'steam', listKop: list, netKop: net, basis: `на 1 коп. дешевле самого дешёвого (${e.steam.volume24h} продаж за сутки)`, fees: ['Steam 15%'] });
+    }
+    if (e.s7?.median && sales7 !== null && sales7 >= 7) {
+      const list = kop(e.s7.median, 'EUR');
+      const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;
+      if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - feeBp)) / 10000)),
+        basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}`, ...wFee] });
+    }
+    // Остальные сайты: истории продаж нет — ориентир «на 1% дешевле самого дешёвого», только если объявлений много.
+    const offerKops = buys.filter((b) => b.m !== 'steam').map((b) => b.listKop).sort((a, b) => a - b);
+    const typical = offerKops.length ? offerKops[Math.floor(offerKops.length / 2)] : null;
+    for (const b of buys) {
+      if (b.m === 'steam' || b.m === 'skinport' || (b.qty ?? 0) < MIN_QTY) continue;
+      if (typical && b.listKop > typical * 1.3) continue; // одинокая завышенная цена — не ориентир
+      const list = Math.floor(b.listKop * 0.99);
+      const fee = MARKETS[b.m].sellFeeBp;
+      sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000)),
+        basis: `на 1% дешевле самого дешёвого (${b.qty} объявлений)`, fees: [`${MARKETS[b.m].name} ${pct(fee)}`, ...wFee] });
+    }
+    // ---- Лучшая пара «купить → продать».
+    let best: Rec | null = null;
+    for (const b of buys) {
+      for (const sl of sells) {
+        if (sl.m === b.m && b.m !== 'skinport') continue; // перепродажа на той же площадке — только по истории продаж Skinport
+        if (b.m === 'skinport' && sl.m === 'skinport' && b.listKop > sl.listKop * 0.9) continue;
+        const profit = sl.netKop - b.payKop;
+        const roi = roiOf(profit, b.payKop);
+        if (profit < s.minProfitKop || roi < s.minRoiBp) continue;
+        if (best && best.profitKop! >= profit) continue;
+        const fees = [b.m !== 'steam' && s.depositFeeBp ? `оплата ${pct(s.depositFeeBp)}` : null, ...sl.fees].filter((x): x is string => !!x);
+        const wallet = MARKETS[sl.m].wallet;
+        best = {
+          kind: 'flip', name: e.name, img: e.img ?? null, buyAt: b.m, sellAt: sl.m, buyKop: b.listKop, payKop: b.payKop,
+          sellKop: sl.listKop, getKop: sl.netKop, profitKop: profit, roiBp: roi, trendBp: null, sales7, wallet, fees, sellBasis: sl.basis,
+          title: `${MARKETS[b.m].name} → ${MARKETS[sl.m].name}`,
+          reason: `Купи на ${MARKETS[b.m].name} за ${fmt(b.payKop)} → продай на ${MARKETS[sl.m].name} за ${fmt(sl.listKop)} → получишь ${fmt(sl.netKop)} (+${fmt(profit)}).`,
+          risk: [
+            wallet === 'steam_wallet' ? 'Деньги придут на баланс Steam — вывести их нельзя.' : 'Комиссии сайтов взяты из обзоров — проверь на сайте перед первой сделкой.',
+            b.m === 'steam' ? 'Купленное в Steam нельзя передать 7 дней — цена за это время может измениться.' : 'Купленный предмет может быть недоступен для обмена до 7 дней.',
+            'Объявление могут купить раньше тебя.',
+          ].join(' '),
+        };
+      }
+    }
+    if (best) deals.push(best);
 
-    // 1. Купить на Skinport → продать в Steam (деньги придут на баланс Steam).
-    if (spBuy && st?.lowestKop && steamLiquid) {
-      const proceeds = steamSellerProceeds(Math.max(3, st.lowestKop - 1))?.sellerReceives ?? 0;
-      const profit = proceeds - spBuy;
-      if (profit >= s.minProfitKop && roi(profit, spBuy) >= s.minRoiBp) options.push({
-        kind: 'sp_to_steam', name: e.name, buyAt: 'skinport', sellAt: 'steam', buyKop: spBuy, sellKop: st.lowestKop - 1, proceedsKop: proceeds,
-        profitKop: profit, roiBp: roi(profit, spBuy), trendBp: null, sales7, wallet: 'steam_wallet',
-        title: 'Skinport → Steam',
-        reason: `Купить на Skinport за ${fmt(spBuy)}, выставить в Steam за ${fmt(st.lowestKop - 1)} — после комиссии 15% придёт ≈ ${fmt(proceeds)}.`,
-        risk: 'Деньги будут на балансе Steam — вывести их нельзя. Купленный предмет может быть недоступен для обмена до 7 дней.',
-      });
-    }
-    // 2. Купить на Skinport дешевле обычного → продать там же (реальные деньги).
-    if (spBuy && spSellNet && spSellGross && spBuy <= Math.floor(spSellGross * 0.9)) {
-      const profit = spSellNet - spBuy;
-      if (profit >= s.minProfitKop && roi(profit, spBuy) >= s.minRoiBp) options.push({
-        kind: 'sp_flip', name: e.name, buyAt: 'skinport', sellAt: 'skinport', buyKop: spBuy, sellKop: spSellGross, proceedsKop: spSellNet,
-        profitKop: profit, roiBp: roi(profit, spBuy), trendBp: null, sales7, wallet: 'cash',
-        title: 'Skinport → Skinport',
-        reason: `Самое дешёвое объявление ${fmt(spBuy)}, а обычно продаётся за ${fmt(spSellGross)} (медиана продаж за 7 дней, ${sales7} шт.). После комиссии 8% ≈ ${fmt(spSellNet)}.`,
-        risk: 'Объявление могут купить раньше тебя. После покупки предмет может быть недоступен для обмена до 7 дней, цена за это время может измениться. Комиссию Skinport проверь на сайте.',
-      });
-    }
-    // 3. Купить в Steam → продать на Skinport (из баланса Steam в реальные деньги).
-    if (st?.lowestKop && spSellNet && steamLiquid) {
-      const profit = spSellNet - st.lowestKop;
-      if (profit >= s.minProfitKop && roi(profit, st.lowestKop) >= s.minRoiBp) options.push({
-        kind: 'steam_to_sp', name: e.name, buyAt: 'steam', sellAt: 'skinport', buyKop: st.lowestKop, sellKop: spSellGross, proceedsKop: spSellNet,
-        profitKop: profit, roiBp: roi(profit, st.lowestKop), trendBp: null, sales7, wallet: 'cash',
-        title: 'Steam → Skinport',
-        reason: `Купить в Steam за ${fmt(st.lowestKop)}, на Skinport обычно продаётся за ${fmt(spSellGross!)} — после комиссии ≈ ${fmt(spSellNet)}.`,
-        risk: 'Купленное в Steam нельзя передать 7 дней — цена на Skinport за это время может упасть. Комиссию Skinport проверь на сайте.',
-      });
-    }
-    if (options.length) deals.push(options.sort((a, b) => b.profitKop! - a.profitKop!)[0]);
-
-    // 4. Тренд: медиана продаж за 7 дней заметно выше, чем за 30 дней, и продаётся часто.
-    if (e.s7?.median && e.s30?.median && sales7 !== null && sales7 >= 14 && spBuy) {
+    // ---- Тренд: медиана продаж за 7 дней заметно выше, чем за 30 дней, и продаётся часто.
+    const cheapest = buys.filter((b) => b.m !== 'steam').sort((a, b) => a.payKop - b.payKop)[0];
+    if (e.s7?.median && e.s30?.median && sales7 !== null && sales7 >= 14 && cheapest) {
       const t = Math.trunc(((e.s7.median - e.s30.median) * 10000) / e.s30.median);
       if (t >= 1000) trends.push({
-        kind: 'trend', name: e.name, buyAt: 'skinport', sellAt: 'skinport', buyKop: spBuy, sellKop: null, proceedsKop: null,
-        profitKop: null, roiBp: null, trendBp: t, sales7, wallet: null,
-        title: `Растёт: +${pct(t)}`,
-        reason: `Средняя цена продаж за неделю на ${pct(t)} выше, чем за месяц (${sales7} продаж за 7 дней). Сейчас от ${fmt(spBuy)} на Skinport.`,
+        kind: 'trend', name: e.name, img: e.img ?? null, buyAt: cheapest.m, sellAt: cheapest.m, buyKop: cheapest.listKop, payKop: cheapest.payKop,
+        sellKop: null, getKop: null, profitKop: null, roiBp: null, trendBp: t, sales7, wallet: null, fees: [], sellBasis: '',
+        title: `Растёт: +${Math.round(t / 100)}%`,
+        reason: `Средняя цена продаж за неделю на ${Math.round(t / 100)}% выше, чем за месяц (${sales7} продаж за 7 дней). Дешевле всего сейчас на ${MARKETS[cheapest.m].name}: ${fmt(cheapest.payKop)}.`,
         risk: 'Это не гарантия: рост уже случился и может развернуться. Покупай только то, что готов держать.',
       });
     }
   }
   deals.sort((a, b) => b.profitKop! - a.profitKop!);
   trends.sort((a, b) => b.trendBp! - a.trendBp!);
-  return { deals: deals.slice(0, 20), trends: trends.slice(0, 15) };
+  return { deals: deals.slice(0, 25), trends: trends.slice(0, 15) };
 }

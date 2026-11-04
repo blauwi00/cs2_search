@@ -14,7 +14,7 @@ import { toKop } from './currency/nbu.ts';
 import { safeEqual } from './telegram/webhook.ts';
 import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
-import { parseScan, mergeScan } from './core/recs.ts';
+import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { loadScan } from './storage/scan.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -31,9 +31,18 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
-    const cat = await catalogInfo(d);
+    const [cat, fx, noImg] = await Promise.all([
+      catalogInfo(d), db.loadLatestFx(d),
+      d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
+        LEFT JOIN item_images m ON m.name = i.market_hash_name WHERE m.name IS NULL LIMIT 400`).all<{ n: string }>(),
+    ]);
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
-    return json({ ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400 });
+    // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
+    return json({
+      ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400,
+      fx: Object.fromEntries([...fx.values()].map((r) => [r.base, r.rateMicro / 1e6])),
+      missingImages: noImg.results.map((r) => r.n),
+    });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
   if (Number(req.headers.get('content-length') ?? '0') > MAX_INGEST_BYTES) return json({ ok: false, error: 'too_large' }, 413);
@@ -143,6 +152,15 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       if (names.length < 10) return json({ ok: false, error: 'catalog_too_small' }, 400); // защита от пустого/битого ответа
       await d.batch(catalogPartStmts(d, part, parts, names, now));
       result.stored = names.length;
+    } else if (body.kind === 'images') {
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as { name?: unknown; url?: unknown }[];
+      const stmts: D1PreparedStatement[] = [];
+      for (const r of rows) {
+        const u = safeImg(r?.url);
+        if (typeof r?.name === 'string' && r.name.length <= 200 && u) stmts.push(d.prepare('INSERT INTO item_images (name, url) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET url = excluded.url').bind(r.name, u));
+      }
+      if (stmts.length) await d.batch(stmts);
+      result.stored = stmts.length;
     } else if (body.kind === 'scan') {
       const fresh = parseScan(body.items, at);
       if (fresh.length === 0) return json({ ok: false, error: 'empty_scan' }, 400);

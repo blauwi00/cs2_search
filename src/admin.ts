@@ -64,7 +64,7 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
       await tg.call('setWebhook', { url: hook, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
       lines.push(`Webhook: установлен на ${hook}`);
       await tg.call('setMyCommands', { commands: [
-        { command: 'start', description: 'Главное меню' }, { command: 'app', description: 'Открыть приложение' }, { command: 'add', description: 'Добавить предмет' },
+        { command: 'start', description: 'Открыть приложение' }, { command: 'menu', description: 'Текстовое меню' }, { command: 'add', description: 'Добавить предмет' },
         { command: 'deals', description: 'Выгодные сделки' }, { command: 'watch', description: 'Мониторинг цен' },
         { command: 'settings', description: 'Настройки' }, { command: 'status', description: 'Состояние системы' },
         { command: 'demo', description: 'Тестовое уведомление' },

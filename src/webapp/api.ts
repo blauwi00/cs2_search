@@ -16,6 +16,63 @@ import { listJobs, setJobEnabled } from '../core/scheduler.ts';
 import { warsawDate } from '../utils/time.ts';
 import { steamListingUrl, safeLink } from '../utils/http.ts';
 import { backtest } from '../core/quality.ts';
+import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
+import { buildRecs, type Rec } from '../core/recs.ts';
+import { loadScan } from '../storage/scan.ts';
+
+/** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
+async function recsFor(d: D1Database, tid: number, now: number) {
+  const [scan, fx, st] = await Promise.all([loadScan(d), db.loadLatestFx(d), db.getSettings(d, tid)]);
+  if (!scan || now - scan.fetchedAt > 86400) return { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[] };
+  const r = buildRecs(scan.entries, fx.get('EUR') ?? null, { minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp) });
+  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: r.deals.map(recDto), trends: r.trends.map(recDto) };
+}
+type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string };
+function recDto(r: Rec): RecDto {
+  const sp = `https://skinport.com/market?search=${encodeURIComponent(r.name)}&sort=price&order=asc`;
+  const url = (m: 'skinport' | 'steam') => (m === 'steam' ? steamListingUrl(r.name) : sp);
+  return { ...r, buyUrl: url(r.buyAt), sellUrl: url(r.sellAt), category: CATEGORY_RU[parseMarketHashName(r.name).category] ?? '' };
+}
+
+/** Подсказки «что делать» для набора предметов: 4 запроса к D1 на весь набор. */
+async function adviceFor(d: D1Database, tid: number, now: number, items: { id: number; name: string }[]): Promise<Map<number, Advice>> {
+  const out = new Map<number, Advice>();
+  const ids = items.map((x) => x.id).slice(0, 90);
+  if (!ids.length) return out;
+  const ph = ids.map(() => '?').join(',');
+  const [quotes, agg, deals, lots, s] = await Promise.all([
+    db.quotesForItems(d, ids),
+    d.prepare(`SELECT item_id, CAST(AVG(price_kop) AS INTEGER) AS avg, MIN(observed_at) AS first FROM price_snapshots
+      WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ? AND item_id IN (${ph}) GROUP BY item_id`)
+      .bind(now - 7 * 86400, ...ids).all<{ item_id: number; avg: number | null; first: number }>(),
+    db.activeSignals(d, 'spread', 90, now - 2 * 3600),
+    T.openTrades(d, tid),
+    db.getSettings(d, tid),
+  ]);
+  const aggBy = new Map(agg.results.map((r) => [r.item_id, r]));
+  for (const it of items) {
+    const q = quotes.get(it.id) ?? [];
+    const g = (src: string, t: string) => q.find((x) => x.source === src && x.price_type === t);
+    const a = aggBy.get(it.id);
+    const deal = deals.find((x) => x.item_id === it.id && (x.state === 'confirmed' || x.state === 'notified'));
+    const myLots = lots.filter((l) => l.item_id === it.id);
+    const openQ = myLots.reduce((x, l) => x + openQty(l), 0);
+    const cost = myLots.reduce((x, l) => x + viewLot(l, valuation(null, null, null)).openCostKop, 0);
+    const p = parseMarketHashName(it.name);
+    out.set(it.id, advise({
+      steamLowKop: g('steam', 'lowest_listing')?.price_kop ?? null,
+      avg7Kop: a?.avg ?? null,
+      historyDays: a ? (now - a.first) / 86400 : 0,
+      liquidity: classifyLiquidity({ steamSales24h: g('steam', 'median_24h')?.volume ?? null, skinportSales7d: g('skinport', 'sale_median_7d')?.volume ?? null, activeListings: null }).cls,
+      uniquePriced: p.uniquePriced,
+      deal: deal && deal.spread_kop !== null && deal.buy_kop !== null && deal.proceeds_kop !== null
+        ? { spreadKop: deal.spread_kop, buyKop: deal.buy_kop, buySource: deal.buy_source ?? '', proceedsKop: deal.proceeds_kop, priority: deal.priority } : null,
+      lot: openQ > 0 ? { openQty: openQ, costPerUnitKop: Math.round(cost / openQ), targetKop: myLots.find((l) => l.target_sell_kop)?.target_sell_kop ?? null } : null,
+      minRoiBp: db.num(s.min_roi_bp), minProfitKop: db.num(s.min_profit_kop),
+    }));
+  }
+  return out;
+}
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -56,8 +113,15 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const today = warsawDate(now);
       const todays = sales.filter((s) => s.sell_date === today);
       const lastRun = Math.max(0, ...jobs.map((j) => j.last_run_at ?? 0));
+      const wl = await db.listWatch(d, tid);
+      const adv = await adviceFor(d, tid, now, wl.map((w) => ({ id: w.item_id, name: w.market_hash_name })));
+      const actions = wl.map((w) => ({ itemId: w.item_id, name: w.market_hash_name, category: w.category, advice: adv.get(w.item_id)! }))
+        .filter((x) => x.advice && (x.advice.action === 'buy' || x.advice.action === 'sell'))
+        .sort((a, b) => ACTION_RANK[a.advice.action] - ACTION_RANK[b.advice.action]).slice(0, 8);
+      const recs = await recsFor(d, tid, now);
       return json({
-        ok: true, now, watched,
+        ok: true, now, watched, actions,
+        recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 3), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
         cronAlive: lastRun > 0 && now - lastRun < 300,
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),
@@ -69,6 +133,11 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         },
         lastPriceAt: Math.max(0, ...sources.filter((s) => s.source === 'steam' || s.source === 'skinport').map((s) => s.last_ok_at ?? 0)) || null,
       });
+    }
+
+    // ---------- Рекомендации по всему рынку ----------
+    if (path === 'recs' && method === 'GET') {
+      return json({ ok: true, ...(await recsFor(d, tid, now)) });
     }
 
     // ---------- Сделки ----------
@@ -96,6 +165,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         `SELECT item_id, observed_at, price_minor FROM price_snapshots WHERE source = 'steam' AND price_type = 'lowest_listing'
          AND observed_at BETWEEN ? AND ? AND item_id IN (${ids.map(() => '?').join(',')}) ORDER BY observed_at`,
       ).bind(now - 30 * 3600, now - 20 * 3600, ...ids).all<{ item_id: number; observed_at: number; price_minor: number | null }>()).results : [];
+      const adv = await adviceFor(d, tid, now, w.map((x) => ({ id: x.item_id, name: x.market_hash_name })));
       return json({
         ok: true,
         items: w.map((x) => {
@@ -108,7 +178,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
             watchId: x.id, itemId: x.item_id, name: x.market_hash_name, category: x.category, categoryRu: CATEGORY_RU[x.category as 'case'] ?? x.category,
             steamLowKop: low?.price_kop ?? null, steamMedKop: g('steam', 'median_24h')?.price_kop ?? null, sales24h: g('steam', 'median_24h')?.volume ?? null,
             skinportKop: g('skinport', 'lowest_listing')?.price_kop ?? null, skinportQty: g('skinport', 'lowest_listing')?.quantity ?? null,
-            change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null,
+            change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null,
           };
         }),
       });
@@ -158,6 +228,9 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const bt = backtest(ser('skinport', 'lowest_listing'), ser('steam', 'lowest_listing'), ser('steam', 'median_24h'), {
         minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp), horizonSec: 86400, maxAgeSec: 2 * 3600, cooldownSec: 6 * 3600,
       });
+      const advice = (await adviceFor(d, tid, now, [{ id: item.id, name: item.market_hash_name }])).get(item.id) ?? null;
+      const avg7 = (await d.prepare(`SELECT CAST(AVG(price_kop) AS INTEGER) AS a FROM price_snapshots WHERE item_id = ? AND source = 'steam'
+        AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ?`).bind(itemId, now - 7 * 86400).first<{ a: number | null }>())?.a ?? null;
       const q = (r: db.QuoteRow | null) => (r ? { kop: r.price_kop, minor: r.price_minor, currency: r.currency, qty: r.quantity, volume: r.volume, at: r.fetched_at } : null);
       return json({
         ok: true,
@@ -165,7 +238,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
         series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing') },
-        stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null,
+        stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7,
         backtest: bt, links: { steam: steamListingUrl(item.market_hash_name), skinport: safeLink(g('skinport', 'lowest_listing')?.url) },
       });
     }
@@ -174,6 +247,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     if (path === 'inventory' && method === 'GET') {
       const lots = await T.openTrades(d, tid);
       const quotes = await db.quotesForItems(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 90));
+      const adv = await adviceFor(d, tid, now, [...new Map(lots.map((l) => [l.item_id, { id: l.item_id, name: l.market_hash_name }])).values()]);
       return json({
         ok: true,
         platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
@@ -186,7 +260,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
             id: l.id, itemId: l.item_id, name: l.market_hash_name, qty: l.quantity, openQty: v.openQty, buyKop: l.buy_price_kop, feeKop: l.buy_fee_kop,
             platform: l.buy_platform, platformRu: PLATFORM_RU[l.buy_platform] ?? l.buy_platform, date: l.buy_date, targetKop: l.target_sell_kop,
             costKop: v.openCostKop, steamUnitKop: val.steamProceedsPerUnit, externalUnitKop: val.externalPricePerUnit, valueKop: v.steamValueKop,
-            unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity,
+            unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity, advice: adv.get(l.item_id) ?? null,
           };
         }),
       });

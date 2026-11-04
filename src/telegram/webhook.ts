@@ -76,10 +76,18 @@ async function onText(text: string, h: H): Promise<void> {
   const cmd = t.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, '');
   await db.ensureUser(h.d, h.adminId, true, h.now);
   switch (cmd) {
-    case '/start': case '/menu': {
+    case '/start': {
       await db.clearState(h.d, h.adminId);
       // Кнопка приложения у поля ввода; повторная установка безопасна.
       try { await h.tg.setMenuButton(h.adminId, `${h.origin}/app`); } catch { /* не критично */ }
+      // Главное — приложение. Текстовое меню осталось за второй кнопкой и командой /menu.
+      return say(h, '<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь в гривнах.\nЖми кнопку 👇', [
+        [{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }],
+        [{ text: '☰ Текстовое меню', callback_data: 'm' }],
+      ]);
+    }
+    case '/menu': {
+      await db.clearState(h.d, h.adminId);
       return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`));
     }
     case '/app': return say(h, 'Приложение откроется внутри Telegram:', [[{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }]]);
@@ -249,7 +257,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
 
 const HELP = [
   '<b>Команды</b>',
-  '/start — главное меню',
+  '/start — открыть приложение', '/menu — текстовое меню',
   '/app — открыть приложение',
   '/add название — добавить предмет в наблюдение',
   '/addlist — добавить несколько предметов списком (точные названия, по одному в строке)',

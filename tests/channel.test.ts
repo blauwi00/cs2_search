@@ -77,6 +77,9 @@ test('канал: /channel проверяет права бота, публик�
   sent.length = 0;
   await runCycle(env, { now: AT10, fetcher });
   await runCycle(env, { now: AT10 + 400, fetcher });
+  // Картинку никто не нарисовал (сборщика в тесте нет) — пост уходит без неё через 25 минут.
+  await runCycle(env, { now: AT10 + 26 * 60, fetcher });
+  await runCycle(env, { now: AT10 + 34 * 60, fetcher });
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один пост за слот');
   assert.match(posts[0].body.text, /Идеи дня/);
@@ -108,4 +111,49 @@ test('метки источников: /start tt сохраняется один
   assert.match(st, /Пользователей: <b>4<\/b>/);
   assert.match(st, /tt: 1/);
   assert.match(st, /start=tt/);
+});
+
+test('картинка поста: Worker заказывает её у сборщика, ждёт, публикует с ней; не пришла за 25 мин — без неё', async () => {
+  const { handleCard } = await import('../src/card.ts');
+  const { setMetaStmt } = await import('../src/core/channel.ts');
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const SECRET = 'ingest_secret_test_123';
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  await db.storeFx(D, [EUR, USD], AT10);
+  const hdr = { 'X-Ingest-Secret': SECRET };
+  const scan = { name: 'Revolution Case', offers: { skinport: { p: 10, q: 50 } }, s7: { median: 13, volume: 300 }, s30: { median: 12.5, volume: 1200 } };
+  await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'scan', fetchedAt: AT10, items: [scan] }) }), env, AT10);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+  ]);
+  const posts = () => sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  await runCycle(env, { now: AT10, fetcher });
+  await runCycle(env, { now: AT10 + 120, fetcher });
+  assert.equal(posts().length, 0, 'ждём картинку');
+  const items = await (await handleIngest(new Request('https://cs2.example.dev/ingest/items', { headers: hdr }), env, AT10 + 150)).json() as { card: { id: string; slot: string; deals: { buyPrice: string }[] } };
+  assert.equal(items.card.id, 'ideas-2026-11-04');
+  assert.match(items.card.deals[0].buyPrice, /\$$/, 'суммы на картинке — в долларах');
+  const jpg = '/9j/' + Buffer.from('fake-jpeg').toString('base64');
+  const up = await handleIngest(new Request('https://cs2.example.dev/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'card', fetchedAt: AT10, id: items.card.id, jpg }) }), env, AT10 + 300);
+  assert.equal(up.status, 200);
+  await runCycle(env, { now: AT10 + 450, fetcher });
+  assert.equal(posts().length, 1);
+  assert.equal(posts()[0].body.link_preview_options.url, `https://cs2.example.dev/card/ideas-2026-11-04.jpg?v=${AT10 + 300}`);
+  const img = await handleCard(new URL('https://cs2.example.dev/card/ideas-2026-11-04.jpg'), env);
+  assert.equal(img.headers.get('Content-Type'), 'image/jpeg');
+  assert.equal((await handleCard(new URL('https://x/card/../../etc.jpg'), env)).status, 404);
+  const again = await (await handleIngest(new Request('https://cs2.example.dev/ingest/items', { headers: hdr }), env, AT10 + 500)).json() as { card: unknown };
+  assert.equal(again.card, null, 'заказ закрыт');
+  // Тренды в 15:00: картинку никто не прислал — через 25 минут пост уходит без неё.
+  const AT15 = AT10 + 5 * 3600;
+  await runCycle(env, { now: AT15, fetcher });
+  await runCycle(env, { now: AT15 + 120, fetcher });
+  await runCycle(env, { now: AT15 + 28 * 60, fetcher });
+  await runCycle(env, { now: AT15 + 34 * 60, fetcher });
+  const tr = posts().find((p) => /Растут в цене/.test(p.body.text));
+  if (tr) assert.notEqual(tr.body.link_preview_options?.url?.includes('/card/'), true);
 });

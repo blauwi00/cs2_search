@@ -40,7 +40,15 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null } = await toWorker('/ingest/items');
+// Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
+if (card && card.id) {
+  const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
+  mkdirSync('.cache', { recursive: true });
+  writeFileSync('.cache/card.json', JSON.stringify(card));
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'card=1\n');
+  console.log('Нужна картинка для поста:', card.id);
+}
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск

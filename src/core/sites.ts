@@ -36,6 +36,9 @@ export function setRefStmt(d: D1Database, links: RefLinks): D1PreparedStatement 
 }
 
 /** Для приложения: все площадки, партнёрская ссылка — если задана. */
-export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean }[] {
-  return SITES.map((s) => ({ key: s.key, name: s.name, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key] }));
+/** Иконка сайта (favicon) через открытый сервис Google — без запросов к самим площадкам. */
+export const siteIcon = (url: string) => `https://www.google.com/s2/favicons?sz=128&domain=${new URL(url).hostname}`;
+
+export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean; icon: string }[] {
+  return SITES.map((s) => ({ key: s.key, name: s.name, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key], icon: siteIcon(s.url) }));
 }

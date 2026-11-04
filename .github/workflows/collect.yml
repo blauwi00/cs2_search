@@ -13,7 +13,7 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +30,17 @@ jobs:
           path: .cache/catalog2.json
           key: catalog2-${{ steps.day.outputs.d }}
       - name: Сбор цен
+        id: collect
         env:
           WORKER_URL: https://cs2-search.blauwi925.workers.dev
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
         run: node .github/scripts/collect.mjs
+      # Картинка для поста в канал — только когда Worker её заказал (несколько раз в день).
+      - name: Картинка для поста
+        if: steps.collect.outputs.card == '1'
+        env:
+          WORKER_URL: https://cs2-search.blauwi925.workers.dev
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: |
+          mkdir -p /tmp/pw && npm i --prefix /tmp/pw --no-save --silent playwright-core@1.49.1
+          NODE_PATH=/tmp/pw/node_modules node .github/scripts/render-card.mjs

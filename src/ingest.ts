@@ -17,7 +17,7 @@ import { catalogPartStmts, catalogInfo } from './catalog.ts';
 import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, type IdeaRow } from './core/insights.ts';
-import { setMetaStmt } from './core/channel.ts';
+import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 
@@ -25,7 +25,7 @@ export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
 
 interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: unknown; error?: unknown }
-interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown }
+interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown }
 
 export async function handleIngest(req: Request, env: Env, now: number, rawDb?: D1Database): Promise<Response> {
   if (!env.INGEST_SECRET || !safeEqual(req.headers.get('X-Ingest-Secret')?.trim(), env.INGEST_SECRET.trim())) return json({ ok: false, error: 'forbidden' }, 403);
@@ -61,6 +61,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       steamAvgAt: Number(avgAt?.value ?? 0) || 0,
       inventorySync: invQ.results,
       trackNames: track,
+      // Картинка для поста канала, которую нужно нарисовать (null — ничего не нужно).
+      card: await pendingCard(d),
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -276,6 +278,17 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         .map((r) => ({ name: r.name as string, d1: c(r.d1), d7: c(r.d7), d30: c(r.d30) }));
       if (list.length) await setMetaStmt(d, 'cases_stats', JSON.stringify(list)).run();
       result.stored = list.length;
+    } else if (body.kind === 'card') {
+      // Картинка поста канала (JPEG, base64). Адрес Worker запоминаем: по нему Telegram возьмёт картинку.
+      const id = typeof body.id === 'string' && /^(ideas|trends|cases|weekly)-\d{4}-\d{2}-\d{2}$/.test(body.id) ? body.id : null;
+      const jpg = typeof body.jpg === 'string' && body.jpg.length < 1_500_000 && body.jpg.startsWith('/9j/') ? body.jpg : null;
+      if (!id || !jpg) return json({ ok: false, error: 'bad_card' }, 400);
+      await d.batch([
+        d.prepare('INSERT INTO cards (id, jpg_b64, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET jpg_b64 = excluded.jpg_b64, created_at = excluded.created_at').bind(id, jpg, now),
+        d.prepare('DELETE FROM cards WHERE created_at < ?').bind(now - 7 * 86400),
+        setMetaStmt(d, 'public_origin', url.origin),
+      ]);
+      result.stored = 1;
     } else if (body.kind === 'fx_usd') {
       // Курсы к доллару из открытого файла CSGO Trader — для валют, которых нет у НБУ (RUB, BRL, ARS).
       const r = parseUsdRates(body.rates);
@@ -310,4 +323,15 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
     return json({ ok: false, error: msg.slice(0, 200) }, e instanceof SourceError ? 422 : 500);
   }
   return json(result);
+}
+
+/** Заказ картинки для поста: есть ожидающий пост, а картинки ещё нет. */
+async function pendingCard(d: D1Database): Promise<unknown> {
+  const raw = await getMeta(d, 'card_request');
+  if (!raw) return null;
+  try {
+    const card = JSON.parse(raw) as { id: string };
+    const have = await d.prepare('SELECT 1 AS x FROM cards WHERE id = ?').bind(card.id).first();
+    return have ? null : card;
+  } catch { return null; }
 }

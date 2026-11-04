@@ -8,6 +8,7 @@ import { handleChart } from './chart.ts';
 import { handleIngest } from './ingest.ts';
 import { handleAppApi } from './webapp/api.ts';
 import APP_HTML from './webapp/app.html';
+import { handleCard } from './card.ts';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -21,6 +22,7 @@ export default {
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
     if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());
     if (url.pathname === '/chart' && req.method === 'GET') return handleChart(req, env, nowSec());
+    if (url.pathname.startsWith('/card/') && req.method === 'GET') return handleCard(url, env);
     // Публичный адрес ничего не раскрывает.
     if (url.pathname === '/') return new Response('CS2 Market Bot: OK', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     return new Response('Not Found', { status: 404 });

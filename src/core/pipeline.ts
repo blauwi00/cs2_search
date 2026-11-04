@@ -777,6 +777,9 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
 }
 
 /** Автопостинг в канал/группу (если владелец привязал его командой /channel): сначала свежие обновления CS2, потом посты по расписанию. */
+/** Сколько ждать картинку поста от сборщика (он запускается раз в ~10 минут, иногда с опозданием). */
+export const CARD_WAIT_SEC = 25 * 60;
+
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
@@ -798,6 +801,20 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
       return false;
     }
   };
+  // 0. Пост, который ждёт свою картинку от сборщика (не дольше CARD_WAIT_SEC, потом — без неё).
+  const pendRaw = await getMeta(ctx.db, 'channel_pending');
+  if (pendRaw) {
+    let pend: { id: string; text: string; image: string | null; at: number } | null = null;
+    try { pend = JSON.parse(pendRaw); } catch { pend = null; }
+    const card = pend ? await ctx.db.prepare('SELECT created_at FROM cards WHERE id = ?').bind(pend.id).first<{ created_at: number }>() : null;
+    const origin = await getMeta(ctx.db, 'public_origin');
+    if (!pend || (card && origin) || ctx.now - pend.at > CARD_WAIT_SEC) {
+      writes.push(ctx.db.prepare(`DELETE FROM meta WHERE key IN ('channel_pending', 'card_request')`));
+      if (pend) await post(pend.text, botButton(user), card && origin ? `${origin}/card/${pend.id}.jpg?v=${card.created_at}` : pend.image);
+    }
+    if (writes.length) await ctx.db.batch(writes);
+    return;
+  }
   // 1. Обновление CS2 — не старше 3 суток, по одному за запуск.
   const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? ORDER BY published_at LIMIT 1').bind(ctx.now - 3 * 86400).first<NewsItem>();
   if (n) {
@@ -811,7 +828,11 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     if (slot) {
       writes.push(setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now)));
       const p = await composeChannelPost(ctx.db, slot, ctx.now);
-      if (p) await post(p.text, botButton(user), p.image);
+      if (p?.card) {
+        // Сначала — картинка: сборщик нарисует её за ~10 минут, тогда и опубликуем.
+        writes.push(setMetaStmt(ctx.db, 'channel_pending', JSON.stringify({ id: p.card.id, text: p.text, image: p.image, at: ctx.now })));
+        writes.push(setMetaStmt(ctx.db, 'card_request', JSON.stringify(p.card)));
+      } else if (p) await post(p.text, botButton(user), p.image);
     }
   }
   if (writes.length) await ctx.db.batch(writes);

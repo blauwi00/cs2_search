@@ -11,8 +11,9 @@ import type { Currency } from '../types/market.ts';
 import { loadScan } from '../storage/scan.ts';
 import { loadLatestFx } from '../storage/db.ts';
 import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
-import { formatUah } from '../utils/money.ts';
-import { header, dealBlock, moveLine, FOOT_DEALS } from './postfmt.ts';
+import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
+import { loadRates, curFor } from '../currency/display.ts';
+import { header, dealBlock, moveLine, FOOT_DEALS, pct, ruDate } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
@@ -33,7 +34,9 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
 }
 
 /** То же + lead: главный предмет поста (его картинка пойдёт превью над текстом). */
-export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null } | null {
+/** Строка карточки: название, изменение в б.п., цена в копейках (для картинки поста). */
+export interface CardRow { name: string; bp: number; kop: number | null }
+export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null; up?: CardRow[]; down?: CardRow[] } | null {
   if (slot === 'ideas') {
     const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
     const top = deals.slice(0, 4);
@@ -52,7 +55,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
       lines.push(`${moveLine(t.name, t.trendBp ?? 0, null)} · от ${fmt(t.payKop)} на ${MARKETS[t.buyAt].name}`);
     }
     lines.push('', '<i>Рост уже случился и может развернуться. Покупай только то, что готов держать.</i>');
-    return { text: lines.join('\n'), lead: top[0].name };
+    return { text: lines.join('\n'), lead: top[0].name, up: top.map((t) => ({ name: t.name, bp: t.trendBp ?? 0, kop: t.payKop })) };
   }
   // cases: средние продажи Steam за сутки против месяца (прайс Steam), только кейсы с продажами.
   const usd = fx.get('USD') ?? null;
@@ -67,7 +70,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
   if (up.length) lines.push('📈 <b>Дорожают</b>', ...up.map((x) => moveLine(x.name, x.d, x.kop)), '');
   if (down.length) lines.push('📉 <b>Дешевеют</b>', ...down.map((x) => moveLine(x.name, x.d, x.kop)), '');
   lines.push('<i>Дешевеющий кейс — не обязательно выгодная покупка.</i>');
-  return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name };
+  return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name, up: up.map((x) => ({ name: x.name, bp: x.d, kop: x.kop })), down: down.map((x) => ({ name: x.name, bp: x.d, kop: x.kop })) };
 }
 
 export async function getMeta(d: D1Database, key: string): Promise<string | null> {
@@ -101,7 +104,8 @@ export function dueSlot(now: number, done: Partial<Record<Slot, string | null>>)
   return null;
 }
 
-export interface ChannelPost { text: string; image: string | null }
+export interface ChannelPost { text: string; image: string | null; card: PostCard | null }
+
 
 /** Собирает текст поста для слота из базы (общий для расписания, предпросмотра и «Опубликовать сейчас»). */
 export async function composePost(d: D1Database, slot: Slot, now: number): Promise<string | null> {
@@ -112,28 +116,76 @@ export async function composePost(d: D1Database, slot: Slot, now: number): Promi
 export async function composeChannelPost(d: D1Database, slot: Slot, now: number): Promise<ChannelPost | null> {
   const [scan, fx] = await Promise.all([loadScan(d), loadLatestFx(d)]);
   const fresh = scan && now - scan.fetchedAt < 6 * 3600 ? scan.entries : null;
-  const withImage = async (text: string | null, lead: string | null): Promise<ChannelPost | null> =>
-    text ? { text, image: lead ? await itemImage(d, lead, fresh) : null } : null;
+  // Картинка-карточка (рисует сборщик): суммы в долларах, картинки предметов — из каталога.
+  const finish = async (text: string | null, lead: string | null, card: Omit<PostCard, 'id' | 'slot' | 'date'> | null): Promise<ChannelPost | null> => {
+    if (!text) return null;
+    const image = lead ? await itemImage(d, lead, fresh) : null;
+    let full: PostCard | null = null;
+    if (card) {
+      const names = [...(card.deals ?? []).map((x) => x.name), ...(card.up ?? []).map((x) => x.name), ...(card.down ?? []).map((x) => x.name)];
+      const imgs = await imagesByName(d, names, fresh);
+      const withImg = <T extends { name: string }>(xs?: T[]) => xs?.map((x) => ({ ...x, img: imgs.get(x.name) ?? null }));
+      const usd = curFor('USD', await loadRates(d));
+      full = JSON.parse(renderMoney(JSON.stringify({ ...card, id: `${slot}-${warsawDate(now)}`, slot, date: ruDate(now), deals: withImg(card.deals), up: withImg(card.up), down: withImg(card.down) }), usd)) as PostCard;
+    }
+    return { text, image, card: full };
+  };
+  const row = (r: CardRow) => ({ name: r.name, pct: pct(r.bp), upward: r.bp >= 0, price: r.kop ? formatUah(r.kop) : null });
   if (slot === 'ideas') {
     const today = await ensureTodayIdeas(d, fresh, fx, now);
     const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 86400)).all<IdeaRow>()).results;
-    const bestY = [...yesterday].filter((r) => r.outcome === 'plus' || r.outcome === 'minus').sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
-    return withImage(ideasPost(today, yesterday, now), today[0]?.name ?? bestY?.name ?? null);
+    const checked = yesterday.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
+    const bestY = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
+    const card = today.length ? {
+      title: 'Идеи дня',
+      deals: today.slice(0, 4).map((r) => ({ name: r.name, buy: MARKETS[r.buy_at].name, buyPrice: formatUah(r.pay_kop), sell: MARKETS[r.sell_at].name, sellPrice: formatUah(r.sell_kop), profit: formatSignedUah(r.profit_kop), roi: pct(r.roi_bp) })),
+      note: checked.length ? `Вчера: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} идей в плюсе` : null,
+    } : null;
+    return finish(ideasPost(today, yesterday, now), today[0]?.name ?? bestY?.name ?? null, card);
   }
   if (slot === 'trends') {
     const p = fresh ? buildPostLead('trends', fresh, fx, now) : null;
-    return withImage(p?.text ?? null, p?.lead ?? null);
+    return finish(p?.text ?? null, p?.lead ?? null, p ? { title: 'Растут в цене', subtitle: 'неделя к месяцу', up: p.up?.map(row) } : null);
   }
   const cases = await caseStats(d);
   if (slot === 'cases') {
     const entries: ScanEntry[] = cases.length ? cases.map((c) => ({ name: c.name, offers: [], s7: null, s30: null, steam: null, sa: { d1: c.d1, d7: c.d7, d30: c.d30, d90: null } })) : fresh ?? [];
     const p = buildPostLead('cases', entries, fx, now);
-    return withImage(p?.text ?? null, p?.lead ?? null);
+    return finish(p?.text ?? null, p?.lead ?? null, p ? { title: 'Кейсы Steam', subtitle: 'сутки к месяцу', up: p.up?.map(row), down: p.down?.map(row) } : null);
   }
   const week = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
   const u = await d.prepare('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS w FROM users').bind(now - 7 * 86400).first<{ n: number; w: number | null }>();
-  const leader = cases.filter((c) => c.d7 && c.d30).sort((a, b) => b.d7! / b.d30! - a.d7! / a.d30!)[0];
-  return withImage(weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now), leader?.name ?? null);
+  const ch = cases.filter((c) => c.d7 && c.d30).map((c) => ({ name: c.name, bp: Math.trunc(((c.d7! - c.d30!) * 10000) / c.d30!), kop: null }));
+  const leader = [...ch].sort((a, b) => b.bp - a.bp)[0];
+  const checked = week.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
+  const card = ch.length >= 5 ? {
+    title: 'Итоги недели', subtitle: 'неделя к месяцу',
+    big: pct(Math.round(ch.reduce((s, x) => s + x.bp, 0) / ch.length)), bigLabel: 'индекс кейсов Steam',
+    up: [...ch].sort((a, b) => b.bp - a.bp).filter((x) => x.bp > 0).slice(0, 3).map(row),
+    down: [...ch].sort((a, b) => a.bp - b.bp).filter((x) => x.bp < 0).slice(0, 3).map(row),
+    note: checked.length ? `Идеи бота: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе через сутки` : null,
+  } : null;
+  return finish(weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now), leader?.name ?? null, card);
+}
+
+/** Данные для картинки поста (рисует сборщик). Все суммы уже строками в долларах. */
+export interface PostCard {
+  id: string; slot: Slot; date: string; title: string; subtitle?: string; note?: string | null; big?: string; bigLabel?: string;
+  deals?: { name: string; img?: string | null; buy: string; buyPrice: string; sell: string; sellPrice: string; profit: string; roi: string }[];
+  up?: { name: string; img?: string | null; pct: string; upward: boolean; price: string | null }[];
+  down?: { name: string; img?: string | null; pct: string; upward: boolean; price: string | null }[];
+}
+
+async function imagesByName(d: D1Database, names: string[], entries: ScanEntry[] | null): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const n of names) { const u = safeImg(entries?.find((e) => e.name === n)?.img); if (u) out.set(n, u); }
+  const rest = [...new Set(names.filter((n) => !out.has(n)))].slice(0, 40);
+  if (rest.length) {
+    for (const r of (await d.prepare(`SELECT name, url FROM item_images WHERE name IN (${rest.map(() => '?').join(',')})`).bind(...rest).all<{ name: string; url: string }>()).results) {
+      const u = safeImg(r.url); if (u) out.set(r.name, u);
+    }
+  }
+  return out;
 }
 
 /** Картинка предмета: из сканирования, иначе из каталога картинок. Только проверенные адреса Steam CDN. */

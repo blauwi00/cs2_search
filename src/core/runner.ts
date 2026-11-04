@@ -47,7 +47,10 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   // Только задачи, которым пора; из «тяжёлых» — не больше одной за вызов.
   const due: (typeof JOBS)[number][] = [];
   let heavyPicked = false;
+  // Режим внешнего сборщика: Steam и Skinport опрашивает GitHub Actions (сеть Cloudflare они блокируют).
+  const external = new Set(env.COLLECTOR === 'github' ? ['steam', 'skinport_items', 'skinport_sales'] : []);
   for (const def of JOBS) {
+    if (external.has(def.name)) continue;
     const row = jobs.get(def.name);
     const forced = opts.force?.includes(def.name) ?? false;
     if (!row || row.enabled !== 1) { result.skipped.push(def.name); continue; }

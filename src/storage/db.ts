@@ -226,8 +226,10 @@ export function quoteWrites(db: D1Database, itemId: number, q: Quote, priceKop: 
   return { stmts, snapshot, row };
 }
 
-export function markEvalStmt(db: D1Database, itemId: number, flag: 0 | 1): D1PreparedStatement {
-  return db.prepare('UPDATE items SET needs_eval = ? WHERE id = ?').bind(flag, itemId);
+/** 0 — пересчёт не нужен, 1 — пересчитать арбитраж, 2 — ещё и события Steam (резкое изменение, цели, инвентарь). */
+export function markEvalStmt(db: D1Database, itemId: number, flag: 0 | 1 | 2): D1PreparedStatement {
+  // Флаг не понижается до 1, если уже стоит 2 (события Steam ещё не обработаны); 0 сбрасывает всегда.
+  return db.prepare('UPDATE items SET needs_eval = CASE WHEN ? = 0 THEN 0 ELSE MAX(needs_eval, ?) END WHERE id = ?').bind(flag, flag, itemId);
 }
 
 export async function getQuotes(db: D1Database, itemId: number): Promise<QuoteRow[]> {
@@ -260,8 +262,8 @@ export async function history(db: D1Database, itemId: number, source: SourceId, 
   return r.results;
 }
 
-export async function itemsNeedingEval(db: D1Database, limit: number): Promise<number[]> {
-  return (await db.prepare('SELECT id FROM items WHERE needs_eval = 1 LIMIT ?').bind(limit).all<{ id: number }>()).results.map((r) => r.id);
+export async function itemsNeedingEval(db: D1Database, limit: number): Promise<{ id: number; flag: number }[]> {
+  return (await db.prepare('SELECT id, needs_eval AS flag FROM items WHERE needs_eval > 0 ORDER BY needs_eval DESC LIMIT ?').bind(limit).all<{ id: number; flag: number }>()).results;
 }
 
 // ---------- Курсы ----------

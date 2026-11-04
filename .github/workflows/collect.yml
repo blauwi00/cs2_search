@@ -1,0 +1,28 @@
+name: collect-prices
+# Сбор цен Steam/Skinport для CS2 Market Bot (Cloudflare-сеть эти площадки блокируют).
+# Расписание GitHub может запаздывать на 5–20 минут — это нормально.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: collect-prices
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Сбор цен
+        env:
+          WORKER_URL: https://cs2-search.blauwi925.workers.dev
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: node .github/scripts/collect.mjs

@@ -25,13 +25,14 @@ export async function mainMenu(d: D1Database, now: number): Promise<View> {
   const sources = await db.listSourceStatus(d);
   const watched = await db.countActiveWatched(d);
   const lastRun = Math.max(0, ...jobs.map((j) => j.last_run_at ?? 0));
-  const lastOk = Math.max(0, ...jobs.filter((j) => j.name === 'steam' || j.name === 'skinport_items' || j.name === 'csfloat').map((j) => j.last_ok_at ?? 0));
-  const okSources = sources.filter((s) => s.status === 'ok' && s.source !== 'nbu').length;
+  const priceSources = sources.filter((s) => s.source === 'steam' || s.source === 'skinport' || s.source === 'csfloat');
+  const lastOk = Math.max(0, ...priceSources.map((s) => s.last_ok_at ?? 0));
+  const okSources = priceSources.filter((s) => s.status === 'ok').length;
   const cronAlive = lastRun > 0 && now - lastRun < 300;
   const text = [
     '<b>CS2 Market Bot</b>', '',
     `Мониторинг: ${cronAlive ? 'активен' : lastRun ? `⚠️ планировщик не запускался ${ago(lastRun, now)}` : 'ещё не запускался'}`,
-    `Источников цен работает: ${okSources} из ${sources.filter((s) => s.source !== 'nbu').length || 0}`,
+    `Источников цен работает: ${okSources} из ${priceSources.length}`,
     `Предметов отслеживается: ${watched}`,
     `Последняя проверка цен: ${ago(lastOk || null, now)}`,
     '', '<i>Валюта: гривна. Бот только анализирует — ничего не покупает и не продаёт.</i>',
@@ -241,7 +242,7 @@ export async function settingsView(d: D1Database, tid: number): Promise<View> {
   return { text: lines.join('\n'), keyboard: kb };
 }
 
-export async function statusView(d: D1Database, now: number, csfloatKey: boolean): Promise<View> {
+export async function statusView(d: D1Database, now: number, csfloatKey: boolean, collector = false): Promise<View> {
   const jobs = await listJobs(d);
   const sources = await db.listSourceStatus(d);
   const c = await db.counters(d, now);
@@ -264,7 +265,9 @@ export async function statusView(d: D1Database, now: number, csfloatKey: boolean
   if (fx.size === 0) lines.push('ещё не загружены');
   for (const [b, r] of fx) lines.push(`1 ${b} = ${(r.rateMicro / 1e6).toFixed(4).replace('.', ',')} грн (курс на ${r.rateDate})`);
   lines.push('', '<b>Задачи</b>');
+  if (collector) lines.push('<i>Steam и Skinport блокируют сеть Cloudflare, поэтому их опрашивает GitHub Actions (сборщик) — задачи steam/skinport в Worker не запускаются.</i>');
   for (const j of jobs) {
+    if (collector && (j.name === 'steam' || j.name === 'skinport_items' || j.name === 'skinport_sales')) continue;
     const st = j.enabled !== 1 ? '⏸ выключена' : j.fail_count > 0 ? `⚠️ ошибок подряд: ${j.fail_count}` : '✅';
     lines.push(`${j.name}: ${st}, след. запуск ${j.next_run_at > now ? `через ${Math.ceil((j.next_run_at - now) / 60)} мин` : 'сейчас'}`);
     if (j.last_error && (j.enabled !== 1 || j.fail_count > 0)) lines.push(`   ${esc(j.last_error)}`);

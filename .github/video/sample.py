@@ -9,8 +9,10 @@ if v['engine'] == 'eleven':
     key = os.environ.get('ELEVENLABS_API_KEY')
     if not key:
         print('FAILED: нет секрета ELEVENLABS_API_KEY'); sys.exit(0)
-    body = json.dumps({'text': cfg['text'], 'model_id': 'eleven_multilingual_v2',
-                       'voice_settings': {'stability': 0.45, 'similarity_boost': 0.8, 'style': 0.25, 'use_speaker_boost': True}}).encode()
+    payload = {'text': cfg['text_stress'] if v.get('stress') else cfg['text'], 'model_id': v.get('model', 'eleven_multilingual_v2'),
+               'voice_settings': {'stability': 0.5, 'similarity_boost': 0.8, 'style': 0.2, 'use_speaker_boost': True}}
+    if v.get('lang'): payload['language_code'] = v['lang']
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(f"https://api.elevenlabs.io/v1/text-to-speech/{v['voice']}?output_format=mp3_44100_128", data=body,
                                  headers={'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg'})
     try:

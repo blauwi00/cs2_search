@@ -1,14 +1,60 @@
 {
-  "text": "Покупаешь скины в Steam? Скорее всего, переплачиваешь. Бот Ценолов подскажет, где купить дешевле и продать дороже.",
-  "voices": [
-    { "n": 21, "name": "Adam", "engine": "eleven", "voice": "pNInz6obpgDQGcFmaJgB" },
-    { "n": 22, "name": "Brian", "engine": "eleven", "voice": "nPczCjzI2devNBz1zQrb" },
-    { "n": 23, "name": "Daniel", "engine": "eleven", "voice": "onwK4e9ZLuTAKqWW03F9" },
-    { "n": 24, "name": "Liam", "engine": "eleven", "voice": "TX3LPaxmHKxFdv7VOQHJ" },
-    { "n": 25, "name": "George", "engine": "eleven", "voice": "JBFqnCBsd6RMkjVDRZzb" },
-    { "n": 26, "name": "Charlie", "engine": "eleven", "voice": "IKne3meq5aSn9XLyUdCD" },
-    { "n": 27, "name": "Sarah", "engine": "eleven", "voice": "EXAVITQu4vr4xnSDxMaL" },
-    { "n": 28, "name": "Rachel", "engine": "eleven", "voice": "21m00Tcm4TlvDq8ikWAM" }
-  ]
+ "text": "Покупаешь скины в Steam? Скорее всего, переплачиваешь. Бот Ценолов подскажет, где купить дешевле и продать дороже.",
+ "text_stress": "Покупа́ешь ски́ны в Steam? Скоре́е всего́, перепла́чиваешь. Бот Ценоло́в подска́жет, где купи́ть деше́вле и прода́ть доро́же.",
+ "voices": [
+  {
+   "n": 31,
+   "name": "Adam v2-ударения",
+   "engine": "eleven",
+   "voice": "pNInz6obpgDQGcFmaJgB",
+   "model": "eleven_multilingual_v2",
+   "stress": true,
+   "lang": null
+  },
+  {
+   "n": 32,
+   "name": "Adam v3",
+   "engine": "eleven",
+   "voice": "pNInz6obpgDQGcFmaJgB",
+   "model": "eleven_v3",
+   "stress": false,
+   "lang": "ru"
+  },
+  {
+   "n": 33,
+   "name": "Adam turbo-ru",
+   "engine": "eleven",
+   "voice": "pNInz6obpgDQGcFmaJgB",
+   "model": "eleven_turbo_v2_5",
+   "stress": true,
+   "lang": "ru"
+  },
+  {
+   "n": 34,
+   "name": "Liam v2-ударения",
+   "engine": "eleven",
+   "voice": "TX3LPaxmHKxFdv7VOQHJ",
+   "model": "eleven_multilingual_v2",
+   "stress": true,
+   "lang": null
+  },
+  {
+   "n": 35,
+   "name": "Liam v3",
+   "engine": "eleven",
+   "voice": "TX3LPaxmHKxFdv7VOQHJ",
+   "model": "eleven_v3",
+   "stress": false,
+   "lang": "ru"
+  },
+  {
+   "n": 36,
+   "name": "Liam turbo-ru",
+   "engine": "eleven",
+   "voice": "TX3LPaxmHKxFdv7VOQHJ",
+   "model": "eleven_turbo_v2_5",
+   "stress": true,
+   "lang": "ru"
+  }
+ ]
 }
- 

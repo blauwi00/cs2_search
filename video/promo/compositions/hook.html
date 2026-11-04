@@ -1,0 +1,23 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    #hook-title { position: absolute; top: 230px; left: 60px; right: 60px; text-align: center; font-size: 100px; font-weight: 900; line-height: 1.02; letter-spacing: -2px; }
+    #hook-glow { position: absolute; left: 240px; top: 470px; width: 600px; height: 600px; border-radius: 50%; background: #ff6b6b; opacity: .22; filter: blur(90px); }
+    #hook-case { position: absolute; left: 240px; top: 500px; width: 600px; height: 460px; object-fit: contain; }
+    #hook-tag { position: absolute; left: 610px; top: 930px; background: #ff6b6b; color: #fff; font-size: 50px; font-weight: 900; padding: 16px 30px; border-radius: 20px; }
+  </style>
+  <div id="root" data-composition-id="hook" data-width="1080" data-height="1920">
+    <div id="hook-glow" data-layout-ignore></div>
+    <div id="hook-title">ПЕРЕПЛАЧИВАЕШЬ<br>ЗА СКИНЫ?</div>
+    <img id="hook-case" src="assets/case.png" alt="Kilowatt Case">
+    <div id="hook-tag">Steam: 1,32 $</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#hook-title", { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.7)" }, 0);
+    tl.fromTo("#hook-case", { scale: 0.6, opacity: 0, y: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" }, 0.2);
+    tl.to("#hook-case", { y: -14, duration: 1.0, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.7);
+    tl.fromTo("#hook-tag", { scale: 0, rotation: -8 }, { scale: 1, rotation: -8, duration: 0.35, ease: "back.out(2.5)" }, 0.9);
+    window.__timelines["hook"] = tl;
+  </script>
+</template>

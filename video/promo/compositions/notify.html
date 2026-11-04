@@ -1,0 +1,23 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    #nt-phone { position: absolute; left: 270px; top: 190px; width: 540px; height: 960px; border-radius: 70px; background: #000; padding: 18px; box-shadow: 0 60px 120px rgba(0,0,0,.6), 0 0 0 4px #2a2f37; }
+    #nt-scr { width: 100%; height: 100%; border-radius: 54px; overflow: hidden; background: #17212b; }
+    #nt-scr img { width: 100%; display: block; }
+    #nt-card { position: absolute; left: 110px; right: 110px; top: 250px; border-radius: 36px; background: rgba(40,46,56,.97); padding: 26px 30px; box-shadow: 0 30px 60px rgba(0,0,0,.5); display: flex; gap: 24px; align-items: center; }
+    #nt-ic { width: 92px; height: 92px; border-radius: 22px; overflow: hidden; flex: none; }
+    #nt-ic img { width: 100%; height: 100%; }
+    #nt-t { font-size: 28px; color: #adb5bd; }
+    #nt-b { font-size: 34px; font-weight: 700; margin-top: 4px; line-height: 1.25; }
+  </style>
+  <div id="root" data-composition-id="notify" data-width="1080" data-height="1920">
+    <div id="nt-phone"><div id="nt-scr"><img src="assets/app.png" alt="Приложение Ценолова"></div></div>
+    <div id="nt-card" data-layout-allow-occlusion><div id="nt-ic"><img src="assets/avatar.png" alt=""></div><div><div id="nt-t">Ценолов · сейчас</div><div id="nt-b">🔥 Kilowatt Case — выгодно: купи на Skinport, +24%</div></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#nt-phone", { y: 200, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0);
+    tl.fromTo("#nt-card", { y: -260, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 0.5);
+    window.__timelines["notify"] = tl;
+  </script>
+</template>

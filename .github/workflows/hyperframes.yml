@@ -1,0 +1,56 @@
+name: hyperframes
+# Рендер роликов на HyperFrames (HTML → MP4): video/<проект>. Результат (mp4, кадры, отчёт проверки) — в ветке video-renders.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['video/**', '.github/workflows/hyperframes.yml']
+permissions:
+  contents: write
+concurrency:
+  group: hyperframes
+  cancel-in-progress: true
+env:
+  HF: hyperframes@0.9.13
+  HYPERFRAMES_TELEMETRY: '0'
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: video/promo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: FFmpeg
+        run: ffmpeg -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Браузер для рендера
+        run: npx -y $HF browser ensure
+      - name: Распознавание голоса для субтитров (русский)
+        run: npx -y $HF transcribe assets/voice.mp3 --model small --language ru --json || echo "распознавание не удалось — будут запасные тайминги"
+      - name: Субтитры
+        run: node build-captions.mjs
+      - name: Проверка
+        run: |
+          mkdir -p out
+          npx -y $HF lint || true
+          npx -y $HF check --json > out/check.json || true
+          tail -c 3000 out/check.json || true
+      - name: Рендер
+        run: npx -y $HF render --quality delivery -o out/promo.mp4
+      - name: Кадры для проверки
+        run: |
+          npx -y $HF snapshot --at 1,6,10,15,20,24 || true
+          cp -r .hyperframes/artifacts/snapshots out/snapshots 2>/dev/null || true
+          ffprobe -v error -show_entries format=duration -of csv=p=0 out/promo.mp4
+          cp assets/transcript.json out/ 2>/dev/null || true
+      - name: В ветку video-renders
+        working-directory: video/promo/out
+        run: |
+          git init -q -b video-renders
+          git config user.name "video-bot"; git config user.email "video-bot@users.noreply.github.com"
+          git add -A && git commit -qm "render ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" video-renders

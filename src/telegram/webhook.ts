@@ -12,6 +12,7 @@ import { runDemo } from '../demo.ts';
 import type { Fetcher } from '../utils/http.ts';
 import { say, show, type H } from './context.ts';
 import * as INV from './inventory.ts';
+import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
@@ -123,11 +124,19 @@ export async function addList(h: H, body: string): Promise<void> {
     await db.setState(h.d, h.adminId, 'addlist', null, h.now);
     return say(h, 'Пришли точные названия предметов, каждое с новой строки (как в Steam), например:\n<code>Revolution Case\nFracture Case</code>');
   }
-  let added = 0, existed = 0;
+  // Всё одним-двумя batch: по запросу на предмет не хватило бы лимита (50 запросов к D1 за вызов).
+  const before = (await h.d.prepare('SELECT COUNT(*) AS n FROM watchlist WHERE telegram_id = ? AND active = 1').bind(h.adminId).first<{ n: number }>())?.n ?? 0;
+  const stmts: D1PreparedStatement[] = [];
   for (const n of names) {
-    const it = await db.upsertItem(h.d, n, h.now);
-    if ((await db.addWatch(h.d, h.adminId, it.id, h.now)) === 'added') added++; else existed++;
+    stmts.push(...db.upsertItemStmts(h.d, n, h.now));
+    stmts.push(h.d.prepare(
+      `INSERT INTO watchlist (telegram_id, item_id, created_at) SELECT ?, id, ? FROM items WHERE market_hash_name = ?
+       ON CONFLICT(telegram_id, item_id) DO UPDATE SET active = 1`,
+    ).bind(h.adminId, h.now, parseMarketHashName(n).marketHashName));
   }
+  for (let i = 0; i < stmts.length; i += 90) await h.d.batch(stmts.slice(i, i + 90));
+  const after = (await h.d.prepare('SELECT COUNT(*) AS n FROM watchlist WHERE telegram_id = ? AND active = 1').bind(h.adminId).first<{ n: number }>())?.n ?? 0;
+  const added = after - before, existed = names.length - added;
   await db.clearState(h.d, h.adminId);
   return say(h, `✅ Добавлено в наблюдение: ${added}${existed ? `, уже были: ${existed}` : ''}.\nЕсли название написано неточно, Steam вернёт «нет данных» — это будет видно в «Состоянии системы».`);
 }

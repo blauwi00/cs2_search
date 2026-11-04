@@ -294,3 +294,19 @@ test('/addlist добавляет точные названия списком �
   assert.ok(calls.every((c) => c.url.startsWith('https://api.telegram.org/')), 'никаких запросов к Steam');
   assert.ok(String(sent.at(-1)!.body.text).includes('Добавлено в наблюдение: 2'));
 });
+
+test('/addlist на 40 предметов укладывается в лимит запросов D1 за вызов', async () => {
+  const d = migratedDb();
+  const env = testEnv(d);
+  const sent: Sent[] = [];
+  const { fetcher } = mockFetch([telegramRoute(sent)]);
+  const { msg } = hooks(env);
+  const names = Array.from({ length: 40 }, (_, i) => `Test Case ${i}`);
+  const before = d.execs;
+  await handleWebhook(msg('/addlist\n' + names.join('\n')), env, NOW, fetcher);
+  assert.ok(d.execs - before <= 50, `D1: ${d.execs - before}`);
+  assert.equal((await db.listWatch(d as unknown as D1Database, ADMIN)).length, 40);
+  assert.ok(String(sent.at(-1)!.body.text).includes('Добавлено в наблюдение: 40'));
+  await handleWebhook(msg('/addlist\nTest Case 1'), env, NOW, fetcher);
+  assert.ok(String(sent.at(-1)!.body.text).includes('уже были: 1'));
+});

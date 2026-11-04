@@ -79,6 +79,15 @@ export async function clearState(db: D1Database, tid: number): Promise<void> {
 
 export interface ItemRow { id: number; market_hash_name: string; category: string; is_unique_priced: number; target_buy_kop?: number | null }
 
+/** Запрос «создать предмет, если его нет» — для пакетной записи. */
+export function upsertItemStmts(db: D1Database, name: string, now: number): D1PreparedStatement[] {
+  const p = parseMarketHashName(name);
+  return [db.prepare(
+    `INSERT OR IGNORE INTO items (market_hash_name, weapon, skin, category, wear, stattrak, souvenir, is_unique_priced, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(p.marketHashName, p.weapon, p.skin, p.category, p.wear, p.stattrak ? 1 : 0, p.souvenir ? 1 : 0, p.uniquePriced ? 1 : 0, now)];
+}
+
 export async function upsertItem(db: D1Database, name: string, now: number): Promise<ItemRow> {
   const p = parseMarketHashName(name);
   await db.prepare(

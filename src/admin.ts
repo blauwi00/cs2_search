@@ -63,13 +63,14 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
     }
     const hook = `${url.origin}/telegram`;
     try {
-      await tg.call('setWebhook', { url: hook, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+      await tg.call('setWebhook', { url: hook, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query', 'pre_checkout_query'], drop_pending_updates: true });
       lines.push(`Webhook: установлен на ${hook}`);
       const common = [
         { command: 'start', description: 'Открыть приложение' }, { command: 'menu', description: 'Текстовое меню' }, { command: 'add', description: 'Добавить предмет' },
         { command: 'deals', description: 'Выгодные сделки' }, { command: 'watch', description: 'Мониторинг цен' },
         { command: 'currency', description: 'Валюта цен' }, { command: 'settings', description: 'Настройки' },
-        { command: 'privacy', description: 'Конфиденциальность' }, { command: 'terms', description: 'Условия и риски' },
+        { command: 'privacy', description: 'Конфиденциальность' }, { command: 'donate', description: 'Поддержать звёздами' },
+        { command: 'feedback', description: 'Сообщить об ошибке' }, { command: 'paysupport', description: 'Вопросы по оплате' }, { command: 'terms', description: 'Условия и риски' },
         { command: 'deletemydata', description: 'Удалить мои данные' },
       ];
       await tg.call('setMyCommands', { commands: common });

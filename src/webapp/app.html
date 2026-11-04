@@ -428,7 +428,9 @@ function recSheet(r) {
   h += '<div class="btns"><button class="btn" id="r-buy">🛒 Купить на ' + esc(r.buyName) + '</button>' + (r.sellAt !== r.buyAt ? '<button class="btn sec2" id="r-sell">' + esc(r.sellName) + '</button>' : '') + '</div>';
   h += '<button class="btn sec2" id="r-bought">✅ Я купил — записать в инвентарь</button>';
   h += '<button class="btn sec2" id="r-watch">👁 Следить за ценой</button>';
+  h += reportLink();
   sheet(h);
+  $('#rep').onclick = function () { reportSheet(r.name, 'рекомендация: ' + r.buyName + ' → ' + r.sellName + ', прибыль ' + money(r.profitKop, true)); };
   loadPrices(r.name);
   $('#r-buy').onclick = function () { goBuy({ name: r.name, where: r.buyName, priceKop: r.payKop, platform: { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other', url: r.buyUrl }); };
   if (r.sellAt !== r.buyAt) $('#r-sell').onclick = function () { openLink(r.sellUrl); };
@@ -636,7 +638,9 @@ function itemSheet(id, days) {
       h += '<div class="btns"><button class="btn" id="i-tg">Сохранить цель</button><button class="btn danger" id="i-del">Убрать</button></div>';
     } else h += '<button class="btn" id="i-add">＋ Добавить в наблюдение</button>';
     h += '<button class="btn sec2" id="i-buy">🎒 Записать покупку</button>';
+    h += reportLink();
     $('#sc').innerHTML = h;
+    $('#rep').onclick = function () { reportSheet(it.name, 'карточка предмета'); };
     loadPrices(it.name);
     Array.prototype.forEach.call(document.querySelectorAll('#dd button'), function (b) { b.onclick = function () { itemSheet(id, +b.getAttribute('data-d')); }; });
     $('#i-steam').onclick = function () { openLink(r.links.steam); };
@@ -991,14 +995,53 @@ function termsSheet() {
       secHtml(t.terms) + '<h2 style="margin-top:18px">🛡 Конфиденциальность</h2>' + secHtml(t.privacy);
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
+// ---------- Обратная связь и поддержка ----------
+function reportLink() { return '<div style="text-align:center;margin:14px 0 4px"><a id="rep" class="mut" style="font-size:14px;cursor:pointer">⚠️ Цена неверная? Сообщить об ошибке</a></div>'; }
+var REASONS = [['price', 'Цена неверная'], ['gone', 'Предмета уже нет / купили'], ['link', 'Ссылка не работает'], ['idea', 'Рекомендация странная'], ['other', 'Другое']];
+function reportSheet(name, context) {
+  var h = '<h2>Сообщить об ошибке</h2><div class="sub">' + (name ? esc(name) : 'Что-то работает не так') + '</div>';
+  h += '<div class="seg" id="rs" style="flex-wrap:wrap">' + REASONS.map(function (x, i) { return '<button data-r="' + x[0] + '" class="' + (i === 0 && name ? 'on' : '') + '">' + esc(x[1]) + '</button>'; }).join('') + '</div>';
+  h += '<label class="f"><span>Комментарий (необязательно)</span><textarea id="rc" rows="3" maxlength="500" placeholder="например: на сайте цена 2.10 $, а тут 1.80 $" style="width:100%;resize:vertical"></textarea></label>';
+  h += '<button class="btn" id="rsend">Отправить</button><div class="note">Сообщение увидит только владелец бота вместе с твоим Telegram ID — чтобы при необходимости ответить.</div>';
+  sheet(h);
+  var reason = name ? 'price' : null;
+  Array.prototype.forEach.call(document.querySelectorAll('#rs button'), function (b) {
+    b.onclick = function () { reason = b.getAttribute('data-r'); Array.prototype.forEach.call(document.querySelectorAll('#rs button'), function (x) { x.classList.toggle('on', x === b); }); };
+  });
+  $('#rsend').onclick = function () {
+    if (!reason) return toast('Выбери, что не так');
+    $('#rsend').disabled = true;
+    api('feedback', { method: 'POST', body: { item: name, reason: reason, comment: $('#rc').value, context: context } })
+      .then(function () { haptic('ok'); closeSheet(); toast('Спасибо! Передал владельцу'); })
+      .catch(function (e) { $('#rsend').disabled = false; toast(e.message); });
+  };
+}
+function donateSheet() {
+  var h = '<h2>💛 Поддержать Ценолова</h2><div class="sub">Бот бесплатный и работает круглосуточно. Если он помог — можно отправить звёзды Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.</div>';
+  h += '<div class="grid2" id="dons">' + [25, 50, 100, 250, 500].map(function (n) { return '<button class="btn sec2" data-n="' + n + '" style="margin:0">⭐ ' + n + '</button>'; }).join('') + '</div>';
+  h += '<div class="note">Оплата проходит внутри Telegram. Вопросы по оплате — команда /paysupport в боте.</div>';
+  sheet(h);
+  Array.prototype.forEach.call(document.querySelectorAll('#dons button'), function (b) {
+    b.onclick = function () {
+      var n = +b.getAttribute('data-n');
+      api('donate', { method: 'POST', body: { stars: n } }).then(function (r) {
+        if (tg && tg.openInvoice) tg.openInvoice(r.link, function (st) { if (st === 'paid') { haptic('ok'); closeSheet(); toast('Спасибо за поддержку! 💛'); } });
+        else openLink(r.link);
+      }).catch(function (e) { toast(e.message); });
+    };
+  });
+}
 function more() {
   view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-don"><div class="ic">💛</div><div class="m"><div class="n">Поддержать проект</div><div class="d">Звёздами Telegram — добровольно, бот остаётся бесплатным</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
+  $('#m-don').onclick = donateSheet; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
   $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }

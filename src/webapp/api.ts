@@ -30,6 +30,8 @@ import { steamSellPrice } from '../core/sellprice.ts';
 import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '../core/terms.ts';
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
+import { TelegramClient } from '../telegram/api.ts';
+import { submitFeedback, donateInvoiceLink, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -625,6 +627,16 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (live?.price_kop) steam = { kop: live.price_kop, live: true }; else if (avgK) steam = { kop: avgK, live: false };
       }
       return json({ ok: true, at, sites: list, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
+    }
+    if (path === 'feedback' && method === 'POST') {
+      const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
+      const err = await submitFeedback(d, tg, Number(env.ADMIN_TELEGRAM_ID), tid, body, now);
+      return err ? bad(err) : json({ ok: true });
+    }
+    if (path === 'donate' && method === 'POST') {
+      const stars = Number(body.stars);
+      if (!DONATE_AMOUNTS.includes(stars)) return bad('bad_amount');
+      return json({ ok: true, link: await donateInvoiceLink(new TelegramClient(env.TELEGRAM_BOT_TOKEN), stars), amounts: DONATE_AMOUNTS });
     }
     if (path === 'privacy' && method === 'GET') {
       return json({ ok: true, ...PRIVACY_POINTS });

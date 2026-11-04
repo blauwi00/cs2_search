@@ -20,6 +20,7 @@ import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
 import { moneyResolver, guessCurrency, isCurrency, loadRates, availableCurrencies } from '../currency/display.ts';
 import { TERMS_VERSION, termsText, privacyPolicyText, termsPrompt, deleteUserStmts } from '../core/terms.ts';
+import { submitFeedback, donateInvoiceLink, parseDonatePayload, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
 export const MAX_UPDATE_BYTES = 64 * 1024;
@@ -36,9 +37,9 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
 }
 
 interface TgUser { is_bot?: boolean; id: number; language_code?: string }
-interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string }
+interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string; successful_payment?: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }
 interface TgCallback { id: string; from: TgUser; data?: string; message?: TgMessage }
-interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback }
+interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback; pre_checkout_query?: { id: string; from: TgUser; currency: string; total_amount: number; invoice_payload: string } }
 
 export async function handleWebhook(req: Request, env: Env, now: number, fetcher?: Fetcher, rawDb?: D1Database): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
@@ -52,6 +53,14 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   let update: TgUpdate;
   try { update = JSON.parse(body) as TgUpdate; } catch { return new Response('Bad Request', { status: 400 }); }
 
+  // Оплата звёздами: Telegram спрашивает подтверждение перед списанием — отвечаем сразу (иначе платёж отменится).
+  if (update.pre_checkout_query) {
+    const q = update.pre_checkout_query;
+    const ok = q.currency === 'XTR' && parseDonatePayload(q.invoice_payload) === q.total_amount;
+    await new TelegramClient(env.TELEGRAM_BOT_TOKEN, fetcher).call('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: q.id, ok: true }
+      : { pre_checkout_query_id: q.id, ok: false, error_message: 'Платёж не распознан, попробуй ещё раз из бота.' }).catch(() => undefined);
+    return new Response('ok');
+  }
   // Бот для всех. Работаем только в личном чате с ботом: chat.id личного чата совпадает с ID пользователя.
   const fromId = update.message?.from?.id ?? update.callback_query?.from?.id;
   const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id;
@@ -68,6 +77,7 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   try {
     await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
+    else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
   } catch (e) {
     await db.log(d, 'error', 'telegram', 'handler', (e as Error).message, now);
@@ -85,7 +95,7 @@ async function onText(text: string, h: H): Promise<void> {
   await db.ensureUser(h.d, h.uid, h.isAdmin, h.now);
   // Удаление данных и тексты условий доступны всегда; всё остальное — после принятия условий.
   if (cmd === '/deletemydata') return say(h, '🗑 Удалить всё, что бот знает о тебе? Настройки, список, покупки, привязка Steam и уведомления удалятся без возможности восстановления.', [[{ text: 'Да, удалить всё', callback_data: 'delme:yes' }], [{ text: 'Отмена', callback_data: 'delme:no' }]]);
-  if (cmd !== '/terms' && cmd !== '/privacy' && !(await termsAccepted(h))) return askTerms(h);
+  if (!['/terms', '/privacy', '/paysupport'].includes(cmd) && !(await termsAccepted(h))) return askTerms(h);
   switch (cmd) {
     case '/start': {
       await db.clearState(h.d, h.uid);
@@ -103,6 +113,14 @@ async function onText(text: string, h: H): Promise<void> {
     }
     case '/currency': case '/valuta': return currencyView(h);
     case '/privacy': return say(h, privacyPolicyText());
+    case '/donate': return donateView(h);
+    case '/paysupport': return say(h, '💛 Пожертвования добровольные и ничего не покупают. Если звёзды списались по ошибке — напиши сюда, в этот чат, командой /feedback и опиши ситуацию, владелец бота ответит. Возврат возможен в течение 7 дней.');
+    case '/feedback': {
+      const msg = text.trim().replace(/^\/feedback(@\w+)?/i, '').trim();
+      if (!msg) return say(h, 'Напиши после команды, что не так: <code>/feedback цена Revolution Case на Skinport не совпадает</code>');
+      const err = await submitFeedback(h.d, h.tg, Number(h.env.ADMIN_TELEGRAM_ID), h.uid, { reason: 'other', comment: msg, context: 'из чата бота' }, h.now);
+      return say(h, err ? `❌ ${err}` : '✅ Спасибо! Передал владельцу бота.');
+    }
     case '/terms': return say(h, termsText());
     case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
@@ -228,6 +246,12 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
+  if (a === 'don' && b) {
+    const stars = Number(b);
+    if (!DONATE_AMOUNTS.includes(stars)) return;
+    const link = await donateInvoiceLink(h.tg, stars);
+    return say(h, `Спасибо! Нажми, чтобы отправить <b>${stars} ⭐</b>:`, [[{ text: `⭐ Отправить ${stars}`, url: link }]]);
+  }
   if (a === 'nr' && b === 'off') {
     await db.setSetting(h.d, h.uid, 'notify_recs', '0', h.now);
     return say(h, '🔕 Горячие рекомендации больше не приходят. Включить снова: приложение → Ещё → Настройки → «Горячие рекомендации по всему рынку».');
@@ -359,4 +383,20 @@ async function termsAccepted(h: H): Promise<boolean> {
 }
 function askTerms(h: H): Promise<void> {
   return say(h, termsPrompt(), TERMS_KB);
+}
+
+async function donateView(h: H): Promise<void> {
+  return say(h, [
+    '💛 <b>Поддержать Ценолова</b>', '',
+    'Бот бесплатный и работает 24/7. Если он тебе помог — можно поддержать звёздами Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.',
+  ].join('\n'), [DONATE_AMOUNTS.slice(0, 3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` })), DONATE_AMOUNTS.slice(3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` }))]);
+}
+
+async function onPaid(p: NonNullable<TgMessage['successful_payment']>, h: H): Promise<void> {
+  const stars = parseDonatePayload(p.invoice_payload);
+  if (p.currency !== 'XTR' || !stars) return;
+  const r = await h.d.prepare('INSERT OR IGNORE INTO donations (telegram_id, stars, charge_id, created_at) VALUES (?, ?, ?, ?)').bind(h.uid, p.total_amount, p.telegram_payment_charge_id, h.now).run();
+  if (!(r.meta?.changes ?? 0)) return;
+  await say(h, `💛 Спасибо за поддержку — <b>${p.total_amount} ⭐</b>! Это правда помогает развивать бота.`);
+  await h.tg.sendMessage(Number(h.env.ADMIN_TELEGRAM_ID), `💛 Пожертвование: <b>${p.total_amount} ⭐</b> от <code>${h.uid}</code>`).catch(() => undefined);
 }

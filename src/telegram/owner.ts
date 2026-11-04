@@ -101,12 +101,16 @@ export async function statsCommand(h: H): Promise<void> {
   ]);
   const user = await botUsername(h.d, h.tg);
   const copies = await listCopies(h.d);
+  const don = await h.d.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS s, COALESCE(SUM(CASE WHEN created_at >= ? THEN stars END), 0) AS s30 FROM donations').bind(h.now - 30 * 86400).first<{ n: number; s: number; s30: number }>();
+  const fb = await h.d.prepare('SELECT COUNT(*) AS n FROM feedback WHERE created_at >= ?').bind(h.now - 7 * 86400).first<{ n: number }>();
   return say(h, [
     '<b>📊 Статистика бота</b>', '',
     `Пользователей: <b>${tot?.n ?? 0}</b> (за сутки +${tot?.d1 ?? 0}, за неделю +${tot?.d7 ?? 0})`,
     `Подключили Steam: ${steam?.n ?? 0}`,
     `Со списком наблюдения: ${watch?.u ?? 0}, разных предметов: ${watch?.i ?? 0}`,
-    `Канал: ${ch ? esc(ch) : 'не подключён'}`, '',
+    `Канал: ${ch ? esc(ch) : 'не подключён'}`,
+    `💛 Пожертвования: <b>${don?.s ?? 0} ⭐</b> (${don?.n ?? 0} шт., за 30 дней ${don?.s30 ?? 0} ⭐)`,
+    `📮 Сообщений об ошибках за неделю: ${fb?.n ?? 0}`, '',
     '<b>Откуда пришли</b> (всего / за неделю):',
     ...refs.results.map((r) => `• ${esc(r.ref)}: ${r.n} / ${r.d7 ?? 0}`), '',
     'Ссылки с меткой для рекламы:',

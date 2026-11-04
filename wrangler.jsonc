@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cs2-market-bot",
+  "name": "cs2-search",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   // Публичный адрес *.workers.dev нужен для webhook Telegram и страниц /admin/*.

@@ -1,0 +1,24 @@
+name: video-voice
+# Озвучка для роликов TikTok: запускается вручную, результат — артефакт (mp3 + тайминги слов + картинки).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  voice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/video
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install edge-tts==7.0.2
+      - run: python .github/video/voice.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice
+          path: out/
+          retention-days: 7

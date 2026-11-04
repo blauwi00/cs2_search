@@ -19,12 +19,13 @@ import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
+import { parseUsdRates } from './currency/display.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
 
 interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: unknown; error?: unknown }
-interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown }
+interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown }
 
 export async function handleIngest(req: Request, env: Env, now: number, rawDb?: D1Database): Promise<Response> {
   if (!env.INGEST_SECRET || !safeEqual(req.headers.get('X-Ingest-Secret')?.trim(), env.INGEST_SECRET.trim())) return json({ ok: false, error: 'forbidden' }, 403);
@@ -275,6 +276,11 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         .map((r) => ({ name: r.name as string, d1: c(r.d1), d7: c(r.d7), d30: c(r.d30) }));
       if (list.length) await setMetaStmt(d, 'cases_stats', JSON.stringify(list)).run();
       result.stored = list.length;
+    } else if (body.kind === 'fx_usd') {
+      // Курсы к доллару из открытого файла CSGO Trader — для валют, которых нет у НБУ (RUB, BRL, ARS).
+      const r = parseUsdRates(body.rates);
+      if (Object.keys(r).length >= 5) await setMetaStmt(d, 'fx_usd', JSON.stringify(r)).run();
+      result.stored = Object.keys(r).length;
     } else if (body.kind === 'news') {
       // Объявления разработчиков CS2 из Steam. Первый приём — только запоминаем (не публикуем старые новости разом).
       const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 10) as Record<string, unknown>[];

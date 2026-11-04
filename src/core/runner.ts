@@ -8,6 +8,7 @@ import * as P from './pipeline.ts';
 import { SYSTEM_SETTINGS } from './audience.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import type { Fetcher } from '../utils/http.ts';
+import { moneyResolver } from '../currency/display.ts';
 
 /** Порядок важен: при нехватке лимита раньше выполняются верхние задачи. */
 export const JOBS: (JobDef & { minD1: number })[] = [
@@ -36,6 +37,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   const now = opts.now;
   const adminId = Number(env.ADMIN_TELEGRAM_ID);
   const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN, opts.fetcher);
+  tg.money = moneyResolver(d);
   const result: CycleResult = { ran: [], skipped: [], errors: [], budget, disabled: [] };
 
   await ensureJobs(d, JOBS, now);

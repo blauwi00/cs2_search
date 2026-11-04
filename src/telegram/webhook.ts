@@ -11,13 +11,14 @@ import { metaFor, ADMIN_ONLY, parseSettingInput, nextChoice } from './settings.t
 import type { SearchHit } from '../api/steam.ts';
 import { searchCatalog, catalogInfo } from '../catalog.ts';
 import { SourceError } from '../types/market.ts';
-import { parseUahInput, formatUah } from '../utils/money.ts';
+import { parseMoneyInput, formatUah } from '../utils/money.ts';
 import { runDemo } from '../demo.ts';
 import type { Fetcher } from '../utils/http.ts';
-import { say, show, type H } from './context.ts';
+import { say, show, hcur, inCur, type H } from './context.ts';
 import * as INV from './inventory.ts';
 import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
+import { moneyResolver, guessCurrency, isCurrency, loadRates, availableCurrencies } from '../currency/display.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
 export const MAX_UPDATE_BYTES = 64 * 1024;
@@ -33,7 +34,7 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
   return diff === 0;
 }
 
-interface TgUser { is_bot?: boolean; id: number }
+interface TgUser { is_bot?: boolean; id: number; language_code?: string }
 interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string }
 interface TgCallback { id: string; from: TgUser; data?: string; message?: TgMessage }
 interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback }
@@ -61,7 +62,10 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   const budget = newBudget();
   const d = budgetedDb(rawDb ?? env.DB, budget);
   const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN, fetcher);
+  tg.money = moneyResolver(d);
+  const lang = update.message?.from?.language_code ?? update.callback_query?.from?.language_code;
   try {
+    await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
   } catch (e) {
@@ -87,11 +91,13 @@ async function onText(text: string, h: H): Promise<void> {
       // Кнопка приложения у поля ввода; повторная установка безопасна.
       try { await h.tg.setMenuButton(h.uid, `${h.origin}/app`); } catch { /* не критично */ }
       // Главное — приложение. Текстовое меню осталось за второй кнопкой и командой /menu.
-      return say(h, '<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь в гривнах.\nЖми кнопку 👇', [
+      const cur = await hcur(h);
+      return say(h, `<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь.\nВалюта: <b>${cur.code}</b> — сменить: /currency\nЖми кнопку 👇`, [
         [{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }],
         [{ text: '☰ Текстовое меню', callback_data: 'm' }],
       ]);
     }
+    case '/currency': case '/valuta': return currencyView(h);
     case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
     case '/stats': return statsCommand(h);
@@ -125,7 +131,7 @@ async function onText(text: string, h: H): Promise<void> {
   if (st.awaiting.startsWith('set:')) {
     const m = metaFor(st.awaiting.slice(4));
     if (!m || (!h.isAdmin && ADMIN_ONLY.includes(m.key))) return;
-    const r = parseSettingInput(m, t);
+    const r = parseSettingInput(m, t, await hcur(h));
     if (!r.ok) return say(h, `❌ ${r.error}`);
     await db.setSetting(h.d, h.uid, m.key, r.value, h.now);
     await db.clearState(h.d, h.uid);
@@ -133,8 +139,8 @@ async function onText(text: string, h: H): Promise<void> {
   }
   if (st.awaiting.startsWith('target:')) {
     const id = Number(st.awaiting.slice(7));
-    const kop = parseUahInput(t);
-    if (kop === null || kop <= 0) return say(h, '❌ Введи цену в гривнах, например 120 или 120,50');
+    const kop = parseMoneyInput(t, await hcur(h));
+    if (kop === null || kop <= 0) return say(h, `❌ Введи цену ${await inCur(h)}, например 120 или 120,50`);
     await db.setWatchTarget(h.d, h.uid, id, kop);
     await db.clearState(h.d, h.uid);
     await h.tg.sendMessage(h.uid, `🎯 Целевая цена ${formatUah(kop)} сохранена. Уведомлю, когда самое дешёвое объявление в Steam будет не дороже.`);
@@ -254,13 +260,20 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (a === 'wr' && Number.isInteger(idArg)) { await db.removeWatch(h.d, h.uid, idArg); return show(h, await M.watchView(h.d, h.uid), msgId); }
   if (a === 'wt' && Number.isInteger(idArg)) {
     await db.setState(h.d, h.uid, `target:${idArg}`, null, h.now);
-    return say(h, 'Введи целевую цену покупки в Steam в гривнах (например 150):');
+    return say(h, `Введи целевую цену покупки в Steam ${await inCur(h)}, например 150:`);
   }
   if (a === 'wtc' && Number.isInteger(idArg)) { await db.setWatchTarget(h.d, h.uid, idArg, null); return show(h, await M.watchCard(h.d, h.uid, idArg, h.now), msgId); }
   if (a === 'd' && Number.isInteger(idArg)) return show(h, await M.dealCard(h.d, idArg, h.now));
   if (a === 'dh' && Number.isInteger(idArg)) {
     await hideSignal(h.d, h.uid, idArg, h.now);
     return say(h, 'Скрыто. Этот сигнал больше не будет приходить.');
+  }
+  if (a === 'cur') {
+    if (b && isCurrency(b)) {
+      await db.setSetting(h.d, h.uid, 'currency', b, h.now);
+      h.tg.money = moneyResolver(h.d);
+    }
+    return currencyView(h, msgId, !!b);
   }
   if (a === 's' && b) {
     const m = metaFor(b);
@@ -294,3 +307,20 @@ const HELP = [
   '/trades — история сделок',
   '/demo — тестовое уведомление на тестовых данных',
 ].join('\n');
+
+/** Выбор валюты: кнопки по 4 в ряд (только валюты, для которых есть курс). */
+async function currencyView(h: H, msgId?: number, saved = false): Promise<void> {
+  const [rates, cur] = await Promise.all([loadRates(h.d), hcur(h)]);
+  const list = availableCurrencies(rates);
+  const kb: Keyboard = [];
+  for (let i = 0; i < list.length; i += 4) {
+    kb.push(list.slice(i, i + 4).map((c) => ({ text: `${c.code === cur.code ? '✅ ' : ''}${c.code} ${c.sign}`, callback_data: `cur:${c.code}` })));
+  }
+  kb.push([{ text: '⬅️ Меню', callback_data: 'm' }]);
+  const text = [
+    saved ? `✅ Валюта: <b>${cur.code}</b>` : `<b>💱 Валюта</b>\nСейчас: <b>${cur.code} (${cur.sign})</b>`, '',
+    'В ней бот показывает все цены, уведомления и приложение. Суммы в настройках тоже вводишь в ней.',
+    '<i>Площадки продают в своих валютах, бот пересчитывает по курсу НБУ (для RUB, BRL, ARS — через доллар). Цена в Steam в твоём кошельке может немного отличаться: у Steam свои курсы.</i>',
+  ].join('\n');
+  return show(h, { text, keyboard: kb }, msgId);
+}

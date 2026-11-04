@@ -43,7 +43,7 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
       '• 15:00 — что растёт в цене',
       '• 20:00 — какие кейсы дорожают и дешевеют',
       '• по воскресеньям — итог недели, а ещё обновления CS2, как только выходят', '',
-      'Цены в гривнах. Личные подсказки «купить / продать / держать», свой инвентарь Steam и уведомления — в боте 👇',
+      'Цены в долларах, в боте — в твоей валюте. Личные подсказки «купить / продать / держать», свой инвентарь Steam и уведомления — в боте 👇',
     ].join('\n'), botButton(user, '🤖 Открыть бота'));
     await h.d.batch([setMetaStmt(h.d, 'channel_id', String(chat.id)), setMetaStmt(h.d, 'channel_title', chat.title ?? chat.username ?? String(chat.id))]);
     return say(h, `✅ Подключено: <b>${esc(chat.title ?? String(chat.id))}</b>. Приветственный пост опубликован. Дальше — по расписанию.`);

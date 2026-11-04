@@ -4,6 +4,7 @@ import { buildRecs, marketSides, MARKETS, type Market, type ScanEntry } from './
 import type { FxRate } from '../currency/nbu.ts';
 import type { Currency } from '../types/market.ts';
 import { warsawDate } from '../utils/time.ts';
+import { formatUah, formatSignedUah } from '../utils/money.ts';
 
 export const IDEA_SETTINGS = { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 };
 export const IDEAS_PER_DAY = 4;
@@ -55,8 +56,8 @@ export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry
   return out;
 }
 
-const fmt = (k: number | null) => (k === null ? '—' : `${(k / 100).toLocaleString('ru-RU', { minimumFractionDigits: Math.abs(k) >= 100000 ? 0 : 2, maximumFractionDigits: Math.abs(k) >= 100000 ? 0 : 2 })} ₴`);
-const sign = (k: number) => `${k >= 0 ? '+' : '−'}${fmt(Math.abs(k))}`;
+const fmt = (k: number | null) => formatUah(k);
+const sign = (k: number) => (k > 0 ? formatSignedUah(k) : formatUah(k));
 const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -77,7 +78,7 @@ export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): s
   const lines = [`💡 <b>Идеи дня · ${date}</b>`, ''];
   if (y) lines.push(y, '');
   if (!rows.length) {
-    lines.push('Сегодня сделок, где после всех комиссий остаётся хотя бы 20 ₴ и 8%, нет — бот ничего не придумывает, когда выгоды нет.');
+    lines.push(`Сегодня сделок, где после всех комиссий остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%, нет — бот ничего не придумывает, когда выгоды нет.`);
     return lines.join('\n');
   }
   rows.forEach((r, i) => {

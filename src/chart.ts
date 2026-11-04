@@ -4,7 +4,7 @@
 import type { Env } from './env.ts';
 import * as db from './storage/db.ts';
 import { esc } from './telegram/api.ts';
-import { formatUah } from './utils/money.ts';
+import { fmtMoney, UAH_CUR } from './utils/money.ts';
 
 const enc = new TextEncoder();
 
@@ -73,7 +73,7 @@ export function renderChart(title: string, series: Series[], fromT: number, toT:
   }
   const legend = series.map((s) => {
     const last = [...s.points].reverse().find((p) => p.v !== null);
-    return `<div><span style="display:inline-block;width:10px;height:10px;background:${s.color};border-radius:2px"></span> ${esc(s.label)}: ${last ? formatUah(last.v) : 'нет данных'}</div>`;
+    return `<div><span style="display:inline-block;width:10px;height:10px;background:${s.color};border-radius:2px"></span> ${esc(s.label)}: ${last ? fmtMoney(last.v, UAH_CUR) : 'нет данных'}</div>`;
   }).join('');
   const note = spanDays < requestedDays - 0.5
     ? `Данных за ${spanDays.toFixed(1).replace('.', ',')} дн из запрошенных ${requestedDays} — мониторинг идёт меньше этого срока.`

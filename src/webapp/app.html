@@ -166,13 +166,22 @@ var view = $('#view');
 var state = { tab: 'home', ideas: 'recs', mkAct: 'all', edit: false, sel: {}, dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function uah(k, sign) {
+// Все суммы приходят в копейках гривны; показываем и вводим в валюте человека (CUR — из ответа сервера).
+var CUR = { code: 'UAH', sign: '₴', per: 1 };
+var NO_CENTS = { JPY: 1, KRW: 1, HUF: 1, KZT: 1, ARS: 1 };
+function money(k, sign, short) {
   if (k == null || isNaN(k)) return '—';
-  var neg = k < 0, a = Math.abs(Math.round(k)), w = Math.floor(a / 100), f = String(a % 100).padStart(2, '0');
-  var s = String(w).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ',' + f + ' ₴';
-  return (neg ? '−' : (sign && k > 0 ? '+' : '')) + s;
+  var v = k / 100 / CUR.per, a = Math.abs(v);
+  var dec = (short && a >= 1000) || a >= 1000 || NO_CENTS[CUR.code] ? 0 : 2;
+  var str = a.toFixed(dec); if (dec === 0 && a > 0 && +str === 0) str = a.toFixed(2);
+  var p = str.split('.');
+  var body = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (p[1] ? ',' + p[1] : '');
+  return (v < 0 && +str !== 0 ? '−' : (sign && v > 0 ? '+' : '')) + body + ' ' + CUR.sign;
 }
-function uahShort(k) { if (k == null) return '—'; var v = k / 100; return (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : v.toFixed(2).replace('.', ',')) + ' ₴'; }
+function uah(k, sign) { return money(k, sign, false); }
+function uahShort(k) { return money(k, false, true); }
+/** Копейки → число в валюте для поля ввода ("12,5"). */
+function units(k) { return k == null ? '' : String(+(k / 100 / CUR.per).toFixed(2)).replace('.', ','); }
 function pct(bp, sign) { if (bp == null) return '—'; var v = bp / 100; return (v > 0 && sign !== false ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; }
 function cls(v) { return v == null ? 'mut' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'mut'; }
 function ago(t) { if (!t) return 'нет данных'; var d = Math.max(0, Date.now() / 1000 - t); if (d < 60) return 'только что'; if (d < 3600) return Math.floor(d / 60) + ' мин назад'; if (d < 86400) return Math.floor(d / 3600) + ' ч назад'; return Math.floor(d / 86400) + ' дн назад'; }
@@ -206,6 +215,7 @@ function api(path, opt) {
     return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }).then(function (j) {
       if (r.status === 403) throw new Error('Нет доступа. Открой приложение кнопкой в своём боте.');
       if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      if (j.cur && j.cur.per > 0) CUR = j.cur;
       return j;
     });
   });
@@ -573,7 +583,7 @@ function itemSheet(id, days) {
       kv('Правило сработало бы', bt.signals + ' раз') + kv('Выгода сохранилась через 24 ч', bt.held) + kv('Стала убытком', bt.reversed) + kv('Не хватило данных', bt.noData)) + '</div>';
     h += '<div class="btns"><button class="btn sec2" id="i-steam">Steam Market</button>' + (r.links.skinport ? '<button class="btn sec2" id="i-sp">Skinport</button>' : '') + '</div>';
     if (r.watchId) {
-      h += '<label class="f"><span>🎯 Уведомить, когда в Steam будет не дороже (₴)</span><input id="tg" inputmode="decimal" placeholder="например 120" value="' + (r.targetKop ? (r.targetKop / 100).toString().replace('.', ',') : '') + '"></label>';
+      h += '<label class="f"><span>🎯 Уведомить, когда в Steam будет не дороже (' + CUR.sign + ')</span><input id="tg" inputmode="decimal" placeholder="например 120" value="' + (r.targetKop ? units(r.targetKop) : '') + '"></label>';
       h += '<div class="btns"><button class="btn" id="i-tg">Сохранить цель</button><button class="btn danger" id="i-del">Убрать</button></div>';
     } else h += '<button class="btn" id="i-add">＋ Добавить в наблюдение</button>';
     h += '<button class="btn sec2" id="i-buy">🎒 Записать покупку</button>';
@@ -584,7 +594,7 @@ function itemSheet(id, days) {
     $('#i-buy').onclick = function () { buyForm({ name: it.name }); };
     if (r.watchId) {
       $('#i-tg').onclick = function () {
-        var v = $('#tg').value.trim(); var kop = v ? Math.round(parseFloat(v.replace(/\s/g, '').replace(',', '.')) * 100) : null;
+        var v = $('#tg').value.trim(); var kop = v ? toKop(v) : null;
         if (v && !(kop > 0)) return toast('Введи цену, например 120');
         api('watch/' + r.watchId + '/target', { method: 'POST', body: { kop: kop } }).then(function () { haptic('ok'); toast(kop ? 'Цель сохранена' : 'Цель убрана'); }).catch(function (e) { toast(e.message); });
       };
@@ -759,13 +769,13 @@ function platformOptions(sel, noGift) {
   return p.filter(function (x) { return !(noGift && x.v === 'gift'); }).map(function (x) { return '<option value="' + x.v + '"' + (x.v === sel ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
 }
 function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-function toKop(v) { v = String(v || '').replace(/\s/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100); }
+function toKop(v) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * CUR.per); }
 function buyForm(pre) {
   var h = '<h2>Записать покупку</h2><div class="sub">Бот ничего не покупает сам — это учёт твоих реальных сделок.</div>';
   h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Начни вводить название…" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';
-  h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт., ₴</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? (pre.priceKop / 100).toFixed(2).replace('.', ',') : '') + '" placeholder="0 — бесплатно"></label></div>';
+  h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт., ' + CUR.sign + '</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? units(pre.priceKop) : '') + '" placeholder="0 — бесплатно"></label></div>';
   h += '<label class="f"><span>Где куплено</span><select id="bpl">' + platformOptions(pre.platform || 'skinport') + '</select></label>';
-  h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего, ₴</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
+  h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего, ' + CUR.sign + '</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
   h += '<button class="btn" id="bsave">Сохранить</button>';
   sheet(h);
   var name = pre.name || null;
@@ -786,7 +796,7 @@ function lotSheet(l) {
     kv('Skinport, объявление', l.externalUnitKop == null ? '—' : uah(l.externalUnitKop) + ' / шт.') +
     kv('Оценочная разница', '<span class="' + cls(l.unrealizedKop) + '">' + uah(l.unrealizedKop, true) + (l.roiBp != null ? ' (' + pct(l.roiBp) + ')' : '') + '</span>') + '</div>';
   h += '<div class="note">Оценка — не прибыль: прибыль появляется только после продажи.</div>';
-  h += '<label class="f"><span>🎯 Цель продажи в Steam за 1 шт., ₴</span><input id="ltg" inputmode="decimal" value="' + (l.targetKop ? (l.targetKop / 100).toString().replace('.', ',') : '') + '" placeholder="уведомлю, когда цена дойдёт"></label>';
+  h += '<label class="f"><span>🎯 Цель продажи в Steam за 1 шт., ' + CUR.sign + '</span><input id="ltg" inputmode="decimal" value="' + (l.targetKop ? units(l.targetKop) : '') + '" placeholder="уведомлю, когда цена дойдёт"></label>';
   h += '<button class="btn sec2" id="lsavet">Сохранить цель</button>';
   h += '<button class="btn" id="lsell">💸 Я продал</button>';
   h += '<div class="btns"><button class="btn sec2" id="lchart">📈 График</button>' + (l.sold ? '' : '<button class="btn danger" id="ldel">Удалить запись</button>') + '</div>';
@@ -804,9 +814,9 @@ function lotSheet(l) {
 }
 function sellForm(l) {
   var h = '<h2>Продажа</h2><div class="sub">' + esc(l.name) + ' · осталось ' + l.openQty + ' шт.</div>';
-  h += '<div class="grid2"><label class="f" style="margin:0"><span>Количество</span><input id="sq" inputmode="numeric" value="' + (l.openQty === 1 ? 1 : '') + '"></label><label class="f" style="margin:0"><span>Цена покупателя, ₴/шт.</span><input id="sp" inputmode="decimal"></label></div>';
+  h += '<div class="grid2"><label class="f" style="margin:0"><span>Количество</span><input id="sq" inputmode="numeric" value="' + (l.openQty === 1 ? 1 : '') + '"></label><label class="f" style="margin:0"><span>Цена покупателя, ' + CUR.sign + '/шт.</span><input id="sp" inputmode="decimal"></label></div>';
   h += '<label class="f"><span>Где продал</span><select id="spl">' + platformOptions('steam', true) + '</select></label>';
-  h += '<label class="f"><span>Получено всего после комиссий, ₴</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
+  h += '<label class="f"><span>Получено всего после комиссий, ' + CUR.sign + '</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
   h += '<label class="f"><span>Дата</span><input id="sd" type="date" value="' + today() + '" max="' + today() + '"></label>';
   h += '<div class="note" id="shint"></div><button class="btn" id="ssave">Записать продажу</button>';
   sheet(h);
@@ -850,16 +860,20 @@ function more() {
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, идеи, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
-    '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Все суммы — в гривне по курсу НБУ.</div>';
+    '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
   $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }
 function settings() {
   sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   api('settings').then(function (r) {
-    var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в гривнах.</div>';
+    var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в ' + esc(CUR.code) + '.</div>';
     var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
     var by = {}; r.settings.forEach(function (s) { by[s.key] = s; });
+    if (r.currencies && r.currencies.length) {
+      h += '<div class="sec">Валюта</div><div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Показывать цены в<div class="mut" style="font-size:12px">Пересчёт по курсу НБУ (RUB, BRL, ARS — через доллар). В Steam цена в твоём кошельке может немного отличаться.</div></span><select id="curSel" style="width:auto;max-width:46%;padding:7px 10px">' +
+        r.currencies.map(function (c) { return '<option value="' + c.code + '"' + (c.code === CUR.code ? ' selected' : '') + '>' + esc(c.code + ' ' + c.sign + ' · ' + c.name) + '</option>'; }).join('') + '</select></div></div>';
+    }
     groups.forEach(function (g) {
       h += '<div class="sec">' + g[0] + '</div><div class="card" style="padding:4px 14px">';
       g[1].forEach(function (k) {
@@ -867,13 +881,18 @@ function settings() {
         if (s.kind === 'toggle') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><label class="sw"><input type="checkbox" data-k="' + k + '"' + (s.value === '1' ? ' checked' : '') + '><b></b></label></div>';
         else if (s.kind === 'choice') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><select data-k="' + k + '" style="width:auto;padding:7px 10px">' + s.choices.map(function (c) { return '<option value="' + c.v + '"' + (c.v === s.value ? ' selected' : '') + '>' + esc(c.t) + '</option>'; }).join('') + '</select></div>';
         else {
-          var raw = s.kind === 'uah' ? (Number(s.value) / 100).toString().replace('.', ',') : s.kind === 'percent' ? (Number(s.value) / 100).toString().replace('.', ',') : s.value;
+          var raw = s.kind === 'uah' ? units(Number(s.value)) : s.kind === 'percent' ? (Number(s.value) / 100).toString().replace('.', ',') : s.value;
           h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + (s.hint ? '<div class="mut" style="font-size:12px">' + esc(s.hint) + '</div>' : '') + '</span><input data-k="' + k + '" inputmode="decimal" value="' + esc(raw) + '" style="width:96px;text-align:right;padding:8px 10px">' + '</div>';
         }
       });
       h += '</div>';
     });
     $('#sc').innerHTML = h;
+    if ($('#curSel')) $('#curSel').onchange = function () {
+      api('settings', { method: 'POST', body: { key: 'currency', value: $('#curSel').value } }).then(function () {
+        haptic('ok'); toast('Валюта: ' + CUR.code); state.cache = {}; go(state.tab); settings();
+      }).catch(function (e) { toast(e.message); });
+    };
     Array.prototype.forEach.call($('#sc').querySelectorAll('[data-k]'), function (el) {
       var k = el.getAttribute('data-k');
       var save = function () {

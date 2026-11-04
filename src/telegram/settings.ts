@@ -1,5 +1,5 @@
 import type { SettingKey, Settings } from '../storage/db.ts';
-import { formatUah, parseUahInput } from '../utils/money.ts';
+import { formatUah, parseMoneyInput, UAH_CUR, type Cur } from '../utils/money.ts';
 
 export type SettingKind = 'uah' | 'percent' | 'hour' | 'int' | 'toggle' | 'choice';
 
@@ -54,11 +54,11 @@ export function displayValue(m: SettingMeta, s: Settings): string {
 }
 
 /** Проверяет ввод пользователя. Возвращает значение для хранения или текст ошибки. */
-export function parseSettingInput(m: SettingMeta, text: string): { ok: true; value: string } | { ok: false; error: string } {
+export function parseSettingInput(m: SettingMeta, text: string, cur: Cur = UAH_CUR): { ok: true; value: string } | { ok: false; error: string } {
   const t = text.trim();
   if (m.kind === 'uah') {
-    const kop = parseUahInput(t);
-    return kop === null ? { ok: false, error: 'Введи сумму в гривнах, например 250 или 250,50' } : { ok: true, value: String(kop) };
+    const kop = parseMoneyInput(t, cur);
+    return kop === null ? { ok: false, error: `Введи сумму в ${cur.code}, например 250 или 250,50` } : { ok: true, value: String(kop) };
   }
   if (m.kind === 'percent') {
     const n = Number(t.replace('%', '').replace(',', '.'));

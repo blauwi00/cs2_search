@@ -8,7 +8,7 @@ import { computeSteamArbitrage, breakEvenBuyerPrice, steamSellReference } from '
 import { classifyLiquidity } from '../src/core/liquidity.ts';
 import { scoreArbitrage, type ScoringContext } from '../src/core/scoring.ts';
 import { detectChanges } from '../src/core/analyzer.ts';
-import { formatUah, parseUahInput, parseSteamPriceString, decimalToMinor } from '../src/utils/money.ts';
+import { formatUah, parseUahInput, parseSteamPriceString, decimalToMinor, fmtMoney, renderMoney, parseMoneyInput, UAH_CUR } from '../src/utils/money.ts';
 import { fixtureJson } from './helpers.ts';
 
 // 1. Корректное сопоставление предметов
@@ -105,8 +105,15 @@ test('9: отрицательный спред не даёт сигнала', ()
 
 // 10. Округление
 test('10: суммы форматируются и разбираются в копейках без ошибок float', () => {
-  assert.equal(formatUah(155250), '1 552,50 грн');
-  assert.equal(formatUah(-5), '−0,05 грн');
+  assert.equal(formatUah(155250), '⟦155250⟧', 'в тексте — метка, валюта подставляется при отправке');
+  assert.equal(fmtMoney(155250, UAH_CUR), '1 553 ₴');
+  assert.equal(fmtMoney(38250, UAH_CUR), '382,50 ₴');
+  assert.equal(fmtMoney(-5, UAH_CUR), '−0,05 ₴');
+  const usd = { code: 'USD', sign: '$', per: 40 };
+  assert.equal(renderMoney('купи за ⟦40000⟧, прибыль ⟦+8000⟧', usd), 'купи за 10,00 $, прибыль +2,00 $');
+  assert.equal(fmtMoney(4_000_000, usd), '1 000 $');
+  assert.equal(fmtMoney(100, { code: 'KZT', sign: '₸', per: 0.08 }), '13 ₸');
+  assert.equal(parseMoneyInput('12,50 $', usd), 50000, '12,50 $ × 40 = 500 ₴');
   assert.equal(parseUahInput('1 500,5'), 150050);
   assert.equal(parseUahInput('abc'), null);
   assert.equal(parseSteamPriceString('1 234,56₴'), 123456);

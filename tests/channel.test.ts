@@ -8,6 +8,7 @@ import { handleWebhook } from '../src/telegram/webhook.ts';
 import { handleIngest } from '../src/ingest.ts';
 import * as db from '../src/storage/db.ts';
 import type { ScanEntry } from '../src/core/recs.ts';
+import { renderMoney, UAH_CUR } from '../src/utils/money.ts';
 
 const AT10 = Date.parse('2026-11-04T09:05:00Z') / 1000; // 10:05 по Варшаве
 const EUR = { base: 'EUR' as const, rateMicro: 45_000_000, rateDate: '2026-11-04', source: 'nbu' };
@@ -17,7 +18,7 @@ const deal: ScanEntry = { name: 'Revolution Case', offers: [{ m: 'skinport', cur
 const kase = (n: string, d1: number, d30: number): ScanEntry => ({ name: n, offers: [], s7: null, s30: null, steam: null, sa: { d1, d7: d1, d30, d90: d30 } });
 
 test('посты: «Идеи дня» с полной цепочкой и дисклеймером; пусто — поста нет', () => {
-  const p = buildPost('ideas', [deal], FX, AT10)!;
+  const p = renderMoney(buildPost('ideas', [deal], FX, AT10)!, UAH_CUR);
   assert.match(p, /Идеи дня · 04\.11/);
   assert.match(p, /Купи на Skinport за 450,00 ₴ → продай на Skinport за 585,00 ₴ → получишь/);
   assert.match(p, /не финансовый совет/);

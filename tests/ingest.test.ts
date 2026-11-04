@@ -74,7 +74,7 @@ test('режим сборщика: Worker не ходит в Steam/Skinport са
   await runCycle(e, { now: NOW + 60, fetcher });
   const arb = sent.filter((s) => s.method === 'sendMessage' && String(s.body.text).includes('НАЙДЕНА ВОЗМОЖНОСТЬ'));
   assert.equal(arb.length, 1);
-  assert.ok(String(arb[0].body.text).includes('382,50 грн'), '8,50 EUR × 45 (тестовый курс) = 382,50 грн');
+  assert.ok(String(arb[0].body.text).includes('382,50 ₴'), '8,50 EUR × 45 (тестовый курс) = 382,50 грн');
 });
 
 test('сборщик молчит дольше 45 минут — одно техническое предупреждение', async () => {

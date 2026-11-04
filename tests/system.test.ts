@@ -202,7 +202,7 @@ test('сквозной цикл: курсы → Steam → Skinport → оцен�
   const arb = sent.filter((s) => s.method === 'sendMessage' && String(s.body.text).includes('НАЙДЕНА ВОЗМОЖНОСТЬ'));
   assert.equal(arb.length, 1, 'ровно одно уведомление об арбитраже');
   const text = String(arb[0].body.text);
-  assert.ok(text.includes('382,50 грн'), 'покупка: 8,50 EUR × 45 = 382,50 грн');
+  assert.ok(text.includes('382,50 ₴'), 'покупка: 8,50 EUR × 45 = 382,50 грн');
   assert.ok(text.includes('8,50 EUR'));
   assert.ok(text.includes('баланс Steam, не наличные'));
   assert.ok(text.includes('Курс НБУ'));

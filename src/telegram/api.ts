@@ -1,4 +1,5 @@
 import type { Fetcher } from '../utils/http.ts';
+import { renderMoney, UAH_CUR, type Cur } from '../utils/money.ts';
 
 export interface InlineButton { text: string; callback_data?: string; url?: string; web_app?: { url: string } }
 export type Keyboard = InlineButton[][];
@@ -8,6 +9,8 @@ export class TelegramClient {
   private fetcher: Fetcher;
   /** Сколько запросов к Telegram сделано за вызов Worker (учитывается в лимите внешних запросов). */
   calls = 0;
+  /** Валюта получателя: суммы-метки ⟦копейки⟧ в тексте переводятся в неё перед отправкой. Без резолвера — гривна. */
+  money: ((chatId: number) => Promise<Cur>) | null = null;
 
   constructor(token: string, fetcher?: Fetcher) {
     this.token = token;
@@ -16,6 +19,14 @@ export class TelegramClient {
 
   async call<T = unknown>(method: string, body: Record<string, unknown>): Promise<T> {
     this.calls++;
+    for (const k of ['text', 'caption'] as const) {
+      const v = body[k];
+      if (typeof v === 'string' && v.includes('⟦')) {
+        const chat = Number(body.chat_id);
+        const cur = this.money && Number.isSafeInteger(chat) ? await this.money(chat).catch(() => UAH_CUR) : UAH_CUR;
+        body = { ...body, [k]: renderMoney(v, cur) };
+      }
+    }
     const res = await this.fetcher(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

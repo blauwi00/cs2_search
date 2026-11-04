@@ -12,7 +12,7 @@ async function hmac(key: ArrayBuffer | Uint8Array<ArrayBuffer>, data: string): P
 
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 
-export interface WebAppUser { id: number; first_name?: string; username?: string }
+export interface WebAppUser { id: number; first_name?: string; username?: string; language_code?: string }
 
 export async function verifyInitData(initData: string, botToken: string, nowSec: number, maxAgeSec = 24 * 3600): Promise<WebAppUser | null> {
   if (!initData || initData.length > 4096) return null;

@@ -324,6 +324,15 @@ try {
   console.error('Сканирование рынка:', e.message);
 }
 
+// 2е. Курсы валют к доллару (открытый файл CSGO Trader) — для валют, которых нет у НБУ (RUB, BRL, ARS).
+try {
+  const r = await fetch('https://prices.csgotrader.app/latest/exchange_rates.json', { headers: { 'User-Agent': UA } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  console.log('Курсы к доллару:', await toWorker('/ingest', { kind: 'fx_usd', fetchedAt: now(), rates: await r.json() }));
+} catch (e) {
+  console.error('Курсы к доллару:', e.message);
+}
+
 // 2д. Новости CS2: объявления разработчиков из Steam (открытый API новостей, к рынку Steam не относится).
 try {
   const r = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=600&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });

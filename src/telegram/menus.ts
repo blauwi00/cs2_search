@@ -35,7 +35,7 @@ export async function mainMenu(d: D1Database, now: number, appUrl?: string): Pro
     `Источников цен работает: ${okSources} из ${priceSources.length}`,
     `Предметов отслеживается: ${watched}`,
     `Последняя проверка цен: ${ago(lastOk || null, now)}`,
-    '', '<i>Валюта: гривна. Бот только анализирует — ничего не покупает и не продаёт.</i>',
+    '', '<i>Валюта — в /currency. Бот только анализирует — ничего не покупает и не продаёт.</i>',
   ].join('\n');
   const keyboard: Keyboard = [
     ...(appUrl ? [[{ text: '📱 Открыть приложение', web_app: { url: appUrl } }]] : []),
@@ -232,13 +232,13 @@ export async function watchCard(d: D1Database, tid: number, id: number, now: num
 
 export async function settingsView(d: D1Database, tid: number, isAdmin = false): Promise<View> {
   const s = await db.getSettings(d, tid);
-  const lines = ['<b>⚙️ Настройки</b>', 'Все суммы — в гривнах. Нажми на параметр, чтобы изменить.', ''];
-  const kb: Keyboard = [];
+  const lines = ['<b>⚙️ Настройки</b>', 'Суммы — в твоей валюте. Нажми на параметр, чтобы изменить.', ''];
+  const kb: Keyboard = [[{ text: `💱 Валюта: ${s.currency || 'UAH'}`, callback_data: 'cur' }]];
   for (const m of settingsFor(isAdmin)) {
     lines.push(`${m.label}: <b>${displayValue(m, s)}</b>`);
     kb.push([{ text: `${m.label}: ${displayValue(m, s)}`, callback_data: `s:${m.key}` }]);
   }
-  lines.push('', '<i>Валюта зафиксирована: UAH. Курсы — НБУ.</i>');
+  lines.push('', '<i>Курсы — НБУ (RUB, BRL, ARS — через доллар).</i>');
   kb.push(back);
   return { text: lines.join('\n'), keyboard: kb };
 }

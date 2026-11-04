@@ -23,6 +23,8 @@ import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop } from '../currency/nbu.ts';
 import { steamLoginUrl, newNonce, parseSteamProfile } from '../steam_link.ts';
 import { floatNote, type AssetDetail } from '../core/inspect.ts';
+import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency } from '../currency/display.ts';
+import { renderMoney } from '../utils/money.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -153,10 +155,20 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   const user = await verifyInitData(req.headers.get('X-Init-Data') ?? '', env.TELEGRAM_BOT_TOKEN, now);
   // Бот для всех: любой пользователь Telegram с правильной подписью. Владелец бота — ещё и технические экраны.
   if (!user) return bad('forbidden', 403);
-  const tid = user.id;
-  const isAdmin = tid === Number(env.ADMIN_TELEGRAM_ID);
   const d0 = budgetedDb(rawDb ?? env.DB, newBudget());
-  await db.ensureUser(d0, tid, isAdmin, now);
+  await db.ensureUser(d0, user.id, user.id === Number(env.ADMIN_TELEGRAM_ID), now, guessCurrency(user.language_code));
+  const res = await appApi(req, env, now, user.id, rawDb);
+  // Суммы в текстах (метки ⟦копейки⟧) — в валюте человека; саму валюту отдаём приложению в каждом ответе.
+  if (!res.headers.get('Content-Type')?.startsWith('application/json')) return res;
+  const rates = await loadRates(d0);
+  const cur = await userCur(d0, user.id, rates);
+  let text = renderMoney(await res.text(), cur);
+  if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},` + (text.length > 2 ? text.slice(1) : '}');
+  return new Response(text, { status: res.status, headers: res.headers });
+}
+
+async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: D1Database): Promise<Response> {
+  const isAdmin = tid === Number(env.ADMIN_TELEGRAM_ID);
   const userDeals = async (limit: number, order: 'spread' | 'roi' | 'priority' = 'spread') => {
     const s = await db.getSettings(d, tid);
     return db.activeSignals(d, order, limit, now - 2 * 3600, { tid, minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp) });
@@ -522,8 +534,14 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
 
     // ---------- Настройки и состояние ----------
     if (path === 'settings' && method === 'GET') {
-      const s = await db.getSettings(d, tid);
-      return json({ ok: true, settings: settingsFor(isAdmin).map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
+      const [s, rates] = await Promise.all([db.getSettings(d, tid), loadRates(d)]);
+      return json({ ok: true, currencies: availableCurrencies(rates), settings: settingsFor(isAdmin).map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
+    }
+    if (path === 'settings' && method === 'POST' && body.key === 'currency') {
+      const rates = await loadRates(d);
+      if (!isCurrency(body.value) || !rates[body.value]) return bad('Нет курса для этой валюты');
+      await db.setSetting(d, tid, 'currency', body.value, now);
+      return json({ ok: true, value: body.value });
     }
     if (path === 'settings' && method === 'POST') {
       const m = settingsFor(isAdmin).find((x) => x.key === body.key);
@@ -534,7 +552,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         if (!m.choices?.some((c) => c.v === body.value)) return bad('bad_choice');
         value = String(body.value);
       } else {
-        const r = parseSettingInput(m, String(body.value ?? ''));
+        const r = parseSettingInput(m, String(body.value ?? ''), await userCur(d, tid, await loadRates(d)));
         if (!r.ok) return bad(r.error);
         value = r.value;
       }

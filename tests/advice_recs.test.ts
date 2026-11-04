@@ -8,6 +8,7 @@ import { signInitData } from '../src/webapp/auth.ts';
 import { handleAppApi } from '../src/webapp/api.ts';
 import { handleIngest } from '../src/ingest.ts';
 import { storeFx } from '../src/storage/db.ts';
+import { renderMoney, UAH_CUR } from '../src/utils/money.ts';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z') / 1000;
 const base: AdviceInput = { steamLowKop: 1000, avg7Kop: 1000, historyDays: 5, liquidity: 'high', uniquePriced: false, deal: null, lot: null, minRoiBp: 800, minProfitKop: 2000 };
@@ -56,7 +57,7 @@ test('рекомендации: перепродажа на Skinport с коми
   assert.equal(d.getKop, Math.floor(58500 * 0.92));
   assert.equal(d.profitKop, Math.floor(58500 * 0.92) - 45000);
   assert.equal(d.wallet, 'cash');
-  assert.match(d.reason, /^Купи на Skinport за 450,00 ₴ → продай на Skinport за 585,00 ₴ → получишь/);
+  assert.match(renderMoney(d.reason, UAH_CUR), /^Купи на Skinport за 450,00 ₴ → продай на Skinport за 585,00 ₴ → получишь/);
   assert.equal(buildRecs([entry({ s7: { median: 1300, volume: 3 } })], FX, S).deals.length, 0, 'мало продаж');
   assert.equal(buildRecs([entry({})], new Map(), S).deals.length, 0, 'без курса не считаем');
 });

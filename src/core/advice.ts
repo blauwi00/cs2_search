@@ -3,6 +3,7 @@
 
 import { steamSellerProceeds } from './fees.ts';
 import type { LiquidityClass } from './liquidity.ts';
+import { formatUah } from '../utils/money.ts';
 
 export type Action = 'buy' | 'sell' | 'hold' | 'avoid' | 'nodata';
 
@@ -26,7 +27,7 @@ export interface AdviceInput {
 export interface Advice { action: Action; title: string; reason: string; diffBp: number | null }
 
 const SRC: Record<string, string> = { skinport: 'Skinport', csfloat: 'CSFloat' };
-const fmt = (k: number) => `${(k / 100).toFixed(2).replace('.', ',')} ₴`;
+const fmt = (k: number) => formatUah(k);
 const pct = (bp: number) => `${Math.abs(Math.round(bp / 100))}%`;
 
 /** Отклонение, которое считаем «заметно дешевле/дороже обычного». */

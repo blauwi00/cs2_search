@@ -9,6 +9,7 @@ import { parseMarketHashName } from './normalization.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
 import { parseSteamPriceString } from '../utils/money.ts';
 import type { Currency } from '../types/market.ts';
+import { formatUah } from '../utils/money.ts';
 
 export type Market = 'steam' | 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins';
 
@@ -111,7 +112,7 @@ export interface Rec {
   title: string; reason: string; risk: string;
 }
 
-const fmt = (k: number) => `${(k / 100).toFixed(2).replace('.', ',')} ₴`;
+const fmt = (k: number) => formatUah(k);
 const pct = (bp: number) => `${(bp / 100).toString().replace('.', ',')}%`;
 const roiOf = (profit: number, cost: number) => (cost > 0 ? Math.trunc((profit * 10000) / cost) : 0);
 const MIN_QTY = 5;   // меньше объявлений — цена «самого дешёвого» случайна, продать по ней сложно

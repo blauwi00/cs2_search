@@ -15,6 +15,7 @@ import { fetchChecked, type Fetcher } from './utils/http.ts';
 import { itemsUrl } from './api/skinport.ts';
 import { listingsUrl } from './api/csfloat.ts';
 import { SourceError } from './types/market.ts';
+import { moneyResolver } from './currency/display.ts';
 
 const text = (s: string, status = 200) => new Response(s, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
 
@@ -48,6 +49,7 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
   const missing = missingSecrets(env);
   if (missing.length) return text(`Не заданы или некорректны секреты: ${missing.join(', ')}`, 500);
   const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN, fetcher);
+  tg.money = moneyResolver(env.DB);
   const adminId = Number(env.ADMIN_TELEGRAM_ID);
 
   if (url.pathname === '/admin/setup') {
@@ -161,7 +163,7 @@ export async function diagnostics(env: Env, now: number, fetcher?: Fetcher): Pro
   }));
   const jobs = await env.DB.prepare('SELECT MAX(last_run_at) AS t FROM scheduler_jobs').first<{ t: number | null }>().catch(() => null);
   out.push(jobs?.t ? `Cron: ✅ последний запуск ${Math.round((now - jobs.t) / 60)} мин назад` : 'Cron: ⚠️ ещё не запускался (первый запуск — в течение минуты после настройки Cron Trigger)');
-  out.push('Валюта: UAH (курсы НБУ)');
+  out.push('Валюта: у каждого своя (/currency), внутри расчёт в UAH по курсам НБУ');
   out.push('Режим: мониторинг без автоматической торговли');
   return out;
 }

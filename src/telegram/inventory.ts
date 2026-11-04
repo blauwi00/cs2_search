@@ -4,8 +4,8 @@ import * as db from '../storage/db.ts';
 import * as T from '../storage/trades.ts';
 import { LOTS_LIMIT } from '../core/audience.ts';
 import { esc, type Keyboard } from './api.ts';
-import { say, show, type H, type View } from './context.ts';
-import { formatUah, formatSignedUah, formatBp, parseUahInput } from '../utils/money.ts';
+import { say, show, hcur, inCur, type H, type View } from './context.ts';
+import { formatUah, formatSignedUah, formatBp, parseMoneyInput } from '../utils/money.ts';
 import { warsawDate } from '../utils/time.ts';
 import { searchCatalog } from '../catalog.ts';
 import { CATEGORY_RU } from '../core/normalization.ts';
@@ -138,8 +138,8 @@ async function askPrice(h: H, d: Draft) {
   await setDraft(h, 'inv_price', d);
   const kb: Keyboard = [];
   if (d.priceSuggest) kb.push([{ text: `✔️ ${formatUah(d.priceSuggest)} за 1 шт.`, callback_data: 'ipr' }]);
-  kb.push([{ text: 'Бесплатно (0 грн)', callback_data: 'ipr0' }], [{ text: 'Отмена', callback_data: 'm:inv' }]);
-  await say(h, 'Реальная цена покупки за 1 шт. в гривнах (сколько фактически заплатил):', kb);
+  kb.push([{ text: 'Бесплатно (0)', callback_data: 'ipr0' }], [{ text: 'Отмена', callback_data: 'm:inv' }]);
+  await say(h, `Реальная цена покупки за 1 шт. ${await inCur(h)} (сколько фактически заплатил):`, kb);
 }
 async function askPlatform(h: H, d: Draft) {
   await setDraft(h, 'inv_platform', d);
@@ -147,7 +147,7 @@ async function askPlatform(h: H, d: Draft) {
 }
 async function askFee(h: H, d: Draft) {
   await setDraft(h, 'inv_fee', d);
-  await say(h, 'Дополнительные комиссии за всю покупку (платёжка, пополнение) в гривнах:', [[{ text: 'Без комиссии', callback_data: 'ifee0' }], [{ text: 'Отмена', callback_data: 'm:inv' }]]);
+  await say(h, `Дополнительные комиссии за всю покупку (платёжка, пополнение) ${await inCur(h)}:`, [[{ text: 'Без комиссии', callback_data: 'ifee0' }], [{ text: 'Отмена', callback_data: 'm:inv' }]]);
 }
 async function askDate(h: H, d: Draft) {
   await setDraft(h, 'inv_date', d);
@@ -205,15 +205,15 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
       await askPrice(h, { ...d, qty: n }); return true;
     }
     case 'inv_price': {
-      const k = parseUahInput(t);
-      if (k === null) { await say(h, '❌ Введи цену в гривнах, например 120 или 120,50'); return true; }
+      const k = parseMoneyInput(t, await hcur(h));
+      if (k === null) { await say(h, `❌ Введи цену ${await inCur(h)}, например 120 или 120,50`); return true; }
       const nd = { ...d, price: k };
       if (nd.platform) await askFee(h, nd); else await askPlatform(h, nd);
       return true;
     }
     case 'inv_fee': {
-      const k = parseUahInput(t);
-      if (k === null) { await say(h, '❌ Введи сумму в гривнах или нажми «Без комиссии»'); return true; }
+      const k = parseMoneyInput(t, await hcur(h));
+      if (k === null) { await say(h, `❌ Введи сумму ${await inCur(h)} или нажми «Без комиссии»`); return true; }
       await askDate(h, { ...d, fee: k }); return true;
     }
     case 'inv_date': {
@@ -227,8 +227,8 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
       await askSalePlatform(h, { ...d, qty: n }); return true;
     }
     case 'sale_price': {
-      const k = parseUahInput(t);
-      if (k === null || k <= 0) { await say(h, '❌ Введи цену в гривнах'); return true; }
+      const k = parseMoneyInput(t, await hcur(h));
+      if (k === null || k <= 0) { await say(h, `❌ Введи цену ${await inCur(h)}`); return true; }
       const nd = { ...d, salePrice: k };
       await setDraft(h, 'sale_received', nd);
       const kb: Keyboard = [];
@@ -237,12 +237,12 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
         if (p) kb.push([{ text: `✔️ Получил ${formatUah(p.sellerReceives * (nd.qty ?? 1))} (расчёт комиссии Steam)`, callback_data: 'srv' }]);
       }
       kb.push([{ text: 'Отмена', callback_data: 'm:inv' }]);
-      await say(h, `Сколько фактически получил всего за ${nd.qty} шт. (после комиссий), в гривнах?`, kb);
+      await say(h, `Сколько фактически получил всего за ${nd.qty} шт. (после комиссий), ${await inCur(h)}?`, kb);
       return true;
     }
     case 'sale_received': {
-      const k = parseUahInput(t);
-      if (k === null) { await say(h, '❌ Введи сумму в гривнах'); return true; }
+      const k = parseMoneyInput(t, await hcur(h));
+      if (k === null) { await say(h, `❌ Введи сумму ${await inCur(h)}`); return true; }
       await setDraft(h, 'sale_date', { ...d, received: k });
       await say(h, 'Дата продажи:', [[{ text: 'Сегодня', callback_data: 'sdt' }], [{ text: 'Отмена', callback_data: 'm:inv' }]]);
       return true;
@@ -255,8 +255,8 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
   }
   if (st.awaiting.startsWith('inv_target:')) {
     const id = Number(st.awaiting.slice('inv_target:'.length));
-    const k = parseUahInput(t);
-    if (k === null || k <= 0) { await say(h, '❌ Введи цену в гривнах'); return true; }
+    const k = parseMoneyInput(t, await hcur(h));
+    if (k === null || k <= 0) { await say(h, `❌ Введи цену ${await inCur(h)}`); return true; }
     await T.setTradeTarget(h.d, h.uid, id, k, h.now);
     await db.clearState(h.d, h.uid);
     await say(h, `🎯 Цель продажи ${formatUah(k)} сохранена. Сообщу, когда самое дешёвое объявление в Steam будет не ниже.`);
@@ -301,7 +301,7 @@ export async function onCallback(h: H, data: string, msgId?: number): Promise<bo
     case 'iv': if (Number.isInteger(n)) await show(h, await lotCard(h, n), msgId); return true;
     case 'itg':
       await db.setState(h.d, h.uid, `inv_target:${n}`, null, h.now);
-      await say(h, 'Цель продажи в Steam за 1 шт. (цена покупателя), в гривнах:');
+      await say(h, `Цель продажи в Steam за 1 шт. (цена покупателя), ${await inCur(h)}:`);
       return true;
     case 'idel':
       await say(h, 'Удалить эту запись? История продаж не затрагивается (удалить можно только лот без продаж).', [[{ text: 'Да, удалить', callback_data: `idely:${n}` }, { text: 'Нет', callback_data: `iv:${n}` }]]);
@@ -321,7 +321,7 @@ export async function onCallback(h: H, data: string, msgId?: number): Promise<bo
     case 'spl':
       if (st?.awaiting === 'sale_platform' && (PLATFORMS as readonly string[]).includes(b)) {
         await setDraft(h, 'sale_price', { ...d, salePlatform: b });
-        await say(h, b === 'steam' ? 'Цена продажи за 1 шт. — сколько заплатил покупатель в Steam, в гривнах:' : 'Цена продажи за 1 шт. в гривнах:');
+        await say(h, b === 'steam' ? `Цена продажи за 1 шт. — сколько заплатил покупатель в Steam, ${await inCur(h)}:` : `Цена продажи за 1 шт. ${await inCur(h)}:`);
       }
       return true;
     case 'srv':

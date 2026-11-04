@@ -11,6 +11,7 @@ import type { Currency } from '../types/market.ts';
 import { loadScan } from '../storage/scan.ts';
 import { loadLatestFx } from '../storage/db.ts';
 import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
+import { formatUah, formatSignedUah } from '../utils/money.ts';
 
 export type Slot = 'ideas' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
@@ -19,7 +20,7 @@ export const SLOTS: { slot: Slot; hour: number; weekday?: number }[] = [
 ];
 export const ALL_SLOTS: Slot[] = ['ideas', 'trends', 'cases', 'weekly'];
 
-const fmt = (k: number | null) => (k === null ? '—' : `${(k / 100).toLocaleString('ru-RU', { minimumFractionDigits: k >= 100000 ? 0 : 2, maximumFractionDigits: k >= 100000 ? 0 : 2 })} ₴`);
+const fmt = (k: number | null) => formatUah(k);
 const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
 
 export function botButton(botUsername: string | null, text = '🤖 Все идеи и уведомления — в боте'): Keyboard {
@@ -41,7 +42,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
     const lines = [`💡 <b>Идеи дня · ${date}</b>`, ''];
     top.forEach((d, i) => {
       lines.push(`${i + 1}. <b>${esc(d.name)}</b>`);
-      lines.push(`Купи на ${MARKETS[d.buyAt].name} за ${fmt(d.payKop)} → продай на ${MARKETS[d.sellAt].name} за ${fmt(d.sellKop)} → получишь <b>${fmt(d.getKop)}</b> (+${fmt(d.profitKop)}, ${pct(d.roiBp ?? 0)})`);
+      lines.push(`Купи на ${MARKETS[d.buyAt].name} за ${fmt(d.payKop)} → продай на ${MARKETS[d.sellAt].name} за ${fmt(d.sellKop)} → получишь <b>${fmt(d.getKop)}</b> (${d.profitKop ? formatSignedUah(d.profitKop) : '—'}, ${pct(d.roiBp ?? 0)})`);
       lines.push(d.wallet === 'cash' ? '💵 деньгами' : '🎮 на баланс Steam (вывести нельзя)');
       lines.push('');
     });
@@ -69,7 +70,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
   const lines = [`📦 <b>Кейсы в Steam · ${date}</b>`, '<i>средняя цена продаж за сутки против средней за месяц</i>', ''];
   if (up.length) { lines.push('🔺 <b>Дорожают</b>'); for (const x of up) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
   if (down.length) { lines.push('🔻 <b>Дешевеют</b>'); for (const x of down) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
-  lines.push('<i>Цены ≈: из долларов по курсу НБУ. Дешевеющий кейс — не обязательно выгодная покупка.</i>');
+  lines.push('<i>Цены ≈ — средние продажи в Steam за сутки. Дешевеющий кейс — не обязательно выгодная покупка.</i>');
   return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name };
 }
 

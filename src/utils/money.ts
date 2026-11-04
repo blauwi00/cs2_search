@@ -1,19 +1,55 @@
 // Денежные значения — целые числа в минимальных единицах (копейки, центы).
 // Никаких float в расчётах прибыли.
 
-/** Формат копеек: 155250 → "1 552,50 грн". */
+// Внутри все суммы — копейки UAH (так считаются комиссии и прибыль). Пользователь видит их в своей валюте:
+// тексты содержат метку суммы ⟦копейки⟧, а перевод в валюту человека делается в момент отправки
+// (TelegramClient, ответы приложения). Так одно уведомление из очереди уходит каждому в его валюте.
+
+export interface Cur { code: string; sign: string; per: number /* сколько UAH стоит 1 единица валюты */ }
+export const UAH_CUR: Cur = { code: 'UAH', sign: '₴', per: 1 };
+
+/** Метка суммы: 155250 → "⟦155250⟧" (с плюсом — "⟦+155250⟧"). */
 export function formatUah(kop: number | null): string {
-  if (kop === null || !Number.isFinite(kop)) return '— грн';
-  const sign = kop < 0 ? '−' : '';
-  const abs = Math.abs(Math.round(kop));
-  const whole = Math.floor(abs / 100);
-  const frac = String(abs % 100).padStart(2, '0');
-  const wholeStr = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${sign}${wholeStr},${frac} грн`;
+  if (kop === null || !Number.isFinite(kop)) return '—';
+  return `⟦${Math.round(kop)}⟧`;
 }
 
 export function formatSignedUah(kop: number): string {
-  return (kop > 0 ? '+' : '') + formatUah(kop);
+  return kop > 0 ? `⟦+${Math.round(kop)}⟧` : formatUah(kop);
+}
+
+const NO_CENTS = new Set(['JPY', 'KRW', 'HUF', 'KZT', 'ARS', 'CLP', 'VND', 'IDR']);
+
+/** Копейки UAH → число в валюте (не округлённое). */
+export function toUnits(kop: number, cur: Cur): number {
+  return kop / 100 / cur.per;
+}
+
+/** Копейки UAH → текст в валюте: "1 552 ₴", "38,25 $", "−0,05 €". */
+export function fmtMoney(kop: number | null, cur: Cur, signed = false): string {
+  if (kop === null || !Number.isFinite(kop)) return '—';
+  const v = toUnits(kop, cur);
+  const abs = Math.abs(v);
+  const dec = abs >= 1000 || NO_CENTS.has(cur.code) ? 0 : 2;
+  let str = abs.toFixed(dec);
+  if (dec === 0 && abs > 0 && Number(str) === 0) str = abs.toFixed(2); // 0,4 ₸ не превращаем в 0
+  const [w, f] = str.split('.');
+  const body = w.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (f ? ',' + f : '');
+  const sign = v < 0 && Number(str) !== 0 ? '−' : signed && v > 0 ? '+' : '';
+  return `${sign}${body} ${cur.sign}`;
+}
+
+const MARK = /⟦(\+?)(-?\d{1,15})⟧/g;
+/** Подставляет суммы в валюте человека вместо меток. */
+export function renderMoney(text: string, cur: Cur): string {
+  if (!text.includes('⟦')) return text;
+  return text.replace(MARK, (_, plus: string, n: string) => fmtMoney(Number(n), cur, plus === '+'));
+}
+
+/** Ввод суммы в валюте человека → копейки UAH. */
+export function parseMoneyInput(text: string, cur: Cur): number | null {
+  const minor = parseUahInput(text.replace(/[^\d\s ,.]/g, ''));
+  return minor === null ? null : Math.round(minor * cur.per);
 }
 
 /** Базисные пункты → "38,1%". */

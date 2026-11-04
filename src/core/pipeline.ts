@@ -9,7 +9,7 @@ import { D1_RESERVE, type Budget } from '../storage/budget.ts';
 import { fetchSteamPriceOverview } from '../api/steam.ts';
 import { fetchSkinportItems, fetchSkinportSales } from '../api/skinport.ts';
 import { fetchCsfloatListings } from '../api/csfloat.ts';
-import { fetchNbuRates, toKop, fxAgeDays, FX_MAX_AGE_DAYS_HIGH, type FxRate } from '../currency/nbu.ts';
+import { fetchNbuRaw, parseNbu, toKop, fxAgeDays, FX_MAX_AGE_DAYS_HIGH, type FxRate } from '../currency/nbu.ts';
 import { computeSteamArbitrage } from './arbitrage.ts';
 import { classifyLiquidity } from './liquidity.ts';
 import { scoreArbitrage, type Priority } from './scoring.ts';
@@ -28,6 +28,7 @@ import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefault
 import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
+import { parseNbuDisplay } from '../currency/display.ts';
 
 export interface Ctx {
   env: Env;
@@ -139,8 +140,12 @@ export async function jobFx(ctx: Ctx): Promise<void> {
   if (!spendExternal(ctx)) return;
   bump(ctx, 'ext_requests');
   try {
-    const rates = await fetchNbuRates(ctx.fetcher);
+    const raw = await fetchNbuRaw(ctx.fetcher);
+    const rates = parseNbu(raw);
     await db.storeFx(ctx.db, rates, ctx.now);
+    // Курсы всех валют показа (человек выбирает свою валюту).
+    const display = parseNbuDisplay(raw);
+    if (Object.keys(display).length) await setMetaStmt(ctx.db, 'fx_display', JSON.stringify(display)).run();
     ctx.cache.fx = undefined;
     await db.sourceOk(ctx.db, 'nbu', ctx.now, 1);
   } catch (e) {

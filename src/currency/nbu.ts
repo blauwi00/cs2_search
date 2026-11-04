@@ -30,7 +30,10 @@ export function parseNbu(json: unknown): FxRate[] {
 }
 
 export async function fetchNbuRates(fetcher?: Fetcher): Promise<FxRate[]> {
-  return parseNbu(await fetchJson(NBU_URL, { fetcher, timeoutMs: 10000 }));
+  return parseNbu(await fetchNbuRaw(fetcher));
+}
+export function fetchNbuRaw(fetcher?: Fetcher): Promise<unknown> {
+  return fetchJson(NBU_URL, { fetcher, timeoutMs: 10000 });
 }
 
 /** Конвертация минимальных единиц валюты в копейки UAH (half-up). */

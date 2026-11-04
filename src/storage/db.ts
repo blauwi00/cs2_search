@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS = {
   deals_cat: 'all',          // all | case | capsule | weapon | sticker | knife | gloves | other
   deals_budget: '0',         // 1 = только в пределах бюджета/лимита покупки
   deals_liq: '0',            // 1 = скрыть низкую и неизвестную ликвидность
+  currency: '',              // валюта показа (USD, EUR, UAH…); пусто — гривна (так было до выбора валюты)
 } as const;
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
 export type Settings = Record<SettingKey, string>;
@@ -54,8 +55,12 @@ export async function setSetting(db: D1Database, tid: number, key: SettingKey, v
 
 export const num = (s: string): number => (Number.isFinite(Number(s)) ? Number(s) : 0);
 
-export async function ensureUser(db: D1Database, tid: number, isAdmin: boolean, now: number): Promise<void> {
-  await db.prepare('INSERT OR IGNORE INTO users (telegram_id, is_admin, created_at) VALUES (?, ?, ?)').bind(tid, isAdmin ? 1 : 0, now).run();
+/** Новому человеку сразу ставим валюту по языку Telegram (currency — уже угаданный код). Старым ничего не меняем. */
+export async function ensureUser(db: D1Database, tid: number, isAdmin: boolean, now: number, currency?: string): Promise<void> {
+  const r = await db.prepare('INSERT OR IGNORE INTO users (telegram_id, is_admin, created_at) VALUES (?, ?, ?)').bind(tid, isAdmin ? 1 : 0, now).run();
+  if (currency && (r.meta?.changes ?? 0) > 0) {
+    await db.prepare(`INSERT OR IGNORE INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'currency', ?, ?)`).bind(tid, currency, now).run();
+  }
 }
 
 // ---------- Состояние ввода ----------

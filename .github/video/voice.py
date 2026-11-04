@@ -8,10 +8,8 @@ os.makedirs('out', exist_ok=True)
 async def one(seg):
     words = []
     kw = {}
-    try:
-        comm = edge_tts.Communicate(seg['text'], S['voice'], rate=S['rate'], boundary='WordBoundary')
-    except TypeError:
-        comm = edge_tts.Communicate(seg['text'], S['voice'], rate=S['rate'])
+    # Без WordBoundary: с ним сервис часто отвечает «No audio». Тайминги — по предложениям (SentenceBoundary).
+    comm = edge_tts.Communicate(seg['text'], S['voice'], rate=S['rate'])
     with open(f"out/{seg['id']}.mp3", 'wb') as f:
         async for ch in comm.stream():
             if ch['type'] == 'audio':
@@ -38,8 +36,8 @@ async def main():
     # Один запрос на весь текст (несколько подряд edge-tts иногда обрывает), сцены — по словам каждого сегмента.
     full = {'id': 'all', 'text': ' '.join(x['text'] for x in S['segments'])}
     r = await retry(full)
-    words = [w for w in r['words'] if w['type'] == 'WordBoundary']
-    print('words', len(words), 'types', sorted(set(w['type'] for w in r['words'])))
+    words = r['words']
+    print('boundaries', len(words), sorted(set(w['type'] for w in r['words'])))
     json.dump({'engine': 'edge', 'single': 'all.mp3', 'segments': [{'id': x['id'], 'text': x['text'], 'nwords': len(x['text'].split())} for x in S['segments']], 'words': words},
               open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 

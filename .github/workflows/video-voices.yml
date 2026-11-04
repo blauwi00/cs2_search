@@ -1,0 +1,48 @@
+name: video-voices
+# Образцы голосов для роликов: каждый голос — отдельная задача (у edge-tts лимиты на один сервер).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/video/voices.json']
+permissions:
+  contents: write
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/video
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -U edge-tts piper-tts
+      - run: python .github/video/sample.py ${{ matrix.n }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s${{ matrix.n }}
+          path: out/
+          if-no-files-found: ignore
+  collect:
+    needs: sample
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all
+          merge-multiple: true
+      - name: В ветку voice-samples
+        run: |
+          mkdir -p out && cp all/*.mp3 out/ 2>/dev/null || true
+          cd out && ls -la
+          git init -q -b voice-samples
+          git config user.name "video-bot"; git config user.email "video-bot@users.noreply.github.com"
+          git add -A && git commit -qm "voices ${{ github.sha }}" --allow-empty
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" voice-samples

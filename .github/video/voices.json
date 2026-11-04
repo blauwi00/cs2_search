@@ -1,0 +1,17 @@
+{
+  "text": "Покупаешь скины в Steam? Скорее всего, переплачиваешь. Бот Ценолов подскажет, где купить дешевле и продать дороже.",
+  "voices": [
+    { "n": 1, "name": "Дмитрий (мужской, сейчас в ролике)", "engine": "edge", "voice": "ru-RU-DmitryNeural", "rate": "+10%", "pitch": "+0Hz" },
+    { "n": 2, "name": "Дмитрий ниже и бодрее", "engine": "edge", "voice": "ru-RU-DmitryNeural", "rate": "+18%", "pitch": "-6Hz" },
+    { "n": 3, "name": "Светлана (женский)", "engine": "edge", "voice": "ru-RU-SvetlanaNeural", "rate": "+10%", "pitch": "+0Hz" },
+    { "n": 4, "name": "Андрей мультиязычный (мужской)", "engine": "edge", "voice": "en-US-AndrewMultilingualNeural", "rate": "+5%", "pitch": "+0Hz" },
+    { "n": 5, "name": "Брайан мультиязычный (мужской, живой)", "engine": "edge", "voice": "en-US-BrianMultilingualNeural", "rate": "+5%", "pitch": "+0Hz" },
+    { "n": 6, "name": "Флориан мультиязычный (мужской)", "engine": "edge", "voice": "de-DE-FlorianMultilingualNeural", "rate": "+5%", "pitch": "+0Hz" },
+    { "n": 7, "name": "Ава мультиязычная (женский)", "engine": "edge", "voice": "en-US-AvaMultilingualNeural", "rate": "+5%", "pitch": "+0Hz" },
+    { "n": 8, "name": "Эмма мультиязычная (женский)", "engine": "edge", "voice": "en-US-EmmaMultilingualNeural", "rate": "+5%", "pitch": "+0Hz" },
+    { "n": 9, "name": "Остап (украинский мужской, читает по-русски)", "engine": "edge", "voice": "uk-UA-OstapNeural", "rate": "+10%", "pitch": "+0Hz" },
+    { "n": 10, "name": "Piper Денис (открытый, мужской)", "engine": "piper", "voice": "ru_RU-denis-medium" },
+    { "n": 11, "name": "Piper Руслан (открытый, мужской)", "engine": "piper", "voice": "ru_RU-ruslan-medium" },
+    { "n": 12, "name": "Piper Ирина (открытый, женский)", "engine": "piper", "voice": "ru_RU-irina-medium" }
+  ]
+}

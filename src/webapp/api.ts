@@ -26,6 +26,7 @@ import { floatNote, type AssetDetail } from '../core/inspect.ts';
 import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency } from '../currency/display.ts';
 import { renderMoney } from '../utils/money.ts';
 import { PRIVACY_POINTS } from '../core/privacy.ts';
+import { steamSellPrice } from '../core/sellprice.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -557,6 +558,23 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       else if (body.what === 'notify') await db.setSetting(d, tid, 'notify_enabled', '1', now);
       else return bad('bad_setup');
       return json({ ok: true });
+    }
+    // Рекомендуемая цена выставления в Steam (с учётом того, растёт цена или падает).
+    if (seg[0] === 'sellprice' && method === 'GET' && /^\d+$/.test(seg[1] ?? '')) {
+      const id = Number(seg[1]);
+      const item = await d.prepare('SELECT market_hash_name AS name FROM items WHERE id = ?').bind(id).first<{ name: string }>();
+      if (!item) return bad('not_found', 404);
+      const [quotes, avgs, fxm] = await Promise.all([quotesChunked(d, [id]), steamAvgFor(d, [id]), db.loadLatestFx(d)]);
+      const usd = fxm.get('USD') ?? null;
+      const live = (quotes.get(id) ?? []).find((q) => q.source === 'steam' && q.price_type === 'lowest_listing' && now - q.fetched_at < 6 * 3600);
+      const sa = avgs.get(id);
+      const k = (c: number | null | undefined) => (c && usd ? toKop(c, 'USD', usd) : null);
+      const cost = Number(url.searchParams.get('cost'));
+      const rec = steamSellPrice({
+        liveLowKop: live?.price_kop ?? null, d1Kop: k(sa?.d1), d7Kop: k(sa?.d7), d30Kop: k(sa?.d30),
+        costKop: Number.isSafeInteger(cost) && cost > 0 ? cost : null, uniquePriced: parseMarketHashName(item.name).uniquePriced,
+      });
+      return json({ ok: true, rec, liveAt: live?.fetched_at ?? null, pattern: parseMarketHashName(item.name).uniquePriced });
     }
     if (path === 'privacy' && method === 'GET') {
       return json({ ok: true, ...PRIVACY_POINTS });

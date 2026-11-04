@@ -753,6 +753,7 @@ function bindSteamBlock(st) {
       var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + '</h2><div class="sub">×' + x.qty + ' в инвентаре Steam</div>';
       if (x.advice) h += verdict(x.advice);
       h += '<div class="card">' + kv('Цена в Steam', x.priceKop ? (x.live ? '' : '≈ ') + uah(x.priceKop) : '—') + kv('Придёт на баланс за 1 шт.', x.netKop ? '≈ ' + uah(x.netKop) : '—') + kv('Всего за ×' + x.qty, x.netKop ? '≈ ' + uah(x.netKop * x.qty) : '—') + '</div>';
+      if (x.marketable) h += sellBoxHtml();
       h += assetDetails(x);
       h += '<div class="btns"><button class="btn sec2" id="si-chart">📈 График и цены</button><button class="btn sec2" id="si-steam">Steam Market</button></div>';
       h += '<button class="btn sec2" id="si-buy">✍️ Записать цену покупки</button>';
@@ -760,8 +761,32 @@ function bindSteamBlock(st) {
       $('#si-chart').onclick = function () { itemSheet(id); };
       $('#si-steam').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); };
       $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
+      if (x.marketable) loadSellBox(id, null, null);
     };
   });
+}
+
+// Рекомендуемая цена выставления в Steam: растёт — чуть выше рынка, падает/ровно — на копейку ниже самого дешёвого.
+function sellBoxHtml() { return '<div id="sellbox"><div class="skel"></div></div>'; }
+function loadSellBox(itemId, costKop, onUse) {
+  api('sellprice/' + itemId + (costKop ? '?cost=' + Math.round(costKop) : '')).then(function (r) {
+    var el = $('#sellbox'); if (!el) return;
+    if (!r.rec) { el.innerHTML = r.pattern ? '' : '<div class="card mut" style="font-size:13px">💰 Цену для продажи подсказать не могу — нет данных о продажах в Steam.</div>'; return; }
+    var x = r.rec, col = x.mode === 'up' ? 'var(--green)' : x.mode === 'down' ? 'var(--amber)' : 'inherit';
+    var h = '<div class="sec">💰 За сколько выставить в Steam</div><div class="card">';
+    h += '<div style="font-weight:700;color:' + col + '">' + (x.mode === 'up' ? '📈 ' : x.mode === 'down' ? '📉 ' : '➖ ') + esc(x.title) + '</div>';
+    h += '<div style="display:flex;align-items:baseline;gap:8px;margin:6px 0 2px"><div class="big-num" style="font-size:26px">' + uah(x.priceKop) + '</div><div class="mut" style="font-size:13px">цена покупателя</div></div>';
+    h += '<div class="mut" style="font-size:13px;margin-bottom:6px">тебе придёт ≈ ' + uah(x.receiveKop) + ' (после 15% Steam)</div>';
+    if (x.quickKop !== x.priceKop) h += kv('Продать быстро', uah(x.quickKop) + '<div class="mut" style="font-size:12px;font-weight:400">придёт ≈ ' + uah(x.quickReceiveKop) + '</div>');
+    h += '<div style="font-size:13px;margin-top:6px">' + esc(x.why) + '</div>';
+    if (x.belowCost) h += '<div style="color:var(--amber);font-size:13px;margin-top:6px">⚠️ Это ниже твоей цены покупки. Без убытка — от ' + uah(x.breakEvenKop) + '.</div>';
+    h += '<div class="mut" style="font-size:12px;margin-top:6px">' + (x.basis === 'live' ? 'По самому дешёвому лоту Steam (' + ago(r.liveAt) + ') и продажам за сутки/неделю.' : 'Живой цены Steam сейчас нет — по средним продажам за сутки и неделю.') +
+      (CUR.code !== 'UAH' ? ' Если кошелёк Steam в другой валюте, Steam покажет свою сумму — ориентируйся на «чуть выше / ниже рынка».' : '') + '</div>';
+    if (onUse) h += '<button class="btn sec2" id="sb-use" style="margin-top:8px">🎯 Уведомить, когда цена дойдёт до ' + uah(x.priceKop) + '</button>';
+    h += '</div>';
+    el.innerHTML = h;
+    if (onUse && $('#sb-use')) $('#sb-use').onclick = function () { onUse(x.priceKop); };
+  }).catch(function () { var el = $('#sellbox'); if (el) el.innerHTML = ''; });
 }
 
 // Подробности экземпляров: float, паттерн, фаза Doppler, наклейки и брелки (из открытых данных Steam).
@@ -838,11 +863,15 @@ function lotSheet(l) {
     kv('Skinport, объявление', l.externalUnitKop == null ? '—' : uah(l.externalUnitKop) + ' / шт.') +
     kv('Оценочная разница', '<span class="' + cls(l.unrealizedKop) + '">' + uah(l.unrealizedKop, true) + (l.roiBp != null ? ' (' + pct(l.roiBp) + ')' : '') + '</span>') + '</div>';
   h += '<div class="note">Оценка — не прибыль: прибыль появляется только после продажи.</div>';
+  h += sellBoxHtml();
   h += '<label class="f"><span>🎯 Цель продажи в Steam за 1 шт., ' + CUR.sign + '</span><input id="ltg" inputmode="decimal" value="' + (l.targetKop ? units(l.targetKop) : '') + '" placeholder="уведомлю, когда цена дойдёт"></label>';
   h += '<button class="btn sec2" id="lsavet">Сохранить цель</button>';
   h += '<button class="btn" id="lsell">💸 Я продал</button>';
   h += '<div class="btns"><button class="btn sec2" id="lchart">📈 График</button>' + (l.sold ? '' : '<button class="btn danger" id="ldel">Удалить запись</button>') + '</div>';
   sheet(h);
+  loadSellBox(l.itemId, l.openQty ? l.costKop / l.openQty : null, function (k) {
+    api('inventory/' + l.id + '/target', { method: 'POST', body: { kop: k } }).then(function () { haptic('ok'); $('#ltg').value = units(k); toast('Цель сохранена'); });
+  });
   $('#lchart').onclick = function () { itemSheet(l.itemId); };
   $('#lsell').onclick = function () { sellForm(l); };
   $('#lsavet').onclick = function () {

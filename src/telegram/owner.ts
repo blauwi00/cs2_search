@@ -1,3 +1,4 @@
+import { listCopies } from '../core/origin.ts';
 import { SITES, loadRefLinks, checkRefUrl, setRefStmt } from '../core/sites.ts';
 // Команды владельца бота: подключение канала для автопостинга, предпросмотр постов, статистика пользователей.
 
@@ -99,6 +100,7 @@ export async function statsCommand(h: H): Promise<void> {
     getMeta(h.d, 'channel_title'),
   ]);
   const user = await botUsername(h.d, h.tg);
+  const copies = await listCopies(h.d);
   return say(h, [
     '<b>📊 Статистика бота</b>', '',
     `Пользователей: <b>${tot?.n ?? 0}</b> (за сутки +${tot?.d1 ?? 0}, за неделю +${tot?.d7 ?? 0})`,
@@ -111,6 +113,8 @@ export async function statsCommand(h: H): Promise<void> {
     user ? `• TikTok: <code>https://t.me/${user}?start=tt</code>` : '',
     user ? `• канал: <code>https://t.me/${user}?start=ch</code>` : '',
     user ? '• любая своя метка: <code>?start=имя</code> (латиница, цифры, _)' : '',
+    '', `<b>🕵️ Копии бота</b> (запущены из твоего кода): ${copies.length ? '' : 'не найдено'}`,
+    ...copies.slice(0, 10).map(([host, at]) => `• <code>${esc(host)}</code> — последний раз ${new Date(at * 1000).toISOString().slice(0, 10)}`),
   ].filter((x) => x !== '').join('\n'));
 }
 

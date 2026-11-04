@@ -137,3 +137,19 @@ test('рассылка: /broadcast только владельцу, с пред�
   const got = sent.filter((s) => s.method === 'sendMessage' && /появился канал/.test(s.body.text)).map((s) => s.body.chat_id).sort();
   assert.deepEqual(got, [501, 502, ADMIN].sort());
 });
+
+test('защита авторства: копия запоминает свой домен и сообщает официальному боту; официальный — записывает и показывает в /stats', async () => {
+  const { rememberSelfHost, reportCopy, recordCopy, listCopies, OFFICIAL_HOST, FINGERPRINT } = await import('../src/core/origin.ts');
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  await rememberSelfHost(D, OFFICIAL_HOST);
+  const calls: string[] = [];
+  await reportCopy(D, async (u) => { calls.push(u); });
+  assert.equal(calls.length, 0, 'официальный бот о себе не сообщает');
+  await rememberSelfHost(D, 'stolen-bot.thief.workers.dev');
+  await reportCopy(D, async (u) => { calls.push(u); });
+  assert.equal(calls[0], `https://${OFFICIAL_HOST}/beacon?h=stolen-bot.thief.workers.dev&fp=${FINGERPRINT}`);
+  assert.equal(await recordCopy(D, 'stolen-bot.thief.workers.dev', NOW), true);
+  assert.equal(await recordCopy(D, 'stolen-bot.thief.workers.dev', NOW + 60), false, 'повтор — не новая');
+  assert.equal(await recordCopy(D, '<script>', NOW), false);
+  assert.deepEqual((await listCopies(D)).map((x) => x[0]), ['stolen-bot.thief.workers.dev']);
+});

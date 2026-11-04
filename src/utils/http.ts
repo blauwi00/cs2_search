@@ -41,7 +41,13 @@ export async function fetchChecked(url: string, opts: HttpOptions = {}): Promise
   const ra = parseRetryAfter(res.headers.get('retry-after'));
   if (res.status === 429) throw new SourceError('rate_limited', 'HTTP 429: лимит запросов', 429, ra);
   if (res.status === 401) throw new SourceError('auth', 'HTTP 401: ключ отклонён', 401);
-  if (res.status === 403) throw new SourceError('forbidden', 'HTTP 403: доступ запрещён', 403);
+  if (res.status === 403) {
+    // Начало ответа помогает отличить блокировку защитой сайта (Cloudflare, «error code: 10xx») от ответа API.
+    let snippet = '';
+    try { snippet = (await res.text()).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160); } catch { /* ignore */ }
+    const server = res.headers.get('server') ?? '';
+    throw new SourceError('forbidden', `HTTP 403: доступ запрещён${server ? ` (server: ${server})` : ''}${snippet ? ` — ${snippet}` : ''}`, 403);
+  }
   if (res.status === 404) throw new SourceError('not_found', 'HTTP 404', 404);
   if (res.status >= 500) throw new SourceError('server', `HTTP ${res.status}: ошибка сервера`, res.status, ra);
   throw new SourceError('server', `HTTP ${res.status}`, res.status);

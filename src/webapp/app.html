@@ -541,6 +541,12 @@ function itemSheet(id, days) {
       stat('Ликвидность', esc(r.liquidity.ru), r.liquidity.perDay != null ? '~' + Math.round(r.liquidity.perDay) + ' продаж/день' : esc(r.liquidity.basis)) + '</div>';
     h += '<div class="seg" id="dd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>';
     h += '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>';
+    if (r.steamAvg) {
+      h += '<div class="sec">Средняя цена продаж в Steam</div><div class="card">' +
+        [['за сутки', r.steamAvg.d1], ['за неделю', r.steamAvg.d7], ['за месяц', r.steamAvg.d30], ['за 3 месяца', r.steamAvg.d90]].filter(function (x) { return x[1]; })
+          .map(function (x) { return kv(x[0], '≈ ' + uah(x[1])); }).join('') + '</div>';
+      h += '<div class="note">По открытому прайсу CSGO Trader (обновляется раз в сутки), из долларов по курсу НБУ — поэтому «≈». Видно, дорожает предмет или дешевеет.</div>';
+    }
     h += '<div class="note">Как читать: фиолетовая линия — цена в Steam, пунктир — средняя за 7 дней. Линия ниже пунктира — сейчас дешевле обычного, выше — дороже. Решение уже посчитано в плашке сверху.</div>';
     if (r.stats && r.stats.count > 1) h += '<div class="note">Мин ' + uahShort(r.stats.min) + ' · медиана ' + uahShort(r.stats.median) + ' · макс ' + uahShort(r.stats.max) + ' · данных за ' + r.stats.spanDays.toFixed(1).replace('.', ',') + ' дн' + (r.stats.spanDays < days - 0.5 ? ' (из ' + days + ')' : '') + '</div>';
     var bt = r.backtest;

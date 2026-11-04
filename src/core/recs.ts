@@ -36,6 +36,8 @@ export interface ScanEntry {
   offers: ScanOffer[];
   s7: ScanPeriod | null;            // продажи Skinport за 7 дней (EUR, центы)
   s30: ScanPeriod | null;
+  /** Средние продажи Steam (USD, центы) из открытого прайса CSGO Trader: за сутки / неделю / месяц / 3 месяца. */
+  sa?: { d1: number | null; d7: number | null; d30: number | null; d90: number | null } | null;
   steam: { lowestKop: number | null; medianKop: number | null; volume24h: number | null; at: number } | null;
 }
 
@@ -74,7 +76,9 @@ export function parseScan(items: unknown, now: number): ScanEntry[] {
       volume24h: typeof st.volume === 'string' && st.volume.replace(/[^\d]/g, '') ? Number(st.volume.replace(/[^\d]/g, '')) : null,
       at: now,
     } : null;
-    out.push({ name: r.name, img: safeImg(r.img), offers, s7: period(r.s7), s30: period(r.s30), steam });
+    const sa = r.sa && typeof r.sa === 'object' ? r.sa as Record<string, unknown> : null;
+    out.push({ name: r.name, img: safeImg(r.img), offers, s7: period(r.s7), s30: period(r.s30), steam,
+      sa: sa ? { d1: cents(sa.d1), d7: cents(sa.d7), d30: cents(sa.d30), d90: cents(sa.d90) } : null });
   }
   return out;
 }
@@ -149,6 +153,11 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
       const list = e.steam.lowestKop - 1;
       const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
       sells.push({ m: 'steam', listKop: list, netKop: net, basis: `на 1 коп. дешевле самого дешёвого (${e.steam.volume24h} продаж за сутки)`, fees: ['Steam 15%'] });
+    } else if (e.sa?.d7 && e.sa.d1) {
+      // Живой цены Steam нет — ориентир: средняя цена продаж в Steam за неделю (прайс CSGO Trader, USD → грн по НБУ).
+      const list = kop(Math.min(e.sa.d7, e.sa.d1), 'USD');
+      const net = list ? steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0 : 0;
+      if (list) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
     }
     if (e.s7?.median && sales7 !== null && sales7 >= 7) {
       const list = kop(e.s7.median, 'EUR');
@@ -198,8 +207,10 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
 
     // ---- Тренд: медиана продаж за 7 дней заметно выше, чем за 30 дней, и продаётся часто.
     const cheapest = buys.filter((b) => b.m !== 'steam').sort((a, b) => a.payKop - b.payKop)[0];
-    if (e.s7?.median && e.s30?.median && sales7 !== null && sales7 >= 14 && cheapest) {
-      const t = Math.trunc(((e.s7.median - e.s30.median) * 10000) / e.s30.median);
+    const trendPair = e.s7?.median && e.s30?.median && sales7 !== null && sales7 >= 14 ? [e.s7.median, e.s30.median]
+      : e.sa?.d7 && e.sa.d30 && e.sa.d1 && sales7 !== null && sales7 >= 7 ? [e.sa.d7, e.sa.d30] : null;
+    if (trendPair && cheapest) {
+      const t = Math.trunc(((trendPair[0] - trendPair[1]) * 10000) / trendPair[1]);
       if (t >= 1000) trends.push({
         kind: 'trend', name: e.name, img: e.img ?? null, buyAt: cheapest.m, sellAt: cheapest.m, buyKop: cheapest.listKop, payKop: cheapest.payKop,
         sellKop: null, getKop: null, profitKop: null, roiBp: null, trendBp: t, sales7, wallet: null, fees: [], sellBasis: '',

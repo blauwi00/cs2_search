@@ -39,7 +39,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [] } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
@@ -110,6 +110,29 @@ try {
   console.error('Картинки:', e.message);
 }
 
+// 2б-2. Средние продажи Steam на весь рынок: открытый прайс CSGO Trader (обновляется раз в сутки, ~34 тыс. предметов).
+// Steam при этом не опрашивается — лимит Steam не тратится. Цены в USD, Worker переводит по курсу НБУ.
+let steamAvg = new Map();
+try {
+  const file = '.cache/steam.json';
+  let raw;
+  if (existsSync(file)) raw = JSON.parse(readFileSync(file, 'utf8'));
+  else {
+    const res = await fetch('https://prices.csgotrader.app/latest/steam.json', { headers: { 'User-Agent': UA } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    raw = await res.json();
+    mkdirSync('.cache', { recursive: true });
+    writeFileSync(file, JSON.stringify(raw));
+  }
+  for (const [n, v] of Object.entries(raw ?? {})) if (v && typeof v === 'object') steamAvg.set(n, { d1: v.last_24h ?? null, d7: v.last_7d ?? null, d30: v.last_30d ?? null, d90: v.last_90d ?? null });
+  console.log(`Прайс Steam (CSGO Trader): ${steamAvg.size} предметов`);
+  // Для предметов, которых нет в прайсе, тоже отправляем (пустые) — чтобы Worker не спрашивал их снова до завтра.
+  const send = needSteamAvg.map((n) => ({ name: n, ...(steamAvg.get(n) ?? { d1: null, d7: null, d30: null, d90: null }) }));
+  for (let i = 0; i < send.length; i += 400) console.log('Средние Steam для наблюдения:', await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), items: send.slice(i, i + 400) }));
+} catch (e) {
+  console.error('Прайс Steam:', e.message);
+}
+
 // 2в. Другие площадки: полные прайс-листы одним запросом (публичные, без ключа).
 const markets = { csgomarket: new Map(), waxpeer: new Map(), lisskins: new Map() };
 const getJson = async (url) => {
@@ -134,14 +157,17 @@ console.log(`Площадки: Market.CSGO ${markets.csgomarket.size}, Waxpeer $
 // 2г. Рекомендации по всему рынку. Кандидаты (грубый отбор в гривнах по курсу НБУ, точный расчёт делает Worker):
 // (а) где купить дешевле, чем продать на другой площадке после её комиссии; (б) Skinport ниже своей рекомендованной цены;
 // (в) самые популярные — для тренда и проверки Steam. Потом — реальные продажи Skinport за 7/30 дней.
-const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.05, lisskins: 0.05 };
-const RATE = { skinport: fx.EUR || 0, csgomarket: fx.USD || 0, waxpeer: fx.USD || 0, lisskins: fx.USD || 0 };
+const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.05, lisskins: 0.05, steamavg: 0.15 };
+const RATE = { skinport: fx.EUR || 0, csgomarket: fx.USD || 0, waxpeer: fx.USD || 0, lisskins: fx.USD || 0, steamavg: fx.USD || 0 };
 let scan = [];
 try {
   const sp = new Map(allItems.filter((x) => x && typeof x.market_hash_name === 'string' && x.min_price > 0).map((x) => [x.market_hash_name, x]));
   const names = new Set([...sp.keys(), ...markets.csgomarket.keys(), ...markets.waxpeer.keys(), ...markets.lisskins.keys()]);
   const offersOf = (n) => {
     const o = {};
+    // Steam как площадка продажи — по средней цене продаж за неделю (если вчера были продажи).
+    const sa = steamAvg.get(n);
+    if (sa?.d7 > 0 && sa?.d1 > 0) o.steamavg = { p: sa.d7, q: 99 };
     const s = sp.get(n);
     if (s) o.skinport = { p: s.min_price, q: s.quantity };
     for (const m of ['csgomarket', 'waxpeer', 'lisskins']) { const v = markets[m].get(n); if (v) o[m] = v; }
@@ -153,7 +179,9 @@ try {
     const o = offersOf(n);
     const list = Object.entries(o).filter(([m]) => RATE[m]).map(([m, v]) => ({ m, uah: v.p * RATE[m], q: v.q }));
     if (list.length < 2) continue;
-    const buy = list.reduce((a, b) => (b.uah < a.uah ? b : a));
+    const buyable = list.filter((x) => x.m !== 'steamavg');
+    if (!buyable.length) continue;
+    const buy = buyable.reduce((a, b) => (b.uah < a.uah ? b : a));
     if (buy.uah < 15) continue; // дешевле 15 грн — комиссии съедают всё
     const typical = list.map((x) => x.uah).sort((a, b) => a - b)[Math.floor(list.length / 2)];
     let bestNet = 0;
@@ -167,7 +195,10 @@ try {
   for (const x of base.filter((x) => x.suggested_price > 0 && x.min_price <= x.suggested_price * 0.88)
     .sort((a, b) => a.min_price / a.suggested_price - b.min_price / b.suggested_price)) { if (picked.size >= 65) break; picked.add(x.market_hash_name); }
   for (const x of base.filter((x) => x.min_price <= 300).sort((a, b) => b.quantity - a.quantity)) { if (picked.size >= 80) break; picked.add(x.market_hash_name); }
-  const byName = new Map([...picked].map((n) => [n, { name: n, img: images.get(n) ?? null, offers: offersOf(n), s7: null, s30: null, steam: null }]));
+  const byName = new Map([...picked].map((n) => {
+    const { steamavg, ...offers } = offersOf(n);
+    return [n, { name: n, img: images.get(n) ?? null, offers, sa: steamAvg.get(n) ?? null, s7: null, s30: null, steam: null }];
+  }));
   const cands = [...picked];
   for (let i = 0; i < cands.length && skinportCalls < 7; i += SALES_CHUNK) {
     const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: cands.slice(i, i + SALES_CHUNK).join(',') });

@@ -20,6 +20,7 @@ import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
 import { buildRecs, MARKETS, type Rec } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
+import { toKop } from '../currency/nbu.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -68,7 +69,10 @@ export async function imagesFor(d: D1Database, names: string[]): Promise<Map<str
  * 1) самое дешёвое на Skinport против медианы реальных продаж Skinport за 30 дней (или 7), если продаж хватает;
  * 2) самое дешёвое в Steam против медианы продаж Steam за сутки, если продаж за сутки от 10.
  */
-function altReference(g: (src: string, t: string) => db.QuoteRow | undefined): { curKop: number; refKop: number; where: string; basis: string } | null {
+function altReference(g: (src: string, t: string) => db.QuoteRow | undefined, sa?: SteamAvg | null): { curKop: number; refKop: number; where: string; basis: string; liquid?: boolean } | null {
+  // Средние продажи Steam из открытого прайса (одна валюта — курс не искажает сравнение): сутки против месяца.
+  // liquid: в прайсе есть продажи за последние сутки — значит, предмет покупают.
+  if (sa?.d1 && sa.d30) return { curKop: sa.d1, refKop: sa.d30, where: 'в Steam (продажи за сутки)', basis: 'средней цены продаж в Steam за месяц', liquid: true };
   const spLow = g('skinport', 'lowest_listing');
   const m30 = g('skinport', 'sale_median_30d'), m7 = g('skinport', 'sale_median_7d');
   const ref = m30?.price_kop && (m30.volume ?? 0) >= 10 ? { q: m30, txt: 'средней цены продаж за месяц' }
@@ -83,11 +87,16 @@ function altReference(g: (src: string, t: string) => db.QuoteRow | undefined): {
   return null;
 }
 
+export interface SteamAvg { item_id: number; d1: number | null; d7: number | null; d30: number | null; d90: number | null; updated_at: number }
+async function steamAvgFor(d: D1Database, ids: number[]): Promise<Map<number, SteamAvg>> {
+  return new Map((await chunkedAll(ids, async (p, ph) => (await d.prepare(`SELECT * FROM steam_avg WHERE item_id IN (${ph})`).bind(...p).all<SteamAvg>()).results)).map((r) => [r.item_id, r]));
+}
+
 async function adviceFor(d: D1Database, tid: number, now: number, items: { id: number; name: string }[]): Promise<Map<number, Advice>> {
   const out = new Map<number, Advice>();
   const ids = items.map((x) => x.id).slice(0, 360);
   if (!ids.length) return out;
-  const [quotes, aggRows, deals, lots, s] = await Promise.all([
+  const [quotes, aggRows, deals, lots, s, avgs] = await Promise.all([
     quotesChunked(d, ids),
     chunkedAll(ids, async (p, ph) => (await d.prepare(`SELECT item_id, CAST(AVG(price_kop) AS INTEGER) AS avg, MIN(observed_at) AS first FROM price_snapshots
       WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ? AND item_id IN (${ph}) GROUP BY item_id`)
@@ -95,6 +104,7 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
     db.activeSignals(d, 'spread', 90, now - 2 * 3600, { tid, minProfitKop: 0, minRoiBp: 0 }),
     T.openTrades(d, tid),
     db.getSettings(d, tid),
+    steamAvgFor(d, ids),
   ]);
   const aggBy = new Map(aggRows.map((r) => [r.item_id, r]));
   for (const it of items) {
@@ -116,7 +126,7 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
         ? { spreadKop: deal.spread_kop, buyKop: deal.buy_kop, buySource: deal.buy_source ?? '', proceedsKop: deal.proceeds_kop, priority: deal.priority } : null,
       lot: openQ > 0 ? { openQty: openQ, costPerUnitKop: Math.round(cost / openQ), targetKop: myLots.find((l) => l.target_sell_kop)?.target_sell_kop ?? null } : null,
       minRoiBp: db.num(s.min_roi_bp), minProfitKop: db.num(s.min_profit_kop),
-      alt: altReference(g),
+      alt: altReference(g, avgs.get(it.id)),
     }));
   }
   return out;
@@ -317,6 +327,10 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const advice = (await adviceFor(d, tid, now, [{ id: item.id, name: item.market_hash_name }])).get(item.id) ?? null;
       const avg7 = (await d.prepare(`SELECT CAST(AVG(price_kop) AS INTEGER) AS a FROM price_snapshots WHERE item_id = ? AND source = 'steam'
         AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ?`).bind(itemId, now - 7 * 86400).first<{ a: number | null }>())?.a ?? null;
+      const sa = (await steamAvgFor(d, [itemId])).get(itemId) ?? null;
+      const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
+      const conv = (c: number | null) => (c && usd ? toKop(c, 'USD', usd) : null);
+      const steamAvg = sa && (sa.d1 || sa.d7 || sa.d30) ? { d1: conv(sa.d1), d7: conv(sa.d7), d30: conv(sa.d30), d90: conv(sa.d90), at: sa.updated_at } : null;
       const q = (r: db.QuoteRow | null) => (r ? { kop: r.price_kop, minor: r.price_minor, currency: r.currency, qty: r.quantity, volume: r.volume, at: r.fetched_at } : null);
       return json({
         ok: true,
@@ -324,7 +338,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
         series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing') },
-        stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7,
+        stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7, steamAvg,
         backtest: bt, links: { steam: steamListingUrl(item.market_hash_name), skinport: safeLink(g('skinport', 'lowest_listing')?.url) },
       });
     }

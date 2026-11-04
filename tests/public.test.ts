@@ -8,6 +8,7 @@ import { deliverAt, nextAllowed, withDefaults, WATCH_LIMIT } from '../src/core/a
 import { signInitData } from '../src/webapp/auth.ts';
 import { handleAppApi } from '../src/webapp/api.ts';
 import { warsawHour } from '../src/utils/time.ts';
+import { handleIngest } from '../src/ingest.ts';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z') / 1000; // 13:00 по Варшаве
 const ALICE = 5001, BOB = 5002, CARL = 5003;
@@ -137,4 +138,30 @@ test('автозапуск сборщика: Worker раз в 10 минут за
   const before = calls.length;
   await runCycle(env2, { now: NOW, fetcher });
   assert.equal(calls.length, before);
+});
+
+test('прайс Steam (CSGO Trader): сохраняется для предметов наблюдения, подсказка без своей истории — по нему', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+  await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+  await api(env, ALICE, 'watch', 'POST', { names: ['Revolution Case', 'Kilowatt Case'] });
+  const hdr = { 'X-Ingest-Secret': 'ingest_secret_test_123' };
+  const items = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, NOW)).json() as { needSteamAvg: string[] };
+  assert.deepEqual([...items.needSteamAvg].sort(), ['Kilowatt Case', 'Revolution Case']);
+  const r = await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'steam_avg', fetchedAt: NOW, items: [
+    { name: 'Revolution Case', d1: 0.34, d7: 0.38, d30: 0.40, d90: 0.43 },  // продажи за сутки на 15% ниже месяца
+    { name: 'Kilowatt Case', d1: null, d7: null, d30: null, d90: null },   // нет в прайсе — пустая запись, чтобы не спрашивать снова
+    { name: 'Not Watched', d1: 1, d7: 1, d30: 1, d90: 1 },
+  ] }) }), env, NOW);
+  assert.equal(((await r.json()) as { stored: number }).stored, 2);
+  const again = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, NOW + 60)).json() as { needSteamAvg: string[] };
+  assert.deepEqual(again.needSteamAvg, [], 'до завтра не спрашиваем');
+  const w = await api(env, ALICE, 'watch');
+  const rev = w.body.items.find((x: { name: string }) => x.name === 'Revolution Case');
+  assert.equal(rev.advice.action, 'buy');
+  assert.match(rev.advice.reason, /в Steam \(продажи за сутки\) ниже средней цены продаж в Steam за месяц на 15%/);
+  assert.equal(w.body.items.find((x: { name: string }) => x.name === 'Kilowatt Case').advice.action, 'nodata');
+  const item = await api(env, ALICE, `item/${rev.itemId}`);
+  assert.equal(item.body.steamAvg.d30, 1600, '0,40 $ × 40 = 16,00 грн');
 });

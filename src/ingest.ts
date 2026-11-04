@@ -13,6 +13,7 @@ import { itemToQuote, parseSalesHistory } from './api/skinport.ts';
 import { toKop } from './currency/nbu.ts';
 import { safeEqual } from './telegram/webhook.ts';
 import { SourceError, type Quote } from './types/market.ts';
+import { catalogPartStmts, catalogInfo } from './catalog.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
@@ -28,7 +29,9 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
-    return json({ ok: true, items: items.map((i) => i.market_hash_name) });
+    const cat = await catalogInfo(d);
+    // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
+    return json({ ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400 });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
   if (Number(req.headers.get('content-length') ?? '0') > MAX_INGEST_BYTES) return json({ ok: false, error: 'too_large' }, 413);
@@ -130,6 +133,14 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       }
       await writeQuotes('skinport', pairs);
       await db.sourceOk(d, 'skinport', now, 1);
+    } else if (body.kind === 'catalog') {
+      const names = Array.isArray(body.items) ? (body.items as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 6000) : [];
+      const b = body as { part?: unknown; parts?: unknown };
+      const part = Number(b.part), parts = Number(b.parts);
+      if (!Number.isInteger(part) || !Number.isInteger(parts) || parts < 1 || parts > 20 || part < 0 || part >= parts) return json({ ok: false, error: 'bad_part' }, 400);
+      if (names.length < 10) return json({ ok: false, error: 'catalog_too_small' }, 400); // защита от пустого/битого ответа
+      await d.batch(catalogPartStmts(d, part, parts, names, now));
+      result.stored = names.length;
     } else {
       return json({ ok: false, error: 'unknown_kind' }, 400);
     }

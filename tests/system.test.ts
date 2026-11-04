@@ -117,9 +117,12 @@ test('20: команды принимаются только от админис
   assert.equal((await handleWebhook(mk(ADMIN, -100500), env, NOW, fetcher)).status, 200); // группа
   assert.equal(sent.length, 0, 'чужим и в группах ничего не отвечаем');
   await handleWebhook(mk(ADMIN, ADMIN), env, NOW, fetcher);
-  assert.equal(sent.length, 1);
-  assert.ok(String(sent[0].body.text).includes('CS2 Market Bot'));
-  assert.equal(sent[0].body.chat_id, ADMIN);
+  const msgs = sent.filter((x) => x.method === 'sendMessage');
+  assert.equal(msgs.length, 1);
+  assert.ok(String(msgs[0].body.text).includes('CS2 Market Bot'));
+  assert.equal(msgs[0].body.chat_id, ADMIN);
+  const menu = sent.find((x) => x.method === 'setChatMenuButton');
+  assert.equal((menu?.body.menu_button as { web_app: { url: string } }).web_app.url, 'https://x/app');
 });
 
 // 21. Настройки

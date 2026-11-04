@@ -5,7 +5,8 @@ import { setJobEnabled, listJobs } from '../core/scheduler.ts';
 import { TelegramClient, esc, type Keyboard } from './api.ts';
 import * as M from './menus.ts';
 import { metaFor, parseSettingInput, nextChoice } from './settings.ts';
-import { searchSteam, type SearchHit } from '../api/steam.ts';
+import type { SearchHit } from '../api/steam.ts';
+import { searchCatalog, catalogInfo } from '../catalog.ts';
 import { SourceError } from '../types/market.ts';
 import { parseUahInput, formatUah } from '../utils/money.ts';
 import { runDemo } from '../demo.ts';
@@ -75,7 +76,13 @@ async function onText(text: string, h: H): Promise<void> {
   const cmd = t.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, '');
   await db.ensureUser(h.d, h.adminId, true, h.now);
   switch (cmd) {
-    case '/start': case '/menu': await db.clearState(h.d, h.adminId); return show(h, await M.mainMenu(h.d, h.now));
+    case '/start': case '/menu': {
+      await db.clearState(h.d, h.adminId);
+      // Кнопка приложения у поля ввода; повторная установка безопасна.
+      try { await h.tg.setMenuButton(h.adminId, `${h.origin}/app`); } catch { /* не критично */ }
+      return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`));
+    }
+    case '/app': return say(h, 'Приложение откроется внутри Telegram:', [[{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }]]);
     case '/status': return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY, h.env.COLLECTOR === 'github'));
     case '/deals': return show(h, await M.dealsView(h.d, h.now, 'spread', h.adminId));
     case '/cases': return show(h, await M.casesView(h.d, h.adminId, h.now, 'name'));
@@ -117,6 +124,11 @@ async function onText(text: string, h: H): Promise<void> {
   }
 }
 
+/** Поиск: каталог названий Skinport (Steam-поиск из сети Cloudflare блокируется). */
+export async function findItems(h: H, query: string): Promise<string[]> {
+  return searchCatalog(h.d, query, 12);
+}
+
 /** Точные market_hash_name списком. Существование проверится при первом запросе цен (нет данных — запись в журнале). */
 export async function addList(h: H, body: string): Promise<void> {
   const names = [...new Set(body.split(/\r?\n/).map((x) => x.trim()).filter((x) => x.length >= 3 && x.length <= 120))].slice(0, 60);
@@ -143,20 +155,15 @@ export async function addList(h: H, body: string): Promise<void> {
 
 async function doSearch(h: H, query: string): Promise<void> {
   if (query.length < 2) return say(h, 'Слишком короткий запрос.');
-  let hits: SearchHit[];
-  try {
-    hits = await searchSteam(query, h.fetcher);
-  } catch (e) {
-    const rl = e instanceof SourceError && e.kind === 'rate_limited';
-    return say(h, rl
-      ? '⏳ Steam временно ограничил поиск (HTTP 429). Попробуй через пару минут.'
-      : `⚠️ Поиск в Steam не удался: ${esc((e as Error).message)}`);
+  const hits: SearchHit[] = (await findItems(h, query)).map((n) => ({ marketHashName: n, sellListings: null }));
+  if (hits.length === 0 && (await catalogInfo(h.d)).count === 0) {
+    return say(h, '⏳ Каталог названий ещё не загружен (его присылает сборщик GitHub при первом запуске). Пока можно добавить точным названием: /addlist');
   }
   if (hits.length === 0) return say(h, 'Ничего не найдено. Попробуй другое название (на английском, как в Steam).');
   await db.setState(h.d, h.adminId, 'pick', hits.map((x) => x.marketHashName), h.now);
   const kb: Keyboard = hits.map((x, i) => [{ text: `${x.marketHashName.slice(0, 55)}${x.sellListings !== null ? ` (${x.sellListings})` : ''}`, callback_data: `wp:${i}` }]);
   kb.push([{ text: 'Отмена', callback_data: 'm:watch' }]);
-  await h.tg.sendMessage(h.adminId, 'Выбери точный вариант (в скобках — число объявлений в Steam):', kb);
+  await h.tg.sendMessage(h.adminId, 'Выбери точный вариант:', kb);
 }
 
 async function onCallback(cb: TgCallback, h: H): Promise<void> {
@@ -166,7 +173,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   const [a, b, c] = data.split(':');
   const idArg = Number(b);
 
-  if (data === 'm') { await db.clearState(h.d, h.adminId); return show(h, await M.mainMenu(h.d, h.now), msgId); }
+  if (data === 'm') { await db.clearState(h.d, h.adminId); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
   if (a === 'm') {
     switch (b) {
       case 'deals': return show(h, await M.dealsView(h.d, h.now, c === 'roi' || c === 'priority' ? c : 'spread', h.adminId), msgId);
@@ -243,6 +250,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
 const HELP = [
   '<b>Команды</b>',
   '/start — главное меню',
+  '/app — открыть приложение',
   '/add название — добавить предмет в наблюдение',
   '/addlist — добавить несколько предметов списком (точные названия, по одному в строке)',
   '/watch — список наблюдения',

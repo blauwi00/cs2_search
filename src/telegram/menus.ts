@@ -20,7 +20,7 @@ const STATUS_RU: Record<string, string> = {
   ok: '✅ работает', degraded: '⚠️ ошибки', down: '❌ недоступен', disabled: '⏸ выключен', rate_limited: '⏳ лимит запросов',
 };
 
-export async function mainMenu(d: D1Database, now: number): Promise<View> {
+export async function mainMenu(d: D1Database, now: number, appUrl?: string): Promise<View> {
   const jobs = await listJobs(d);
   const sources = await db.listSourceStatus(d);
   const watched = await db.countActiveWatched(d);
@@ -38,6 +38,7 @@ export async function mainMenu(d: D1Database, now: number): Promise<View> {
     '', '<i>Валюта: гривна. Бот только анализирует — ничего не покупает и не продаёт.</i>',
   ].join('\n');
   const keyboard: Keyboard = [
+    ...(appUrl ? [[{ text: '📱 Открыть приложение', web_app: { url: appUrl } }]] : []),
     [{ text: '💰 Выгодные сделки', callback_data: 'm:deals' }, { text: '👁 Мониторинг цен', callback_data: 'm:watch' }],
     [{ text: '📦 Кейсы', callback_data: 'm:cases' }, { text: '🎒 Мой инвентарь', callback_data: 'm:inv' }],
     [{ text: '📈 Аналитика', callback_data: 'm:an' }, { text: '🧾 История сделок', callback_data: 'm:trades' }],

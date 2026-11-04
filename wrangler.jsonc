@@ -11,7 +11,7 @@
       "binding": "DB",
       "database_name": "cs2-market-bot",
       // Вставь сюда Database ID из Cloudflare → Storage & Databases → D1 → cs2-market-bot.
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "c2ee6ccc-1c47-4e07-87d2-69385047a64e",
       "migrations_dir": "migrations"
     }
   ]

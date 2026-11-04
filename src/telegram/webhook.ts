@@ -68,6 +68,8 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
 
 
 async function onText(text: string, h: H): Promise<void> {
+  // Добавление списком: /addlist и точные названия, по одному в строке (без поиска в Steam).
+  if (/^\/addlist(@\w+)?(\s|$)/i.test(text.trim())) return addList(h, text.trim().replace(/^\/addlist(@\w+)?/i, ''));
   const t = text.trim().slice(0, 200);
   const cmd = t.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, '');
   await db.ensureUser(h.d, h.adminId, true, h.now);
@@ -93,6 +95,7 @@ async function onText(text: string, h: H): Promise<void> {
   if (!st) return say(h, 'Не понял. Открой меню: /start', [[{ text: 'Меню', callback_data: 'm' }]]);
   if (await INV.onText(h, st, t)) return;
   if (st.awaiting === 'search') return doSearch(h, t);
+  if (st.awaiting === 'addlist') return addList(h, text);
   if (st.awaiting.startsWith('set:')) {
     const m = metaFor(st.awaiting.slice(4));
     if (!m) return;
@@ -111,6 +114,22 @@ async function onText(text: string, h: H): Promise<void> {
     await h.tg.sendMessage(h.adminId, `🎯 Целевая цена ${formatUah(kop)} сохранена. Уведомлю, когда самое дешёвое объявление в Steam будет не дороже.`);
     return show(h, await M.watchCard(h.d, h.adminId, id, h.now));
   }
+}
+
+/** Точные market_hash_name списком. Существование проверится при первом запросе цен (нет данных — запись в журнале). */
+export async function addList(h: H, body: string): Promise<void> {
+  const names = [...new Set(body.split(/\r?\n/).map((x) => x.trim()).filter((x) => x.length >= 3 && x.length <= 120))].slice(0, 60);
+  if (names.length === 0) {
+    await db.setState(h.d, h.adminId, 'addlist', null, h.now);
+    return say(h, 'Пришли точные названия предметов, каждое с новой строки (как в Steam), например:\n<code>Revolution Case\nFracture Case</code>');
+  }
+  let added = 0, existed = 0;
+  for (const n of names) {
+    const it = await db.upsertItem(h.d, n, h.now);
+    if ((await db.addWatch(h.d, h.adminId, it.id, h.now)) === 'added') added++; else existed++;
+  }
+  await db.clearState(h.d, h.adminId);
+  return say(h, `✅ Добавлено в наблюдение: ${added}${existed ? `, уже были: ${existed}` : ''}.\nЕсли название написано неточно, Steam вернёт «нет данных» — это будет видно в «Состоянии системы».`);
 }
 
 async function doSearch(h: H, query: string): Promise<void> {
@@ -216,6 +235,7 @@ const HELP = [
   '<b>Команды</b>',
   '/start — главное меню',
   '/add название — добавить предмет в наблюдение',
+  '/addlist — добавить несколько предметов списком (точные названия, по одному в строке)',
   '/watch — список наблюдения',
   '/deals — выгодные сделки',
   '/settings — настройки',

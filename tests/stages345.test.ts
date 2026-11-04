@@ -280,3 +280,17 @@ test('лимиты вызова соблюдаются и с инвентарё�
     assert.ok(calls.length - c <= 50);
   }
 });
+
+test('/addlist добавляет точные названия списком без запросов к Steam', async () => {
+  const d = migratedDb();
+  const env = testEnv(d);
+  const sent: Sent[] = [];
+  const { fetcher, calls } = mockFetch([telegramRoute(sent)]);
+  const { msg } = hooks(env);
+  await handleWebhook(msg('/addlist\nRevolution Case\nFracture Case\nRevolution Case\n'), env, NOW, fetcher);
+  const w = await db.listWatch(d as unknown as D1Database, ADMIN);
+  assert.deepEqual(w.map((x) => x.market_hash_name).sort(), ['Fracture Case', 'Revolution Case']);
+  assert.equal(w[0].category, 'case');
+  assert.ok(calls.every((c) => c.url.startsWith('https://api.telegram.org/')), 'никаких запросов к Steam');
+  assert.ok(String(sent.at(-1)!.body.text).includes('Добавлено в наблюдение: 2'));
+});

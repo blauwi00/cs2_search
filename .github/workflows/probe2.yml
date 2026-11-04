@@ -8,23 +8,22 @@ jobs:
         with: { node-version: 22 }
       - run: |
           cat > p.mjs <<'JS'
-          const base = 'https://steamcommunity.com/market/search/render/?appid=730&norender=1&search_descriptions=0&sort_column=name&sort_dir=asc';
-          const tries = [
-            base + '&start=0&count=100',
-            base + '&start=0&count=1000',
-            base + '&start=0&count=500&currency=18',
-            base + '&start=100&count=100&currency=18&country=UA&l=russian',
+          const urls = [
+            'https://prices.csgotrader.app/latest/steam.json',
+            'https://prices.csgotrader.app/latest/prices_v6.json',
+            'https://prices.csgotrader.app/latest/skinport.json',
+            'https://market.csgo.com/api/v2/prices/steam/USD.json',
+            'https://csgobackpack.net/api/GetItemsList/v2/?no_details=true',
           ];
-          for (const u of tries) {
+          for (const u of urls) {
             try {
-              const r = await fetch(u, { headers: { 'User-Agent': 'cs2-market-bot-collector/1.0 (personal price monitor)' } });
+              const r = await fetch(u, { headers: { 'User-Agent': 'cs2-market-bot-collector/1.0', 'Accept-Encoding': 'gzip, br' } });
               const t = await r.text();
+              console.log('####', r.status, t.length, u, r.headers.get('last-modified'));
               let j = null; try { j = JSON.parse(t); } catch {}
-              console.log('####', r.status, u.split('?')[1]);
-              if (j) console.log('total', j.total_count, 'got', j.results?.length, 'start', j.start, 'pagesize', j.pagesize, JSON.stringify(j.results?.[0])?.slice(0, 700));
-              else console.log(t.slice(0, 200));
-            } catch (e) { console.log('ERR', e.message); }
-            await new Promise((r) => setTimeout(r, 4000));
+              if (j && !Array.isArray(j)) { const k = Object.keys(j); console.log('keys', k.length, JSON.stringify({ [k[0]]: j[k[0]], 'Revolution Case': j['Revolution Case'], 'AK-47 | Redline (Field-Tested)': j['AK-47 | Redline (Field-Tested)'] }).slice(0, 900)); }
+              else console.log(t.slice(0, 300));
+            } catch (e) { console.log('####', 'ERR', u, e.message); }
           }
           JS
           node p.mjs

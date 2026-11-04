@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
       - name: FFmpeg
-        run: ffmpeg -version | head -1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+        run: command -v ffmpeg >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
       - name: Браузер для рендера
         run: npx -y $HF browser ensure
       - name: Распознавание голоса для субтитров (русский)

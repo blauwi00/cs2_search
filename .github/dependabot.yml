@@ -1,0 +1,16 @@
+# Dependabot: раз в неделю проверяет библиотеки бота и действия GitHub и предлагает обновления (pull request).
+# Обновления безопасности приходят сразу, если в Settings → Code security включены Dependabot alerts / security updates.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "09:00", timezone: Europe/Warsaw }
+    open-pull-requests-limit: 5
+    groups:
+      dev-tools: { dependency-type: development }
+    commit-message: { prefix: "deps" }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 3
+    commit-message: { prefix: "ci" }

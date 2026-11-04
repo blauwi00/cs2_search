@@ -66,14 +66,14 @@ export function yesterdayLine(rows: IdeaRow[]): string | null {
   if (!checked.length) return null;
   const plusN = checked.filter((r) => r.outcome === 'plus').length;
   const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
-  return `📊 <b>Вчерашние идеи через сутки: ${plusN} из ${checked.length} в плюсе</b>\nЛучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)})`;
+  return `📊 <b>Вчерашние рекомендации через сутки: ${plusN} из ${checked.length} в плюсе</b>\nЛучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)})`;
 }
 
 /** Пост «Идеи дня» из записанных идей. */
 export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): string | null {
   const y = yesterdayLine(yesterday);
   if (!rows.length && !y) return null;
-  const lines = [header('💡', 'Идеи дня', now), ''];
+  const lines = [header('💡', 'Рекомендации дня', now), ''];
   if (!rows.length) {
     lines.push(`Сегодня выгодных сделок нет: нигде после всех комиссий не остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%. Бот ничего не придумывает, когда выгоды нет.`, '');
   }
@@ -81,7 +81,7 @@ export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): s
     lines.push(...dealBlock(i + 1, { name: r.name, buyName: MARKETS[r.buy_at].name, sellName: MARKETS[r.sell_at].name, payKop: r.pay_kop, sellKop: r.sell_kop, getKop: r.get_kop, profitKop: r.profit_kop, roiBp: r.roi_bp, cash: r.wallet === 'cash' }), '');
   });
   if (y) lines.push(`<blockquote>${y}</blockquote>`, '');
-  lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Завтра — честный итог: сработали эти идеи или нет.</i>' : '<i>Завтра — снова проверка рынка.</i>');
+  lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Завтра — честный итог: сработали эти рекомендации или нет.</i>' : '<i>Завтра — снова проверка рынка.</i>');
   return lines.join('\n');
 }
 
@@ -105,7 +105,7 @@ export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: n
     const plusN = checked.filter((r) => r.outcome === 'plus').length;
     const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const avgReal = Math.round(checked.reduce((s, r) => s + (r.profit_kop_24 ?? 0), 0) / checked.length);
-    lines.push(`💡 <b>Идеи бота: ${plusN} из ${checked.length} в плюсе</b> (${Math.round((plusN / checked.length) * 100)}%)`,
+    lines.push(`💡 <b>Рекомендации бота: ${plusN} из ${checked.length} в плюсе</b> (${Math.round((plusN / checked.length) * 100)}%)`,
       `В среднем ${sign(avgReal)} на сделку · лучшая — ${esc(best.name)} ${sign(best.profit_kop_24 ?? 0)}`, '');
   }
   if (users.total >= 20) lines.push(`👥 В боте ${users.total} человек${users.week ? ` (+${users.week} за неделю)` : ''}`, '');

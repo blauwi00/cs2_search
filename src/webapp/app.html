@@ -143,7 +143,7 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
-  <button class="tab" data-t="deals"><span class="t">💡</span>Идеи</button>
+  <button class="tab" data-t="deals"><span class="t">💡</span>Рекомендации</button>
   <button class="tab" data-t="market"><span class="t">📊</span>Рынок</button>
   <button class="tab" data-t="inv"><span class="t">🎒</span>Инвентарь</button>
   <button class="tab" data-t="more"><span class="t">⚙️</span>Ещё</button>
@@ -245,7 +245,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { home: 'CS2 Market', deals: 'Что купить', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
+var TITLES = { home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -455,7 +455,7 @@ function deals() {
     }
     view.innerHTML = h;
     if ($('#r-how')) $('#r-how').onclick = function () {
-      sheet('<h2>Как бот ищет идеи</h2><div class="card info"><p>Каждые 10 минут бот сравнивает цены Steam, Skinport, Market.CSGO, Waxpeer и LIS-SKINS.</p><p>💸 <b>Купить и продать дороже</b> — где купить дешевле, чем потом можно продать, <b>после всех комиссий</b>. Только предметы, которые реально покупают (не меньше 7 продаж за неделю).</p><p>📈 <b>Растут в цене</b> — что уже дорожает последнюю неделю. Рост может развернуться.</p><p>«Получишь деньгами» — можно вывести с сайта. «На Steam» — останется на балансе Steam, вывести нельзя.</p></div><div class="note"><b>Честно:</b> «100% вырастет» не бывает. Цены — на момент проверки, перед покупкой проверь на сайте. Бот ничего не покупает сам. Свои пороги прибыли и комиссии банка — в Ещё → Настройки.</div>');
+      sheet('<h2>Как бот подбирает рекомендации</h2><div class="card info"><p>Каждые 10 минут бот сравнивает цены Steam, Skinport, Market.CSGO, Waxpeer и LIS-SKINS.</p><p>💸 <b>Купить и продать дороже</b> — где купить дешевле, чем потом можно продать, <b>после всех комиссий</b>. Только предметы, которые реально покупают (не меньше 7 продаж за неделю).</p><p>📈 <b>Растут в цене</b> — что уже дорожает последнюю неделю. Рост может развернуться.</p><p>«Получишь деньгами» — можно вывести с сайта. «На Steam» — останется на балансе Steam, вывести нельзя.</p></div><div class="note"><b>Честно:</b> «100% вырастет» не бывает. Цены — на момент проверки, перед покупкой проверь на сайте. Бот ничего не покупает сам. Свои пороги прибыли и комиссии банка — в Ещё → Настройки.</div>');
     };
     bindRecs(r.deals.concat(r.trends));
     bindDeals(mine);
@@ -570,7 +570,7 @@ function howOften(n) {
   n = n || {};
   var h = '<h2>Как часто обновляется</h2><div class="sub">Бот работает сам, 24/7, даже когда приложение закрыто.</div><div class="card info">';
   h += '<p>📥 <b>Цены</b> — сборщик забирает их примерно <b>каждые 10 минут</b> (расписание GitHub иногда опаздывает на 5–20 минут). Steam отдаёт ~20 предметов в минуту (за один запуск — около 120), поэтому большой список обновляется по кругу: при ' + (n.watched || 0) + ' предметах полный круг Steam — около ' + Math.max(10, Math.ceil((n.watched || 0) / 120) * 10) + ' мин.</p>';
-  h += '<p>🌍 <b>Идеи «Что купить»</b> (Skinport, Market.CSGO, Waxpeer, LIS-SKINS, Steam) — пересчитываются <b>каждые ~10 минут</b>.</p>';
+  h += '<p>🌍 <b>Рекомендации «Что купить»</b> (Skinport, Market.CSGO, Waxpeer, LIS-SKINS, Steam) — пересчитываются <b>каждые ~10 минут</b>.</p>';
   h += '<p>🧠 <b>Анализ</b> новых цен — каждую минуту.</p>';
   h += '<p>🔔 <b>Уведомления в Telegram</b> — ' + (n.enabled ? '<b>сразу</b>, как только находится выгодная сделка по твоему списку или срабатывает целевая цена. Одна и та же сделка повторно — не раньше чем через 6 часов (или если цена изменилась на 20%+). Не больше <b>' + n.maxPerHour + '</b> в час.' : '<b>выключены</b> (Ещё → Настройки).') + '</p>';
   h += '<p>🌙 <b>Тихие часы</b>: ' + n.quietStart + ':00–' + n.quietEnd + ':00 — ночью бот молчит.</p>';
@@ -992,7 +992,7 @@ function termsSheet() {
 function more() {
   view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, идеи, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +

@@ -17,9 +17,9 @@ const FX = new Map([['EUR', EUR], ['USD', USD]] as const);
 const deal: ScanEntry = { name: 'Revolution Case', offers: [{ m: 'skinport', cur: 'EUR', minor: 1000, qty: 50 }], s7: { median: 1300, volume: 300 }, s30: { median: 1250, volume: 1200 }, steam: null };
 const kase = (n: string, d1: number, d30: number): ScanEntry => ({ name: n, offers: [], s7: null, s30: null, steam: null, sa: { d1, d7: d1, d30, d90: d30 } });
 
-test('посты: «Идеи дня» с полной цепочкой и дисклеймером; пусто — поста нет', () => {
+test('посты: «Рекомендации дня» с полной цепочкой и дисклеймером; пусто — поста нет', () => {
   const p = renderMoney(buildPost('ideas', [deal], FX, AT10)!, UAH_CUR);
-  assert.match(p, /Идеи дня<\/b> · 4 ноября/);
+  assert.match(p, /Рекомендации дня<\/b> · 4 ноября/);
   assert.match(p, /Купить: Skinport — <b>450,00 ₴<\/b>\n💰 Продать: Skinport — 585,00 ₴\n✅ Чистыми: <b>\+/);
   assert.match(p, /Не финансовый совет/);
   assert.equal(buildPost('ideas', [], FX, AT10), null);
@@ -82,7 +82,7 @@ test('канал: /channel проверяет права бота, публик�
   await runCycle(env, { now: AT10 + 34 * 60, fetcher });
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один пост за слот');
-  assert.match(posts[0].body.text, /Идеи дня/);
+  assert.match(posts[0].body.text, /Рекомендации дня/);
 });
 
 test('метки источников: /start tt сохраняется один раз; /stats видит только владелец', async () => {

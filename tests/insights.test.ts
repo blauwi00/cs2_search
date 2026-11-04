@@ -25,9 +25,9 @@ test('история идей: записываются один раз за д�
   await db.storeFx(D, [EUR, USD], DAY1);
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1);
   const p1 = (await composePost(D, 'ideas', DAY1))!;
-  assert.match(p1, /Идеи дня<\/b> · 4 ноября/);
+  assert.match(p1, /Рекомендации дня<\/b> · 4 ноября/);
   assert.match(p1, /Завтра — честный итог/);
-  assert.ok(!/Вчерашние идеи/.test(p1));
+  assert.ok(!/Вчерашние рекомендации/.test(p1));
   await composePost(D, 'ideas', DAY1 + 600);
   assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM idea_log').get() as { n: number }).n, 1, 'одна запись на идею, без повторов');
   // Сборщик обязан включить идею в сканирование для проверки.
@@ -39,7 +39,7 @@ test('история идей: записываются один раз за д�
   assert.equal(r.outcome, 'minus');
   assert.equal(r.profit_kop_24, Math.floor(1050 * 0.92) * 45 - 45000);
   const p2 = (await composePost(D, 'ideas', DAY2))!;
-  assert.match(p2, /Вчерашние идеи через сутки: 0 из 1 в плюсе/);
+  assert.match(p2, /Вчерашние рекомендации через сутки: 0 из 1 в плюсе/);
 });
 
 test('итог недели: индекс кейсов, лидеры, идеи; без данных — пусто', () => {
@@ -49,7 +49,7 @@ test('итог недели: индекс кейсов, лидеры, идеи; 
   assert.match(p, /Индекс кейсов Steam: <b>\+0%<\/b>\n<i>в среднем по 5 кейсам/);
   assert.match(p, /Выросли сильнее всех[\s\S]*E Case — <b>\+20%<\/b>/);
   assert.match(p, /Упали сильнее всех[\s\S]*A Case — <b>−20%<\/b>/);
-  assert.match(p, /Идеи бота: 1 из 2 в плюсе<\/b> \(50%\)/);
+  assert.match(p, /Рекомендации бота: 1 из 2 в плюсе<\/b> \(50%\)/);
   assert.match(p, /В боте 120 человек \(\+15 за неделю\)/);
   assert.equal(weeklyPost([], [], { total: 3, week: 1 }, DAY1), null);
   assert.equal(yesterdayLine([idea({ outcome: 'gone' })]), null, 'нет данных — не выдумываем итог');
@@ -117,7 +117,7 @@ test('картинки в канале: обложка новости из Steam
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
   const n = posts.find((s) => /Обновление CS2/.test(s.body.text))!;
   assert.deepEqual(n.body.link_preview_options, { url: 'https://clan.akamai.steamstatic.com/images/1/cover.jpg', prefer_large_media: true, show_above_text: true });
-  const idea = posts.find((s) => /Идеи дня/.test(s.body.text));
+  const idea = posts.find((s) => /Рекомендации дня/.test(s.body.text));
   if (idea) assert.equal(idea.body.link_preview_options.url, img);
   const admin = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id !== -1001234);
   if (admin) assert.deepEqual(admin.body.link_preview_options, { is_disabled: true });

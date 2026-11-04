@@ -625,7 +625,7 @@ export async function jobHealth(ctx: Ctx): Promise<void> {
     const name = r.source === 'nbu' ? 'Курсы НБУ' : r.source;
     const sent = await sendAdmin(ctx, 'tech', r.source,
       soft
-        ? `⚠️ <b>Steam</b> ограничивает запросы уже ${Math.floor(mins / 60)} ч (ответ 429 серверам GitHub).\nЖивые цены Steam не обновляются, подсказки и идеи пока считаются по суточному прайсу Steam. Ничего делать не нужно — бот продолжает пробовать каждые 10 минут.`
+        ? `⚠️ <b>Steam</b> ограничивает запросы уже ${Math.floor(mins / 60)} ч (ответ 429 серверам GitHub).\nЖивые цены Steam не обновляются, подсказки и рекомендации пока считаются по суточному прайсу Steam. Ничего делать не нужно — бот продолжает пробовать каждые 10 минут.`
         : `⚠️ <b>${name}</b> недоступен ${mins} мин.\nПоследняя ошибка: ${r.last_error ?? '—'}\nСравнения с этим источником временно не обновляются. Остальные источники продолжают работать.`,
       [], null, pending);
     if (sent) pending.push(ctx.db.prepare('UPDATE source_status SET alerted_at = ? WHERE source = ?').bind(ctx.now, r.source));
@@ -669,7 +669,7 @@ export async function jobDailyReport(ctx: Ctx): Promise<void> {
       pf.openLots ? `• позиций: ${pf.openLots}; куплено за ${formatUah(pf.inventoryCost)} → оценка в Steam ${formatUah(pf.inventoryValue)}${pf.inventoryUnknown ? ` (+${pf.inventoryUnknown} без цены)` : ''}` : '• пусто',
       '<b>Возможности по твоему списку</b> (это ещё не доход):',
       ...(top.length ? top.map((x) => `• ${esc(x.name)}: ${formatUah(x.spread_kop)}`) : ['• сейчас нет']),
-      '', 'Идеи по всему рынку — в приложении, вкладка «Идеи».',
+      '', 'Рекомендации по всему рынку — в приложении, вкладка «Рекомендации».',
     ];
     pending.push(enqueueStmt(ctx.db, tid, { kind: 'inventory', ref: `daily:${today}`, signalId: null, priority: 'low', text: lines.join('\n'), keyboard: [] }, ctx.now, ctx.now));
     pending.push(ctx.db.prepare(

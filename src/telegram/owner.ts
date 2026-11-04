@@ -5,7 +5,7 @@ import { esc } from './api.ts';
 import { say, type H } from './context.ts';
 import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
-const SLOT_RU: Record<Slot, string> = { ideas: 'Идеи дня + итог вчерашних (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
+const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
 export async function channelCommand(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
@@ -40,12 +40,12 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
     const user = me.username ?? (await botUsername(h.d, h.tg));
     await h.tg.sendMessage(chat.id, [
       '👋 <b>Рынок скинов CS2 — каждый день</b>', '',
-      '💡 <b>10:00</b> — идеи дня: где купить дешевле и продать дороже',
+      '💡 <b>10:00</b> — рекомендации дня: где купить дешевле и продать дороже',
       '📈 <b>15:00</b> — что растёт в цене',
       '📦 <b>20:00</b> — кейсы Steam: что дорожает и дешевеет',
       '📅 <b>Вс 19:00</b> — итоги недели',
       '🛠 Обновления CS2 — сразу, как выходят', '',
-      '<blockquote>Цены — в долларах, комиссии площадок учтены. Каждое утро — честный итог вчерашних идей: сработали или нет.</blockquote>', '',
+      '<blockquote>Цены — в долларах, комиссии площадок учтены. Каждое утро — честный итог вчерашних рекомендаций: сработали или нет.</blockquote>', '',
       'Личные подсказки, уведомления и твой инвентарь — в боте 👇',
     ].join('\n'), botButton(user, '🤖 Открыть бота'));
     await h.d.batch([setMetaStmt(h.d, 'channel_id', String(chat.id)), setMetaStmt(h.d, 'channel_title', chat.title ?? chat.username ?? String(chat.id))]);

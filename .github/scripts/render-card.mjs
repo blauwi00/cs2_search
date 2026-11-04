@@ -112,7 +112,7 @@ h1{font-size:54px;line-height:1;margin:14px 0 4px;font-weight:800;letter-spacing
 <div class="top"><div class="brand"><span class="dot"></span>ЦЕНОЛОВ · CS2</div><div class="date">${esc(c.date)}</div></div>
 <h1>${esc(c.title)}</h1>${c.subtitle ? `<div class="subt">${esc(c.subtitle)}</div>` : '<div class="subt">цены в долларах · комиссии учтены</div>'}
 ${body(c)}
-<div class="foot"><span>${esc(c.note ?? '')}</span><span>все идеи и уведомления — <b>в боте</b></span></div>
+<div class="foot"><span>${esc(c.note ?? '')}</span><span>все рекомендации и уведомления — <b>в боте</b></span></div>
 </div></body></html>`;
 }
 

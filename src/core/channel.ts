@@ -24,7 +24,7 @@ export const ALL_SLOTS: Slot[] = ['ideas', 'trends', 'cases', 'weekly'];
 
 const fmt = (k: number | null) => formatUah(k);
 
-export function botButton(botUsername: string | null, text = '🤖 Все идеи и уведомления — в боте'): Keyboard {
+export function botButton(botUsername: string | null, text = '🤖 Все рекомендации и уведомления — в боте'): Keyboard {
   return botUsername ? [[{ text, url: `https://t.me/${botUsername}?start=ch` }]] : [];
 }
 
@@ -41,7 +41,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
     const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
     const top = deals.slice(0, 4);
     if (!top.length) return null;
-    const lines = [header('💡', 'Идеи дня', now), ''];
+    const lines = [header('💡', 'Рекомендации дня', now), ''];
     top.forEach((d, i) => lines.push(...dealBlock(i + 1, { name: d.name, buyName: MARKETS[d.buyAt].name, sellName: MARKETS[d.sellAt].name, payKop: d.payKop, sellKop: d.sellKop, getKop: d.getKop!, profitKop: d.profitKop!, roiBp: d.roiBp ?? 0, cash: d.wallet === 'cash' }), ''));
     lines.push(FOOT_DEALS);
     return { text: lines.join('\n'), lead: top[0].name };
@@ -137,9 +137,9 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     const checked = yesterday.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
     const bestY = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const card = today.length ? {
-      title: 'Идеи дня',
+      title: 'Рекомендации дня',
       deals: today.slice(0, 4).map((r) => ({ name: r.name, buy: MARKETS[r.buy_at].name, buyPrice: formatUah(r.pay_kop), sell: MARKETS[r.sell_at].name, sellPrice: formatUah(r.sell_kop), profit: formatSignedUah(r.profit_kop), roi: pct(r.roi_bp) })),
-      note: checked.length ? `Вчера: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} идей в плюсе` : null,
+      note: checked.length ? `Вчера: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} рекомендаций в плюсе` : null,
     } : null;
     return finish(ideasPost(today, yesterday, now), today[0]?.name ?? bestY?.name ?? null, card);
   }
@@ -163,7 +163,7 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     big: pct(Math.round(ch.reduce((s, x) => s + x.bp, 0) / ch.length)), bigLabel: 'индекс кейсов Steam',
     up: [...ch].sort((a, b) => b.bp - a.bp).filter((x) => x.bp > 0).slice(0, 3).map(row),
     down: [...ch].sort((a, b) => a.bp - b.bp).filter((x) => x.bp < 0).slice(0, 3).map(row),
-    note: checked.length ? `Идеи бота: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе через сутки` : null,
+    note: checked.length ? `Рекомендации бота: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе через сутки` : null,
   } : null;
   return finish(weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now), leader?.name ?? null, card);
 }

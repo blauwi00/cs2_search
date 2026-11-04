@@ -608,12 +608,17 @@ export async function jobHealth(ctx: Ctx): Promise<void> {
   for (const r of rows) {
     if (r.source === 'collector') continue;
     if (!r.down_since || r.status === 'disabled' || r.status === 'ok') continue;
-    if (ctx.now - r.down_since < 1800) continue;
+    // Ограничение Steam (429) у сборщика GitHub — обычное дело и проходит само; подсказки тем временем берут цены
+    // из суточного прайса Steam. Предупреждаем только если это тянется дольше 3 часов.
+    const soft = r.source === 'steam' && r.status === 'rate_limited';
+    if (ctx.now - r.down_since < (soft ? 3 * 3600 : 1800)) continue;
     if (r.alerted_at && r.alerted_at >= r.down_since) continue;
     const mins = Math.floor((ctx.now - r.down_since) / 60);
     const name = r.source === 'nbu' ? 'Курсы НБУ' : r.source;
     const sent = await sendAdmin(ctx, 'tech', r.source,
-      `⚠️ <b>${name}</b> недоступен ${mins} мин.\nПоследняя ошибка: ${r.last_error ?? '—'}\nСравнения с этим источником временно не обновляются. Остальные источники продолжают работать.`,
+      soft
+        ? `⚠️ <b>Steam</b> ограничивает запросы уже ${Math.floor(mins / 60)} ч (ответ 429 серверам GitHub).\nЖивые цены Steam не обновляются, подсказки и идеи пока считаются по суточному прайсу Steam. Ничего делать не нужно — бот продолжает пробовать каждые 10 минут.`
+        : `⚠️ <b>${name}</b> недоступен ${mins} мин.\nПоследняя ошибка: ${r.last_error ?? '—'}\nСравнения с этим источником временно не обновляются. Остальные источники продолжают работать.`,
       [], null, pending);
     if (sent) pending.push(ctx.db.prepare('UPDATE source_status SET alerted_at = ? WHERE source = ?').bind(ctx.now, r.source));
   }

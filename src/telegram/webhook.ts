@@ -19,6 +19,7 @@ import * as INV from './inventory.ts';
 import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
 import { moneyResolver, guessCurrency, isCurrency, loadRates, availableCurrencies } from '../currency/display.ts';
+import { privacyText } from '../core/privacy.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
 export const MAX_UPDATE_BYTES = 64 * 1024;
@@ -92,12 +93,13 @@ async function onText(text: string, h: H): Promise<void> {
       try { await h.tg.setMenuButton(h.uid, `${h.origin}/app`); } catch { /* не критично */ }
       // Главное — приложение. Текстовое меню осталось за второй кнопкой и командой /menu.
       const cur = await hcur(h);
-      return say(h, `<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь.\nВалюта: <b>${cur.code}</b> — сменить: /currency\nЖми кнопку 👇`, [
+      return say(h, `<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь.\n\n💱 Валюта: <b>${cur.code}</b> — если не твоя, смени: /currency\n🛡 Бот не спрашивает пароль Steam и ничего не покупает сам. Что он знает и что нужно для работы: /privacy\n\nЖми кнопку 👇`, [
         [{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }],
         [{ text: '☰ Текстовое меню', callback_data: 'm' }],
       ]);
     }
     case '/currency': case '/valuta': return currencyView(h);
+    case '/privacy': return say(h, privacyText());
     case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
     case '/stats': return statsCommand(h);
@@ -271,6 +273,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (a === 'cur') {
     if (b && isCurrency(b)) {
       await db.setSetting(h.d, h.uid, 'currency', b, h.now);
+      await db.setSetting(h.d, h.uid, 'currency_ok', '1', h.now);
       h.tg.money = moneyResolver(h.d);
     }
     return currencyView(h, msgId, !!b);
@@ -295,6 +298,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
 const HELP = [
   '<b>Команды</b>',
   '/start — открыть приложение', '/menu — текстовое меню',
+  '/currency — валюта цен', '/privacy — что нужно боту и что он знает',
   '/app — открыть приложение',
   '/add название — добавить предмет в наблюдение',
   '/addlist — добавить несколько предметов списком (точные названия, по одному в строке)',

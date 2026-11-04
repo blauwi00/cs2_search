@@ -35,6 +35,8 @@ export const DEFAULT_SETTINGS = {
   deals_budget: '0',         // 1 = только в пределах бюджета/лимита покупки
   deals_liq: '0',            // 1 = скрыть низкую и неизвестную ликвидность
   currency: '',              // валюта показа (USD, EUR, UAH…); пусто — гривна (так было до выбора валюты)
+  currency_ok: '',           // 1 = человек сам выбрал или подтвердил валюту
+  setup_hidden: '',          // 1 = скрыл карточку «Настрой бота»
 } as const;
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
 export type Settings = Record<SettingKey, string>;

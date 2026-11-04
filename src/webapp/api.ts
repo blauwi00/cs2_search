@@ -25,6 +25,7 @@ import { steamLoginUrl, newNonce, parseSteamProfile } from '../steam_link.ts';
 import { floatNote, type AssetDetail } from '../core/inspect.ts';
 import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency } from '../currency/display.ts';
 import { renderMoney } from '../utils/money.ts';
+import { PRIVACY_POINTS } from '../core/privacy.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -209,8 +210,14 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const actions = wl.map((w) => ({ itemId: w.item_id, name: w.market_hash_name, category: w.category, advice: adv.get(w.item_id)!, img: imgs.get(w.market_hash_name) ?? null }))
         .filter((x) => x.advice && (x.advice.action === 'buy' || x.advice.action === 'sell'))
         .sort((a, b) => ACTION_RANK[a.advice.action] - ACTION_RANK[b.advice.action]).slice(0, 8);
-      const [recs, st] = await Promise.all([recsFor(d, tid, now), db.getSettings(d, tid)]);
+      const [recs, st, su] = await Promise.all([recsFor(d, tid, now), db.getSettings(d, tid),
+        d.prepare('SELECT steam_id, steam_vanity, inv_status FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null; inv_status: string | null }>()]);
+      const myWatch = wl.length;
       return json({
+        setup: st.setup_hidden === '1' ? null : {
+          currencyOk: st.currency_ok === '1', notify: st.notify_enabled === '1', watched: myWatch,
+          steam: su?.steam_id || su?.steam_vanity ? (su.inv_status === 'private' ? 'private' : 'ok') : 'none',
+        },
         notify: {
           enabled: st.notify_enabled === '1', maxPerHour: db.num(st.max_per_hour) || 6, quietStart: db.num(st.quiet_start), quietEnd: db.num(st.quiet_end),
           daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
@@ -541,7 +548,18 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const rates = await loadRates(d);
       if (!isCurrency(body.value) || !rates[body.value]) return bad('Нет курса для этой валюты');
       await db.setSetting(d, tid, 'currency', body.value, now);
+      await db.setSetting(d, tid, 'currency_ok', '1', now);
       return json({ ok: true, value: body.value });
+    }
+    if (path === 'setup' && method === 'POST') {
+      if (body.what === 'currency') await db.setSetting(d, tid, 'currency_ok', '1', now);
+      else if (body.what === 'hide') await db.setSetting(d, tid, 'setup_hidden', '1', now);
+      else if (body.what === 'notify') await db.setSetting(d, tid, 'notify_enabled', '1', now);
+      else return bad('bad_setup');
+      return json({ ok: true });
+    }
+    if (path === 'privacy' && method === 'GET') {
+      return json({ ok: true, ...PRIVACY_POINTS });
     }
     if (path === 'settings' && method === 'POST') {
       const m = settingsFor(isAdmin).find((x) => x.key === body.key);

@@ -269,6 +269,45 @@ $('#dot').onclick = function () {
 };
 
 // ---------- Главная ----------
+// ---------- «Настрой бота»: что нужно для стабильной работы (скрывается, когда всё готово или по кнопке) ----------
+function setupCard(su) {
+  if (!su) return '';
+  var steamOk = su.steam === 'ok';
+  if (su.currencyOk && su.notify && su.watched > 0 && steamOk) return '';
+  var row = function (ok, icon, title, note, btn) {
+    return '<div class="kv" style="align-items:center;gap:10px"><span>' + (ok ? '✅' : icon) + ' <b>' + title + '</b>' + (note ? '<div class="mut" style="font-size:12px;font-weight:400">' + note + '</div>' : '') + '</span>' + (btn || '') + '</div>';
+  };
+  var b = function (id, t) { return '<button class="btn sec2" id="' + id + '" style="width:auto;margin:0;padding:7px 12px;font-size:13px">' + t + '</button>'; };
+  var h = '<div class="card" style="padding:10px 14px"><div style="font-weight:700;margin:4px 0 6px">⚙️ Настрой бота — 1 минута</div>';
+  h += row(su.currencyOk, '💱', 'Валюта: ' + esc(CUR.code + ' ' + CUR.sign), su.currencyOk ? '' : 'Поставлена по языку Telegram. Верно?', su.currencyOk ? '' : b('su-cok', 'Да') + ' ' + b('su-cch', 'Сменить'));
+  h += row(su.notify, '🔔', 'Уведомления', su.notify ? 'Не блокируй бота — иначе Telegram не даст ему писать' : 'Выключены (возможно, бот был заблокирован)', su.notify ? '' : b('su-non', 'Включить'));
+  h += row(su.watched > 0, '📋', 'Предметы в списке', su.watched > 0 ? '' : 'Добавь до 20 предметов — по ним придут уведомления', su.watched > 0 ? '' : b('su-add', 'Добавить'));
+  h += row(steamOk, '🎮', 'Steam (по желанию)', su.steam === 'private' ? 'Инвентарь закрыт — открой его в настройках приватности Steam' : steamOk ? '' : 'Только чтобы бот сам увидел инвентарь. Пароль не нужен', steamOk ? '' : b('su-st', su.steam === 'private' ? 'Как?' : 'Подключить'));
+  h += '<div style="display:flex;justify-content:space-between;margin:8px 0 4px;font-size:13px"><a id="su-priv">🛡 Что знает бот</a><a id="su-hide" class="mut">Скрыть</a></div></div>';
+  return h;
+}
+function bindSetup() {
+  var on = function (id, f) { var el = $('#' + id); if (el) el.onclick = f; };
+  var post = function (what) { return api('setup', { method: 'POST', body: { what: what } }); };
+  on('su-cok', function () { post('currency').then(function () { haptic('ok'); home(); }); });
+  on('su-cch', function () { settings(); });
+  on('su-non', function () { post('notify').then(function () { haptic('ok'); toast('Уведомления включены'); home(); }); });
+  on('su-add', function () { go('market'); });
+  on('su-st', function () { go('inv'); });
+  on('su-priv', privacy);
+  on('su-hide', function () { post('hide').then(function () { home(); }); });
+}
+function privacy() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('privacy').then(function (r) {
+    var h = '<h2>🛡 Что нужно боту и что он знает</h2><div class="sub">Коротко и честно.</div>';
+    h += '<div class="sec">Чтобы всё работало</div><div class="card">' + r.need.map(function (x) { return '<div class="kv" style="display:block"><b>' + x[0] + ' ' + esc(x[1]) + '</b><div class="mut" style="font-size:13px;margin-top:2px">' + esc(x[2]) + '</div></div>'; }).join('') + '</div>';
+    h += '<div class="sec">Бот знает</div><div class="card">' + r.knows.map(function (x) { return '<div class="kv"><span>• ' + esc(x) + '</span></div>'; }).join('') + '</div>';
+    h += '<div class="sec">Бот никогда не получает</div><div class="card">' + r.never.map(function (x) { return '<div class="kv"><span>🚫 ' + esc(x) + '</span></div>'; }).join('') + '</div>';
+    h += '<div class="note">Вход через Steam идёт на официальной странице steamcommunity.com — бот видит только ответ Steam «это аккаунт №…». Отключить Steam можно в любой момент: Инвентарь → «Отключить Steam».</div>';
+    $('#sc').innerHTML = h;
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
 function home() {
   loading(5);
   api('summary').then(function (s) {
@@ -278,6 +317,7 @@ function home() {
     var h = '';
     h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + hs.icon + '</div><div style="flex:1"><div style="font-weight:600">' + hs.title +
       '</div><div class="mut" style="font-size:13px">' + (hs.note ? esc(hs.note) + '<br>' : '') + 'Цены обновлены ' + ago(s.lastPriceAt) + ' · предметов: ' + s.watched + '<br>Новые цены — примерно каждые 10 минут · <a id="howoft" style="color:var(--link)">как часто пишет бот?</a></div></div></div>';
+    h += setupCard(s.setup);
     h += '<div class="sec">Что делать сейчас</div>';
     h += s.actions && s.actions.length ? s.actions.map(function (x) {
       return '<div class="row" data-item="' + x.itemId + '">' + pic(x.img, ACT_ICON[x.advice.action]) + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d" style="white-space:normal">' + esc(x.advice.reason) + '</div></div><div class="r">' + actPill(x.advice) + '</div></div>';
@@ -299,6 +339,7 @@ function home() {
       return '<div class="kv"><span class="k">' + (SRC[x.source] || esc(x.source)) + '</span><span class="v">' + srcStatus(x) + '</span></div>';
     }).join('') + '</div>';
     view.innerHTML = h;
+    bindSetup();
     $('#alld').onclick = function () { go('deals'); };
     $('#howoft').onclick = function (e) { e.stopPropagation(); howOften(s.notify); };
     bindDeals(s.deals);
@@ -661,7 +702,7 @@ function steamBlock(st) {
   if (!st) return h + '<div class="card mut">Не удалось загрузить.</div>';
   if (!st.linked) {
     h += '<div class="card"><div style="font-weight:700;margin-bottom:4px">Подключи Steam — бот сам подтянет твои предметы</div>' +
-      '<div class="mut" style="font-size:13px;margin-bottom:10px">Через официальную страницу Steam. Бот узнаёт только номер аккаунта: пароль, Steam Guard и доступ к покупкам он <b>не</b> получает. Инвентарь должен быть открытым.</div>' +
+      '<div class="mut" style="font-size:13px;margin-bottom:10px">Через официальную страницу Steam. Бот узнаёт только номер аккаунта: пароль, Steam Guard и доступ к покупкам он <b>не</b> получает. Инвентарь должен быть открытым. <a id="st-pv">Подробнее</a></div>' +
       '<button class="btn" id="st-login">🎮 Войти через Steam</button>' +
       '<div class="mut" style="font-size:13px;margin:10px 0 6px">или вставь ссылку на профиль Steam:</div>' +
       '<div style="display:flex;gap:8px"><input id="st-link" placeholder="steamcommunity.com/id/…" autocomplete="off" style="flex:1"><button class="btn sec2" id="st-save" style="width:auto;margin:0;padding:10px 14px">OK</button></div></div>';
@@ -686,6 +727,7 @@ function steamBlock(st) {
 }
 function bindSteamBlock(st) {
   if (!st) return;
+  if ($('#st-pv')) $('#st-pv').onclick = privacy;
   // Пока инвентарь загружается — сами проверяем каждые 30 секунд (только на этой вкладке и при открытом приложении).
   clearTimeout(state.invPoll);
   if (st.pending) state.invPoll = setTimeout(function () { if (state.tab === 'inv' && document.visibilityState === 'visible' && !$('#sheet').classList.contains('on')) inventory(); }, 30000);
@@ -859,9 +901,10 @@ function more() {
   view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, идеи, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
-  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history;
+  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }
 function settings() {

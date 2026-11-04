@@ -104,3 +104,26 @@ test('приложение: суммы в валюте человека, вал�
   const st = await call('settings');
   assert.equal(st.settings.find((x: { key: string }) => x.key === 'min_profit_kop').display, '5,00 $');
 });
+
+test('настройка: карточка «Настрой бота» в сводке, подтверждение валюты, скрытие; /privacy без пароля и т.п.', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  await D.batch([setMetaStmt(D, 'fx_display', JSON.stringify(NBU))]);
+  const call = async (path: string, opt: { method?: string; body?: unknown } = {}) => {
+    const initData = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 5151, first_name: 'E', language_code: 'uk' }) }, 'TEST_TOKEN');
+    const res = await handleAppApi(new Request('https://w/app/api/' + path, { method: opt.method ?? 'GET', headers: { 'X-Init-Data': initData }, body: opt.body ? JSON.stringify(opt.body) : undefined }), env, NOW);
+    return await res.json() as Record<string, any>;
+  };
+  const s1 = await call('summary');
+  assert.deepEqual(s1.setup, { currencyOk: false, notify: true, watched: 0, steam: 'none' });
+  assert.equal(s1.cur.code, 'UAH');
+  await call('setup', { method: 'POST', body: { what: 'currency' } });
+  assert.equal((await call('summary')).setup.currencyOk, true);
+  await call('setup', { method: 'POST', body: { what: 'hide' } });
+  assert.equal((await call('summary')).setup, null);
+  const pv = await call('privacy');
+  assert.ok(pv.never.some((x: string) => /Пароль от Steam/.test(x)));
+  const { privacyText } = await import('../src/core/privacy.ts');
+  assert.match(privacyText(), /Инвентарь: Открытый/);
+});

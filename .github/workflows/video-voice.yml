@@ -2,6 +2,9 @@ name: video-voice
 # Озвучка для роликов TikTok: запускается вручную, результат — артефакт (mp3 + тайминги слов + картинки).
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/video/**']
 permissions:
   contents: read
 jobs:

@@ -28,8 +28,9 @@ export function missingSecrets(env: Env): string[] {
 
 export async function handleAdmin(req: Request, env: Env, now: number, fetcher?: Fetcher): Promise<Response> {
   const url = new URL(req.url);
-  const given = url.searchParams.get('key') ?? '';
-  if (!env.ADMIN_KEY || !safeEqual(given, env.ADMIN_KEY)) {
+  // iPhone при копировании часто добавляет невидимый пробел или перенос — обрезаем его с обеих сторон.
+  const given = (url.searchParams.get('key') ?? '').trim();
+  if (!env.ADMIN_KEY || !safeEqual(given, env.ADMIN_KEY.trim())) {
     // Подсказка без раскрытия ключа: только длины и признаки частых ошибок.
     const expected = env.ADMIN_KEY ?? '';
     const hints: string[] = [];

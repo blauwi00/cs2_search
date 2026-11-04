@@ -21,6 +21,7 @@ import { buildRecs, MARKETS, type Rec } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop } from '../currency/nbu.ts';
+import { steamLoginUrl, newNonce, parseSteamProfile } from '../steam_link.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -85,6 +86,16 @@ function altReference(g: (src: string, t: string) => db.QuoteRow | undefined, sa
     return { curKop: low.price_kop, refKop: med.price_kop, where: 'в Steam', basis: `средней цены продаж за сутки (${med.volume} шт.)` };
   }
   return null;
+}
+
+/** Подсказка для предмета, который уже лежит в инвентаре (цена покупки неизвестна): продать сейчас или подержать. */
+function ownedAdvice(sa: SteamAvg | undefined): Advice | null {
+  if (!sa?.d1 || !sa.d30) return null;
+  const diff = Math.trunc(((sa.d1 - sa.d30) * 10000) / sa.d30);
+  const p = `${Math.abs(Math.round(diff / 100))}%`;
+  if (diff >= 800) return { action: 'sell', title: 'Хороший момент продать', reason: `Сейчас в Steam продаётся на ${p} дороже, чем в среднем за месяц.`, diffBp: diff };
+  if (diff <= -800) return { action: 'hold', title: 'Держать', reason: `Сейчас в Steam на ${p} дешевле, чем в среднем за месяц — продавать невыгодно.`, diffBp: diff };
+  return { action: 'hold', title: 'Обычная цена', reason: `Цена в Steam обычная (${diff >= 0 ? '+' : '−'}${p} к средней за месяц). Продавать можно, но без выгоды.`, diffBp: diff };
 }
 
 export interface SteamAvg { item_id: number; d1: number | null; d7: number | null; d30: number | null; d90: number | null; updated_at: number }
@@ -204,6 +215,62 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         },
         lastPriceAt: Math.max(0, ...sources.filter((s) => s.source === 'steam' || s.source === 'skinport').map((s) => s.last_ok_at ?? 0)) || null,
       });
+    }
+
+    // ---------- Steam: вход (только SteamID) и открытый инвентарь ----------
+    if (path === 'steam' && method === 'GET') {
+      const u = await d.prepare('SELECT steam_id, steam_vanity, steam_verified, inv_requested_at, inv_synced_at, inv_status FROM users WHERE telegram_id = ?').bind(tid)
+        .first<{ steam_id: string | null; steam_vanity: string | null; steam_verified: number; inv_requested_at: number | null; inv_synced_at: number | null; inv_status: string | null }>();
+      const linked = !!(u?.steam_id || u?.steam_vanity);
+      const rows = linked ? (await d.prepare(`SELECT v.item_id, v.qty, v.marketable, v.tradable, i.market_hash_name AS name, i.category FROM steam_inventory v JOIN items i ON i.id = v.item_id
+        WHERE v.telegram_id = ? LIMIT 500`).bind(tid).all<{ item_id: number; qty: number; marketable: number; tradable: number; name: string; category: string }>()).results : [];
+      const ids = rows.map((r) => r.item_id);
+      const [avgs, quotes, imgs, fxm] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d)]);
+      const usd = fxm.get('USD') ?? null;
+      let total = 0, totalNet = 0;
+      const items = rows.map((r) => {
+        const live = (quotes.get(r.item_id) ?? []).find((q) => q.source === 'steam' && q.price_type === 'lowest_listing' && now - q.fetched_at < 6 * 3600);
+        const sa = avgs.get(r.item_id);
+        const est = live?.price_kop ?? (sa?.d7 && usd ? toKop(Math.min(sa.d7, sa.d1 ?? sa.d7), 'USD', usd) : null);
+        const net = est ? steamSellerProceeds(Math.max(3, est))?.sellerReceives ?? null : null;
+        if (est && r.marketable) { total += est * r.qty; totalNet += (net ?? 0) * r.qty; }
+        return {
+          itemId: r.item_id, name: r.name, category: r.category, categoryRu: CATEGORY_RU[r.category as 'case'] ?? r.category, qty: r.qty, marketable: !!r.marketable,
+          img: imgs.get(r.name) ?? null, priceKop: est, live: !!live?.price_kop, netKop: net, advice: r.marketable ? ownedAdvice(sa) : null,
+        };
+      }).sort((a, b) => (b.priceKop ?? 0) * b.qty - (a.priceKop ?? 0) * a.qty);
+      return json({
+        ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
+        status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
+        pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
+        totalKop: total, totalNetKop: totalNet, items,
+      });
+    }
+    if (path === 'steam/login' && method === 'POST') {
+      const nonce = newNonce();
+      await d.prepare('INSERT INTO steam_login (nonce, telegram_id, created_at) VALUES (?, ?, ?)').bind(nonce, tid, now).run();
+      return json({ ok: true, url: steamLoginUrl(url.origin, nonce) });
+    }
+    if (path === 'steam/profile' && method === 'POST') {
+      const p = parseSteamProfile(String(body.text ?? '').slice(0, 200));
+      if (!p) return bad('Не понял ссылку. Пример: https://steamcommunity.com/profiles/7656119… или https://steamcommunity.com/id/имя');
+      await d.prepare('UPDATE users SET steam_id = ?, steam_vanity = ?, steam_verified = 0, inv_requested_at = ?, inv_synced_at = NULL, inv_status = NULL WHERE telegram_id = ?')
+        .bind(p.id ?? null, p.vanity ?? null, now, tid).run();
+      return json({ ok: true });
+    }
+    if (path === 'steam/refresh' && method === 'POST') {
+      const u = await d.prepare('SELECT inv_requested_at, inv_synced_at FROM users WHERE telegram_id = ?').bind(tid).first<{ inv_requested_at: number | null; inv_synced_at: number | null }>();
+      const last = Math.max(u?.inv_requested_at ?? 0, u?.inv_synced_at ?? 0);
+      if (now - last < 15 * 60) return bad(`Обновлять можно раз в 15 минут — попробуй через ${Math.ceil((15 * 60 - (now - last)) / 60)} мин.`);
+      await d.prepare('UPDATE users SET inv_requested_at = ? WHERE telegram_id = ?').bind(now, tid).run();
+      return json({ ok: true });
+    }
+    if (path === 'steam/unlink' && method === 'POST') {
+      await d.batch([
+        d.prepare('UPDATE users SET steam_id = NULL, steam_vanity = NULL, steam_verified = 0, inv_requested_at = NULL, inv_synced_at = NULL, inv_status = NULL WHERE telegram_id = ?').bind(tid),
+        d.prepare('DELETE FROM steam_inventory WHERE telegram_id = ?').bind(tid),
+      ]);
+      return json({ ok: true });
     }
 
     // ---------- Рекомендации по всему рынку ----------

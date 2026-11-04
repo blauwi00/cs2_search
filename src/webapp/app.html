@@ -333,11 +333,11 @@ function recSheet(r) {
   }
   h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ ' + esc(r.risk) + '</div>';
   h += '<div class="note">Цены — на момент проверки (' + ago(state.cache.recsAt) + '). Перед покупкой проверь цену на сайте. Бот ничего не покупает сам.</div>';
-  h += '<div class="btns"><button class="btn" id="r-buy">Открыть ' + esc(r.buyName) + '</button>' + (r.sellAt !== r.buyAt ? '<button class="btn sec2" id="r-sell">' + esc(r.sellName) + '</button>' : '') + '</div>';
+  h += '<div class="btns"><button class="btn" id="r-buy">🛒 Купить на ' + esc(r.buyName) + '</button>' + (r.sellAt !== r.buyAt ? '<button class="btn sec2" id="r-sell">' + esc(r.sellName) + '</button>' : '') + '</div>';
   h += '<button class="btn sec2" id="r-bought">✅ Я купил — записать в инвентарь</button>';
   h += '<button class="btn sec2" id="r-watch">👁 Следить за ценой</button>';
   sheet(h);
-  $('#r-buy').onclick = function () { openLink(r.buyUrl); };
+  $('#r-buy').onclick = function () { goBuy({ name: r.name, where: r.buyName, priceKop: r.payKop, platform: { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other', url: r.buyUrl }); };
   if (r.sellAt !== r.buyAt) $('#r-sell').onclick = function () { openLink(r.sellUrl); };
   var plat = { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other';
   $('#r-bought').onclick = function () { buyForm({ name: r.name, priceKop: r.payKop, platform: plat }); };
@@ -403,11 +403,11 @@ function dealSheet(d) {
   if (d.basis) h += '<div class="note">Ориентир продажи: ' + esc(d.basis.replace(/\.$/, '')) + '.</div>';
   if (d.reasons && d.reasons.length && d.priority !== 'high') h += '<div class="note">Почему не выше: ' + esc(d.reasons.join('; ')) + '.</div>';
   h += '<div class="note">После покупки предмет может несколько дней быть недоступен для продажи в Steam. Цена продажи не гарантирована.</div>';
-  h += '<div class="btns">' + (d.buyUrl ? '<button class="btn" id="b-buy">Открыть покупку</button>' : '') + '<button class="btn sec2" id="b-steam">Steam Market</button></div>';
+  h += '<div class="btns">' + (d.buyUrl ? '<button class="btn" id="b-buy">🛒 Купить на ' + (SRC[d.buySource] || d.buySource) + '</button>' : '') + '<button class="btn sec2" id="b-steam">Steam Market</button></div>';
   h += '<button class="btn sec2" id="b-bought">✅ Я купил — записать в инвентарь</button>';
   h += '<div class="btns"><button class="btn sec2" id="b-item">📈 График</button><button class="btn danger" id="b-hide">Скрыть</button></div>';
   sheet(h);
-  if (d.buyUrl) $('#b-buy').onclick = function () { openLink(d.buyUrl); };
+  if (d.buyUrl) $('#b-buy').onclick = function () { goBuy({ name: d.name, where: SRC[d.buySource] || d.buySource, priceKop: d.buyKop, platform: d.buySource, signalId: d.id, url: d.buyUrl }); };
   $('#b-steam').onclick = function () { openLink(d.steamUrl); };
   $('#b-item').onclick = function () { itemSheet(d.itemId); };
   $('#b-bought').onclick = function () { buyForm({ name: d.name, priceKop: d.buyKop, platform: d.buySource, signalId: d.id }); };
@@ -602,11 +602,14 @@ function chart(series, days, avg) {
 // ---------- Инвентарь ----------
 function inventory() {
   loading(4);
-  api('inventory').then(function (r) {
+  Promise.all([api('inventory'), api('steam').catch(function () { return null; })]).then(function (res) {
+    var r = res[0], st = res[1];
     state.cache.platforms = r.platforms;
     var cost = 0, val = 0, unk = 0;
     r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
-    var h = '<div class="grid2">' + stat('Оценка в Steam', uahShort(val), 'на баланс, после комиссий') + stat('Разница', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без цены: ' + unk : 'это ещё не прибыль') + '</div>';
+    var h = steamBlock(st);
+    h += '<div class="sec">Мой учёт покупок</div><div class="mut" style="font-size:13px;margin:-2px 2px 8px">Здесь — с ценой покупки: бот считает прибыль и говорит, когда продавать.</div>';
+    h += '<div class="grid2">' + stat('Оценка в Steam', uahShort(val), 'на баланс, после комиссий') + stat('Разница', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без цены: ' + unk : 'это ещё не прибыль') + '</div>';
     h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
     h += r.lots.length ? r.lots.map(function (l) {
       return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + ' · ' + esc(l.platformRu) + '</div></div>' +
@@ -614,6 +617,7 @@ function inventory() {
     }).join('') : '<div class="empty"><div class="e">🎒</div>Пусто. Добавь предметы, которые у тебя есть или которые ты купил.</div>';
     h += '<button class="btn sec2" id="hist">🧾 История сделок</button>';
     view.innerHTML = h;
+    bindSteamBlock(st);
     $('#add').onclick = function () { buyForm({}); };
     $('#hist').onclick = history;
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
@@ -621,6 +625,90 @@ function inventory() {
     });
   }).catch(fail);
 }
+// ---------- Инвентарь Steam (вход через Steam — только номер аккаунта) ----------
+var INV_ST = { private: '🔒 Инвентарь закрыт. Открой его: Steam → Профиль → Изменить профиль → Приватность → «Инвентарь: Открытый», потом нажми «Обновить».', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Steam временно ограничил запросы — бот повторит сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
+function steamBlock(st) {
+  var h = '<div class="sec">Инвентарь Steam</div>';
+  if (!st) return h + '<div class="card mut">Не удалось загрузить.</div>';
+  if (!st.linked) {
+    h += '<div class="card"><div style="font-weight:700;margin-bottom:4px">Подключи Steam — бот сам подтянет твои предметы</div>' +
+      '<div class="mut" style="font-size:13px;margin-bottom:10px">Через официальную страницу Steam. Бот узнаёт только номер аккаунта: пароль, Steam Guard и доступ к покупкам он <b>не</b> получает. Инвентарь должен быть открытым.</div>' +
+      '<button class="btn" id="st-login">🎮 Войти через Steam</button>' +
+      '<div class="mut" style="font-size:13px;margin:10px 0 6px">или вставь ссылку на профиль Steam:</div>' +
+      '<div style="display:flex;gap:8px"><input id="st-link" placeholder="steamcommunity.com/id/…" autocomplete="off" style="flex:1"><button class="btn sec2" id="st-save" style="width:auto;margin:0;padding:10px 14px">OK</button></div></div>';
+    return h;
+  }
+  var who = st.steamId ? 'Steam …' + st.steamId.slice(-6) : 'профиль ' + esc(st.vanity || '');
+  h += '<div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-weight:700">' + (st.verified ? '✅ ' : '') + who + '</div><div class="mut" style="font-size:13px">' +
+    (st.pending ? '⏳ Загружаю инвентарь — до ~10 минут' : st.syncedAt ? 'Обновлено ' + ago(st.syncedAt) : '') + '</div></div>' +
+    '<button class="btn sec2" id="st-ref" style="width:auto;margin:0;padding:8px 12px">Обновить</button></div>';
+  if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
+  if (st.items.length) {
+    h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
+    h += st.items.slice(0, 60).map(function (x) {
+      return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.marketable ? '' : ' · нельзя продать на ТП') + '</div></div>' +
+        '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
+    }).join('');
+    if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
+    h += '<div class="note">«≈» — по средней цене продаж Steam за неделю (суточный прайс, из долларов по курсу НБУ). Бот не знает, за сколько ты покупал — чтобы считать прибыль, запиши покупку ниже.</div>';
+  } else if (!st.pending && st.status === 'ok') h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
+  h += '<button class="btn sec2" id="st-off" style="margin-top:4px">Отключить Steam</button>';
+  return h;
+}
+function bindSteamBlock(st) {
+  if (!st) return;
+  var again = function () { inventory(); };
+  if (!st.linked) {
+    $('#st-login').onclick = function () {
+      haptic();
+      api('steam/login', { method: 'POST' }).then(function (r) { state.steamWait = true; openLink(r.url); toast('Войди в Steam и вернись сюда'); }).catch(function (e) { toast(e.message); });
+    };
+    $('#st-save').onclick = function () {
+      api('steam/profile', { method: 'POST', body: { text: $('#st-link').value } }).then(function () { haptic('ok'); toast('Сохранено — загружаю инвентарь'); again(); }).catch(function (e) { toast(e.message); });
+    };
+    return;
+  }
+  $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function () { haptic('ok'); toast('Обновлю в течение ~10 минут'); again(); }).catch(function (e) { toast(e.message); }); };
+  $('#st-off').onclick = function () {
+    var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };
+    if (tg && tg.showConfirm) tg.showConfirm('Отключить Steam от бота?', function (ok) { if (ok) run(); }); else run();
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sinv]'), function (el) {
+    el.onclick = function () {
+      haptic(); var id = +el.getAttribute('data-sinv'); var x = st.items.filter(function (i) { return i.itemId === id; })[0];
+      var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + '</h2><div class="sub">×' + x.qty + ' в инвентаре Steam</div>';
+      if (x.advice) h += verdict(x.advice);
+      h += '<div class="card">' + kv('Цена в Steam', x.priceKop ? (x.live ? '' : '≈ ') + uah(x.priceKop) : '—') + kv('Придёт на баланс за 1 шт.', x.netKop ? '≈ ' + uah(x.netKop) : '—') + kv('Всего за ×' + x.qty, x.netKop ? '≈ ' + uah(x.netKop * x.qty) : '—') + '</div>';
+      h += '<div class="btns"><button class="btn sec2" id="si-chart">📈 График и цены</button><button class="btn sec2" id="si-steam">Steam Market</button></div>';
+      h += '<button class="btn sec2" id="si-buy">✍️ Записать цену покупки</button>';
+      sheet(h);
+      $('#si-chart').onclick = function () { itemSheet(id); };
+      $('#si-steam').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); };
+      $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
+    };
+  });
+}
+
+// ---------- «Купил?» после возврата с сайта ----------
+function askBought() {
+  var p = state.pendingBuy; state.pendingBuy = null;
+  if (!p || Date.now() - p.at > 30 * 60 * 1000) return;
+  var h = '<h2>Купил?</h2><div class="sub">' + esc(p.name) + ' на ' + esc(p.where) + (p.priceKop ? ' за ~' + uah(p.priceKop) : '') + '</div>' +
+    '<div class="note">Если купил — запиши, и бот подскажет, когда продавать, и посчитает реальную прибыль.</div>' +
+    '<button class="btn" id="ab-yes">✅ Да, записать</button><button class="btn sec2" id="ab-no">Нет, не купил</button>';
+  sheet(h);
+  $('#ab-yes').onclick = function () { buyForm({ name: p.name, priceKop: p.priceKop, platform: p.platform, signalId: p.signalId }); };
+  $('#ab-no').onclick = closeSheet;
+}
+function onBack() {
+  if (document.visibilityState && document.visibilityState !== 'visible') return;
+  if (state.pendingBuy && Date.now() - state.pendingBuy.at > 3000) setTimeout(askBought, 300);
+  if (state.steamWait) { state.steamWait = false; if (state.tab === 'inv') setTimeout(inventory, 300); }
+}
+document.addEventListener('visibilitychange', onBack);
+if (tg && tg.onEvent) { try { tg.onEvent('activated', onBack); } catch (e) {} }
+function goBuy(p) { state.pendingBuy = { name: p.name, where: p.where, priceKop: p.priceKop, platform: p.platform, signalId: p.signalId || null, at: Date.now() }; openLink(p.url); }
+
 function platformOptions(sel, noGift) {
   var p = state.cache.platforms || [{ v: 'steam', t: 'Steam Market' }, { v: 'skinport', t: 'Skinport' }, { v: 'csfloat', t: 'CSFloat' }, { v: 'other', t: 'Другая площадка' }, { v: 'gift', t: 'Получено бесплатно' }];
   return p.filter(function (x) { return !(noGift && x.v === 'gift'); }).map(function (x) { return '<option value="' + x.v + '"' + (x.v === sel ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');

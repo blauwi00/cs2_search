@@ -313,3 +313,25 @@ test('цикл укладывается в лимиты вызова даже п
   const n = d.db.prepare("SELECT COUNT(*) AS n FROM market_quotes WHERE source='skinport' AND price_type='lowest_listing'").get() as { n: number };
   assert.equal(n.n, 100);
 });
+
+test('сделка у порога то появляется, то исчезает — повторно не присылается, «НЕАКТУАЛЬНО» с названием предмета', async () => {
+  const d = migratedDb();
+  const env = testEnv(d);
+  await seedWatch(d, 'AK-47 | Redline (Field-Tested)');
+  const sent: { method: string; body: Record<string, unknown> }[] = [];
+  const good = marketRoutes(sent);
+  const bad = marketRoutes(sent, { success: true, lowest_price: '50,00₴', median_price: '50,00₴', volume: '500' });
+  const step = async (m: typeof good, t: number) => {
+    await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name IN ('steam','outbox')`);
+    await runCycle(env, { now: t, fetcher: m.fetcher });
+  };
+  await step(good, NOW); await step(good, NOW + 60);
+  await step(bad, NOW + 1800); await step(bad, NOW + 1860);
+  await step(good, NOW + 3600); await step(good, NOW + 3660);
+  await step(bad, NOW + 5400); await step(bad, NOW + 5460);
+  const arb = sent.filter((s) => s.method === 'sendMessage' && String(s.body.text).includes('НАЙДЕНА ВОЗМОЖНОСТЬ'));
+  assert.equal(arb.length, 1, 'одно уведомление за 1,5 часа, хотя сделка дважды пропадала и возвращалась');
+  const edits = sent.filter((s) => s.method === 'editMessageText');
+  assert.ok(edits.length >= 1);
+  assert.match(String(edits[0].body.text), /НЕАКТУАЛЬНО · AK-47 \| Redline \(Field-Tested\)/);
+});

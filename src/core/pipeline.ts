@@ -334,7 +334,7 @@ export function notifyPolicy(s: db.Settings, kindEnabled: boolean): NotifyPolicy
 }
 
 const prevForDecision = (p: db.SignalRow | undefined) =>
-  p && p.state !== 'expired' ? { state: p.state, spreadKop: p.spread_kop, buyKop: p.buy_kop, notifiedAt: p.notified_at, priority: p.priority } : null;
+  p && (p.state !== 'expired' || p.notified_at) ? { state: p.state, spreadKop: p.spread_kop, buyKop: p.buy_kop, notifiedAt: p.notified_at, priority: p.priority } : null;
 
 /**
  * Пересчитывает все сигналы предмета по уже загруженным котировкам.
@@ -373,7 +373,7 @@ export async function evaluateLoaded(ctx: Ctx, item: db.ItemRow, quotes: db.Quot
         fxAvailable: buyRow.currency === 'UAH' || rate !== null,
         settings: { ...es, fxMaxAgeDays: FX_MAX_AGE_DAYS_HIGH },
       }) : null;
-      if (!arb || !score || score.priority === null) { await expire(ctx, prev, pending); continue; }
+      if (!arb || !score || score.priority === null) { await expire(ctx, prev, pending, item.market_hash_name); continue; }
 
       const fresh = ctx.now - buyRow.fetched_at <= es.maxStaleSec && ctx.now - steamSide.fetchedAt <= es.maxStaleSec;
       if (!canD1(ctx, 2)) break;
@@ -404,14 +404,14 @@ export async function evaluateLoaded(ctx: Ctx, item: db.ItemRow, quotes: db.Quot
   if (pending.length) await ctx.db.batch(pending);
 }
 
-async function expire(ctx: Ctx, prev: db.SignalRow | undefined, pending: D1PreparedStatement[]): Promise<void> {
+async function expire(ctx: Ctx, prev: db.SignalRow | undefined, pending: D1PreparedStatement[], name = ''): Promise<void> {
   if (!prev || !['confirmed', 'notified', 'unconfirmed'].includes(prev.state)) return;
   pending.push(db.setStateStmt(ctx.db, prev.id, 'expired', ctx.now));
   bump(ctx, 'signals_expired');
   // Отправленное сообщение помечаем правкой, а не новым сообщением — без спама.
   if (prev.state === 'notified' || prev.notified_at) {
     pending.push(enqueueEditsStmt(ctx.db, prev.id,
-      `⚫ <b>НЕАКТУАЛЬНО</b>\nУсловия сделки больше не выполняются (повторная проверка ${new Date(ctx.now * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC).\nСигнал #${prev.id}`, ctx.now));
+      `⚫ <b>НЕАКТУАЛЬНО${name ? ` · ${esc(name)}` : ''}</b>\nЭта сделка больше не выгодна: цены изменились (проверка ${warsawDate(ctx.now).split('-').reverse().join('.')} в ${String(warsawHour(ctx.now)).padStart(2, '0')}:${new Date(ctx.now * 1000).toISOString().slice(14, 16)} по Варшаве).\nЕсли выгода вернётся — бот напишет снова, но не чаще раза в 6 часов.`, ctx.now));
   }
 }
 

@@ -339,7 +339,9 @@ export async function upsertSignal(db: D1Database, s: SignalUpsert): Promise<Sig
        proceeds_kop = excluded.proceeds_kop, spread_kop = excluded.spread_kop, roi_bp = excluded.roi_bp, reason = excluded.reason,
        snapshot_json = excluded.snapshot_json, updated_at = excluded.updated_at,
        detected_at = CASE WHEN signals.state = 'expired' THEN excluded.detected_at ELSE signals.detected_at END,
-       notified_at = CASE WHEN signals.state = 'expired' THEN NULL ELSE signals.notified_at END,
+       -- notified_at сохраняется и после «неактуально»: иначе сделка, которая то появляется, то исчезает у порога,
+       -- присылалась бы снова и снова. Повтор — по общим правилам (6 часов или заметное изменение).
+       notified_at = signals.notified_at,
        telegram_msg_id = CASE WHEN signals.state = 'expired' THEN NULL ELSE signals.telegram_msg_id END
      RETURNING *`,
   ).bind(s.dedupKey, s.kind, s.itemId, s.state, s.priority, s.category, s.buySource, s.sellSource, s.buyKop, s.sellKop, s.proceedsKop,

@@ -1,0 +1,158 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e13;font-family:Inter,'DejaVu Sans',sans-serif;color:#f1f3f5}
+#bg{position:absolute;inset:0;background:radial-gradient(1100px 900px at 85% 5%,rgba(62,224,143,.22),transparent 60%),radial-gradient(900px 900px at 0% 100%,rgba(116,192,252,.14),transparent 60%),linear-gradient(170deg,#151b24,#0b0e13)}
+#grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:60px 60px;mask-image:linear-gradient(180deg,#000 0%,transparent 75%)}
+.sc{position:absolute;inset:0;opacity:0}
+.brand{position:absolute;top:150px;left:0;right:0;text-align:center;font-weight:800;letter-spacing:6px;color:#3ee08f;font-size:30px}
+.big{font-weight:800;letter-spacing:-2px;line-height:1.02;text-align:center}
+.pic{display:flex;align-items:center;justify-content:center}
+.pic img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))}
+.glow{position:absolute;border-radius:50%;filter:blur(90px)}
+/* сцена 2 */
+.bar{position:absolute;left:90px;right:90px;height:118px;border-radius:24px;background:rgba(255,255,255,.05);overflow:hidden}
+.bar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:24px}
+.bar .lb{position:absolute;left:30px;top:0;bottom:0;display:flex;align-items:center;font-size:40px;font-weight:700}
+.bar .pr{position:absolute;right:30px;top:0;bottom:0;display:flex;align-items:center;font-size:46px;font-weight:800}
+/* сцена 3 */
+.chipx{position:absolute;padding:18px 28px;border-radius:999px;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.1);font-size:34px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%)}
+.ring{position:absolute;left:540px;top:760px;border:3px solid rgba(62,224,143,.5);border-radius:50%;transform:translate(-50%,-50%)}
+/* сцена 4 */
+.step{position:absolute;left:90px;right:90px;height:190px;border-radius:30px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.08);padding:28px 40px}
+.step .k{font-size:28px;letter-spacing:4px;color:#868e96;font-weight:800}
+.step .m{font-size:44px;font-weight:700;margin-top:6px}
+.step .v{position:absolute;right:40px;top:0;bottom:0;display:flex;align-items:center;font-size:64px;font-weight:800}
+/* сцена 5 */
+#phone{position:absolute;left:190px;top:330px;width:700px;height:1320px;border-radius:80px;background:#000;padding:22px;box-shadow:0 60px 120px rgba(0,0,0,.6),0 0 0 4px #2a2f37}
+#phone .scr{width:100%;height:100%;border-radius:60px;overflow:hidden;background:#17212b}
+#phone img{width:100%;display:block}
+#notif{position:absolute;left:120px;right:120px;top:390px;border-radius:36px;background:rgba(40,46,56,.96);padding:28px 32px;box-shadow:0 30px 60px rgba(0,0,0,.5);display:flex;gap:24px;align-items:center}
+#notif .ic{width:96px;height:96px;border-radius:24px;overflow:hidden;flex:none;background:#222}
+#notif .ic img{width:100%;height:100%}
+#notif .t{font-size:30px;color:#adb5bd}#notif .b{font-size:36px;font-weight:700;margin-top:4px;line-height:1.25}
+/* субтитры */
+#cap{position:absolute;left:80px;right:80px;top:1290px;text-align:center;font-size:66px;font-weight:800;line-height:1.15;text-shadow:0 6px 24px rgba(0,0,0,.9),0 0 4px #000}
+#cap span{display:inline-block;margin:0 10px}
+#cap .on{color:#3ee08f}
+.note{position:absolute;left:0;right:0;font-size:26px;color:#5c636a;text-align:center}
+</style></head>
+<body>
+<div id="bg"></div><div id="grid"></div>
+
+<!-- 1. Крючок -->
+<div class="sc" id="s1">
+  <div class="glow" style="left:240px;top:380px;width:600px;height:600px;background:#ff6b6b;opacity:.22"></div>
+  <div class="big" id="s1t" style="position:absolute;top:200px;left:60px;right:60px;font-size:104px">ПЕРЕПЛАЧИВАЕШЬ<br>ЗА СКИНЫ?</div>
+  <div class="pic" id="s1i" style="position:absolute;left:240px;top:520px;width:600px;height:460px"><img src="img0.png"></div>
+  <div id="s1tag" style="position:absolute;left:600px;top:930px;background:#ff6b6b;color:#fff;font-size:50px;font-weight:800;padding:16px 30px;border-radius:20px;transform:rotate(-8deg)">Steam: 1,32 $</div>
+</div>
+
+<!-- 2. Сравнение цен -->
+<div class="sc" id="s2">
+  <div class="big" style="position:absolute;top:230px;left:60px;right:60px;font-size:84px">Один кейс —<br>разные цены</div>
+  <div class="pic" style="position:absolute;left:390px;top:440px;width:300px;height:230px"><img src="img0.png"></div>
+  <div id="bars"></div>
+  <div id="s2badge" style="position:absolute;right:90px;top:1160px;background:#3ee08f;color:#0b0e13;font-size:54px;font-weight:800;padding:12px 28px;border-radius:20px">−26% к Steam</div>
+  <div class="note" style="top:1250px">цены для примера</div>
+</div>
+
+<!-- 3. Сканирование -->
+<div class="sc" id="s3">
+  <div class="ring" id="r1"></div><div class="ring" id="r2"></div><div class="ring" id="r3"></div>
+  <div class="pic" id="s3logo" style="position:absolute;left:390px;top:610px;width:300px;height:300px;border-radius:70px;overflow:hidden;box-shadow:0 0 80px rgba(62,224,143,.4)"><img src="avatar.png" style="filter:none"></div>
+  <div id="chips"></div>
+  <div class="big" id="s3t" style="position:absolute;top:200px;left:60px;right:60px;font-size:88px">каждые <span style="color:#3ee08f">10 минут</span></div>
+  <div id="s3ok" style="position:absolute;left:0;right:0;top:1130px;text-align:center;font-size:52px;font-weight:800;color:#3ee08f">✓ комиссии уже учтены</div>
+</div>
+
+<!-- 4. Сделка -->
+<div class="sc" id="s4">
+  <div class="big" style="position:absolute;top:200px;left:60px;right:60px;font-size:84px">Купи дешевле —<br>продай дороже</div>
+  <div class="step" id="st1" style="top:470px"><div class="k">КУПИ</div><div class="m">на Skinport</div><div class="v">10,84 $</div></div>
+  <div class="step" id="st2" style="top:690px"><div class="k">ПРОДАЙ</div><div class="m">на Market.CSGO</div><div class="v">14,10 $</div></div>
+  <div class="step" id="st3" style="top:910px;background:rgba(62,224,143,.12);border-color:rgba(62,224,143,.4)"><div class="k" style="color:#3ee08f">ПОЛУЧИШЬ НА РУКИ</div><div class="m">после всех комиссий</div><div class="v" id="profit" style="color:#3ee08f">+2,55 $</div></div>
+  <div class="note" style="top:1130px">пример расчёта</div>
+</div>
+
+<!-- 5. Уведомление -->
+<div class="sc" id="s5">
+  <div id="phone"><div class="scr"><img src="app.png"></div></div>
+  <div id="notif"><div class="ic"><img src="avatar.png"></div><div><div class="t">Ценолов · сейчас</div><div class="b">🔥 Kilowatt Case — выгодно: купи на Skinport, +24%</div></div></div>
+</div>
+
+<!-- 6. Призыв -->
+<div class="sc" id="s6">
+  <div class="glow" style="left:290px;top:420px;width:500px;height:500px;background:#3ee08f;opacity:.25"></div>
+  <div class="pic" id="s6logo" style="position:absolute;left:340px;top:420px;width:400px;height:400px;border-radius:90px;overflow:hidden"><img src="avatar.png" style="filter:none"></div>
+  <div class="big" style="position:absolute;top:880px;left:60px;right:60px;font-size:110px">ЦЕНОЛОВ</div>
+  <div style="position:absolute;top:1010px;left:0;right:0;text-align:center;font-size:44px;color:#adb5bd;font-weight:600">бесплатный бот в Telegram</div>
+  <div id="s6btn" style="position:absolute;left:220px;right:220px;top:1110px;text-align:center;background:#3ee08f;color:#0b0e13;font-size:48px;font-weight:800;padding:26px;border-radius:999px">ссылка в профиле ↑</div>
+</div>
+
+<div class="brand" id="brand">ЦЕНОЛОВ · CS2</div>
+<div id="cap"></div>
+
+<script>
+// Данные приходят из render: SCENES = [{id, start, end}], WORDS = [{t, end, text}]
+var bars = [['Steam', 132, '#ff6b6b'], ['Skinport', 112, '#4dabf7'], ['Market.CSGO', 105, '#ffa94d'], ['Waxpeer', 108, '#9775fa'], ['BUFF163', 98, '#3ee08f']];
+(function () {
+  var h = '';
+  bars.forEach(function (b, i) { h += '<div class="bar" style="top:' + (720 + i * 138) + 'px"><div class="fill" id="bf' + i + '" style="background:' + b[2] + '33;border-right:6px solid ' + b[2] + '"></div><div class="lb">' + b[0] + '</div><div class="pr">' + (b[1] / 100).toFixed(2).replace('.', ',') + ' $</div></div>'; });
+  document.getElementById('bars').innerHTML = h;
+  var sites = ['Steam', 'Skinport', 'Market.CSGO', 'Waxpeer', 'LIS-SKINS', 'CSFloat', 'CS.MONEY', 'BUFF163', 'YouPin'];
+  var c = '';
+  sites.forEach(function (s, i) { var a = -Math.PI / 2 + i * 2 * Math.PI / sites.length; c += '<div class="chipx" id="ch' + i + '" style="left:' + (540 + Math.cos(a) * 400) + 'px;top:' + (760 + Math.sin(a) * 330) + 'px">' + s + '</div>'; });
+  document.getElementById('chips').innerHTML = c;
+})();
+function clamp(x) { return Math.max(0, Math.min(1, x)); }
+function ease(x) { x = clamp(x); return 1 - Math.pow(1 - x, 3); }
+function back(x) { x = clamp(x); var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+function $(id) { return document.getElementById(id); }
+function render(t) {
+  SCENES.forEach(function (s) {
+    var el = $(s.id), fin = clamp((t - s.start) / 0.25), fout = clamp((s.end - t) / 0.2);
+    el.style.opacity = t < s.start - 0.01 || t > s.end + 0.01 ? 0 : Math.min(fin, fout);
+    var p = t - s.start;
+    if (s.id === 's1') {
+      $('s1t').style.transform = 'scale(' + (0.7 + 0.3 * back(p / 0.5)) + ')';
+      $('s1i').style.transform = 'translateY(' + (Math.sin(p * 3) * 12) + 'px) scale(' + (0.6 + 0.4 * back((p - 0.2) / 0.5)) + ')';
+      $('s1tag').style.transform = 'rotate(-8deg) scale(' + back((p - 0.9) / 0.35) + ')';
+    }
+    if (s.id === 's2') {
+      bars.forEach(function (b, i) { $('bf' + i).style.width = (ease((p - 0.3 - i * 0.18) / 0.6) * (b[1] / 132) * 100) + '%'; });
+      var g = ease((p - 1.6) / 0.3);
+      $('s2badge').style.transform = 'scale(' + back((p - 1.6) / 0.4) + ')';
+      $('bf4').style.boxShadow = '0 0 ' + (40 * g) + 'px rgba(62,224,143,.6)';
+    }
+    if (s.id === 's3') {
+      [1, 2, 3].forEach(function (k) { var q = ((p * 0.6 + k / 3) % 1); var r = $('r' + k); r.style.width = r.style.height = (300 + q * 700) + 'px'; r.style.opacity = 1 - q; });
+      for (var i = 0; i < 9; i++) { var e = $('ch' + i); var q = back((p - 0.2 - i * 0.16) / 0.35); e.style.transform = 'translate(-50%,-50%) scale(' + q + ')'; e.style.opacity = clamp(q); }
+      $('s3ok').style.opacity = ease((p - 2.2) / 0.4); $('s3ok').style.transform = 'translateY(' + (30 * (1 - ease((p - 2.2) / 0.4))) + 'px)';
+      $('s3logo').style.transform = 'scale(' + (1 + Math.sin(p * 4) * 0.03) + ')';
+    }
+    if (s.id === 's4') {
+      ['st1', 'st2', 'st3'].forEach(function (id, i) { var q = ease((p - 0.2 - i * 0.7) / 0.45); $(id).style.opacity = q; $(id).style.transform = 'translateX(' + (120 * (1 - q)) + 'px)'; });
+      var cnt = ease((p - 1.6) / 0.8) * 2.55; $('profit').textContent = '+' + cnt.toFixed(2).replace('.', ',') + ' $';
+    }
+    if (s.id === 's5') {
+      $('phone').style.transform = 'translateY(' + (200 * (1 - ease(p / 0.5))) + 'px)';
+      var n = back((p - 0.5) / 0.5); $('notif').style.transform = 'translateY(' + (-260 * (1 - n)) + 'px)'; $('notif').style.opacity = clamp(n * 1.5);
+    }
+    if (s.id === 's6') {
+      $('s6logo').style.transform = 'scale(' + back(p / 0.5) + ')';
+      $('s6btn').style.transform = 'scale(' + (1 + Math.max(0, Math.sin(p * 6)) * 0.05) + ')';
+    }
+  });
+  // Субтитры: группы по 3 слова, текущее слово — зелёным.
+  var cur = null;
+  for (var i = 0; i < WORDS.length; i++) if (t >= WORDS[i].t - 0.05 && t < WORDS[i].end + 0.25) cur = i;
+  var cap = $('cap');
+  if (cur === null) { cap.innerHTML = ''; return; }
+  var g0 = WORDS[cur].group, html = '';
+  WORDS.forEach(function (w, i) { if (w.group === g0) html += '<span class="' + (i === cur ? 'on' : '') + '">' + w.text + '</span>'; });
+  cap.innerHTML = html;
+}
+</script>
+</body></html>

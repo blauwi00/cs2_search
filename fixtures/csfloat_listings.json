@@ -1,0 +1,5 @@
+{ "data": [
+  { "id": "900000000000000002", "state": "listed", "price": 1350, "item": { "market_hash_name": "AK-47 | Redline (Field-Tested)", "float_value": 0.2512, "paint_seed": 321 } },
+  { "id": "900000000000000001", "state": "listed", "price": 1290, "item": { "market_hash_name": "AK-47 | Redline (Field-Tested)", "float_value": 0.3011, "paint_seed": 77 } },
+  { "id": "900000000000000003", "state": "listed", "price": 2900, "item": { "market_hash_name": "StatTrak™ AK-47 | Redline (Field-Tested)", "float_value": 0.2, "paint_seed": 1 } }
+], "cursor": null }

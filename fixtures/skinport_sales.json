@@ -1,0 +1,7 @@
+[
+  { "market_hash_name": "AK-47 | Redline (Field-Tested)", "version": null, "currency": "EUR", "item_page": "https://skinport.com/item/ak-47-redline-field-tested", "market_page": "https://skinport.com/market",
+    "last_24_hours": { "min": 9, "max": 12, "avg": 10.5, "median": 10.4, "volume": 30 },
+    "last_7_days": { "min": 8.9, "max": 12.5, "avg": 10.6, "median": 10.5, "volume": 210 },
+    "last_30_days": { "min": 8.1, "max": 13, "avg": 10.4, "median": 10.3, "volume": 900 },
+    "last_90_days": { "min": 7.5, "max": 13, "avg": 10.0, "median": 10.0, "volume": 2600 } }
+]

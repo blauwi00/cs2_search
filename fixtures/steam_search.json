@@ -1,0 +1,4 @@
+{ "success": true, "start": 0, "pagesize": 10, "total_count": 2, "results": [
+  { "name": "AK-47 | Redline (Field-Tested)", "hash_name": "AK-47 | Redline (Field-Tested)", "sell_listings": 512, "sell_price": 1700, "sell_price_text": "$17.00" },
+  { "name": "StatTrak™ AK-47 | Redline (Field-Tested)", "hash_name": "StatTrak™ AK-47 | Redline (Field-Tested)", "sell_listings": 80, "sell_price": 4200, "sell_price_text": "$42.00" }
+] }

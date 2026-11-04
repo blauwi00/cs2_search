@@ -25,6 +25,8 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
+import { buildPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, type Slot } from './channel.ts';
+import { loadScan } from '../storage/scan.ts';
 
 export interface Ctx {
   env: Env;
@@ -766,4 +768,33 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
       await db.sourceFail(ctx.db, 'collector', 'down', `не получилось запустить сборщик: GitHub ${res.status} (проверь токен GH_DISPATCH_TOKEN)`, ctx.now, 1);
     }
   }
+}
+
+/** Автопостинг в канал/группу (если владелец привязал его командой /channel). */
+export async function jobChannel(ctx: Ctx): Promise<void> {
+  const chat = await getMeta(ctx.db, 'channel_id');
+  if (!chat) return;
+  const keys: Slot[] = ['ideas', 'trends', 'cases'];
+  const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key IN ('channel_done_ideas','channel_done_trends','channel_done_cases')`).all<{ key: string; value: string }>()).results;
+  const done = Object.fromEntries(keys.map((k) => [k, doneRows.find((r) => r.key === `channel_done_${k}`)?.value ?? null])) as Record<Slot, string | null>;
+  const slot = dueSlot(ctx.now, done);
+  if (!slot) return;
+  const [scan, fx] = await Promise.all([loadScan(ctx.db), db.loadLatestFx(ctx.db)]);
+  const text = scan && ctx.now - scan.fetchedAt < 6 * 3600 ? buildPost(slot, scan.entries, fx, ctx.now) : null;
+  const writes: D1PreparedStatement[] = [setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now))];
+  if (text && spendExternal(ctx)) {
+    const user = await botUsername(ctx.db, ctx.tg);
+    try {
+      await ctx.tg.sendMessage(Number(chat), text, botButton(user));
+      bump(ctx, 'channel_posts');
+    } catch (e) {
+      const msg = (e as Error).message;
+      await db.log(ctx.db, 'warn', 'channel', 'post', msg.slice(0, 300), ctx.now);
+      if (/Forbidden|not enough rights|chat not found|kicked/i.test(msg)) {
+        writes.push(ctx.db.prepare(`DELETE FROM meta WHERE key = 'channel_id'`));
+        await sendAdmin(ctx, 'tech', 'channel', `⚠️ Не получилось опубликовать пост в канал: ${esc(msg.slice(0, 200))}\nАвтопостинг выключен. Проверь, что бот — администратор с правом публиковать, и подключи снова: /channel`, [], null, writes);
+      }
+    }
+  }
+  await ctx.db.batch(writes);
 }

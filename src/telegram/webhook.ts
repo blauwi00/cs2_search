@@ -2,6 +2,7 @@ import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
 import { WATCH_LIMIT } from '../core/audience.ts';
+import { channelCommand, postPreview, publishNow, refStmt, statsCommand } from './owner.ts';
 import { budgetedDb, newBudget } from '../storage/budget.ts';
 import { setJobEnabled, listJobs } from '../core/scheduler.ts';
 import { TelegramClient, esc, type Keyboard } from './api.ts';
@@ -80,6 +81,9 @@ async function onText(text: string, h: H): Promise<void> {
   switch (cmd) {
     case '/start': {
       await db.clearState(h.d, h.uid);
+      // Метка источника (t.me/бот?start=tt) — чтобы видеть, откуда приходят люди.
+      const ref = refStmt(h.d, h.uid, t.split(/\s+/)[1] ?? '', h.now);
+      if (ref) await ref.run();
       // Кнопка приложения у поля ввода; повторная установка безопасна.
       try { await h.tg.setMenuButton(h.uid, `${h.origin}/app`); } catch { /* не критично */ }
       // Главное — приложение. Текстовое меню осталось за второй кнопкой и командой /menu.
@@ -88,6 +92,9 @@ async function onText(text: string, h: H): Promise<void> {
         [{ text: '☰ Текстовое меню', callback_data: 'm' }],
       ]);
     }
+    case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
+    case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
+    case '/stats': return statsCommand(h);
     case '/menu': {
       await db.clearState(h.d, h.uid);
       return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`));
@@ -192,6 +199,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   const [a, b, c] = data.split(':');
   const idArg = Number(b);
 
+  if (a === 'chpost' && b) return publishNow(h, b);
   if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
   if (a === 'm') {
     switch (b) {

@@ -63,11 +63,16 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
     try {
       await tg.call('setWebhook', { url: hook, secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
       lines.push(`Webhook: установлен на ${hook}`);
-      await tg.call('setMyCommands', { commands: [
+      const common = [
         { command: 'start', description: 'Открыть приложение' }, { command: 'menu', description: 'Текстовое меню' }, { command: 'add', description: 'Добавить предмет' },
         { command: 'deals', description: 'Выгодные сделки' }, { command: 'watch', description: 'Мониторинг цен' },
-        { command: 'settings', description: 'Настройки' }, { command: 'status', description: 'Состояние системы' },
-        { command: 'demo', description: 'Тестовое уведомление' },
+        { command: 'settings', description: 'Настройки' },
+      ];
+      await tg.call('setMyCommands', { commands: common });
+      // Владельцу — ещё служебные команды (видны только в его чате).
+      await tg.call('setMyCommands', { scope: { type: 'chat', chat_id: adminId }, commands: [...common,
+        { command: 'status', description: 'Состояние системы' }, { command: 'stats', description: 'Статистика и ссылки с метками' },
+        { command: 'channel', description: 'Автопостинг в канал' }, { command: 'post', description: 'Предпросмотр поста' },
       ] });
       lines.push('Команды меню: установлены');
       await tg.setMenuButton(adminId, `${url.origin}/app`);

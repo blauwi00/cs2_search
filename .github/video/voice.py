@@ -20,8 +20,22 @@ async def one(seg):
                 words.append({'type': ch['type'], 'text': ch['text'], 'start': ch['offset'] / 1e7, 'dur': ch['duration'] / 1e7})
     return {'id': seg['id'], 'text': seg['text'], 'words': words}
 
+async def retry(seg):
+    last = None
+    for i in range(5):
+        try:
+            r = await one(seg)
+            if os.path.getsize(f"out/{seg['id']}.mp3") > 1000:
+                return r
+            last = 'empty audio'
+        except Exception as e:
+            last = e
+        print('retry', seg['id'], i, last)
+        await asyncio.sleep(3 + i * 3)
+    raise RuntimeError(f"{seg['id']}: {last}")
+
 async def main():
-    res = [await one(s) for s in S['segments']]
+    res = [await retry(s) for s in S['segments']]
     json.dump({'engine': 'edge', 'segments': res}, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 def piper():
@@ -42,6 +56,8 @@ try:
     asyncio.run(main())
 except Exception as e:
     print('edge-tts failed:', e)
+    for f in os.listdir('out'):
+        if f.endswith('.mp3'): os.remove(os.path.join('out', f))
     piper()
 
 # Картинки кейсов (Steam CDN) из каталога ByMykel/CSGO-API.

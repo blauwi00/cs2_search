@@ -28,7 +28,22 @@ export function missingSecrets(env: Env): string[] {
 
 export async function handleAdmin(req: Request, env: Env, now: number, fetcher?: Fetcher): Promise<Response> {
   const url = new URL(req.url);
-  if (!env.ADMIN_KEY || !safeEqual(url.searchParams.get('key'), env.ADMIN_KEY)) return text('Forbidden', 403);
+  const given = url.searchParams.get('key') ?? '';
+  if (!env.ADMIN_KEY || !safeEqual(given, env.ADMIN_KEY)) {
+    // Подсказка без раскрытия ключа: только длины и признаки частых ошибок.
+    const expected = env.ADMIN_KEY ?? '';
+    const hints: string[] = [];
+    if (!expected) hints.push('Секрет ADMIN_KEY не найден в Worker. Проверь имя (ровно ADMIN_KEY) и нажми Deploy.');
+    else {
+      hints.push(`ADMIN_KEY в Cloudflare: ${expected.length} симв.; ключ в ссылке: ${given.length} симв.`);
+      if (expected.trim() !== expected) hints.push('В значении секрета ADMIN_KEY есть пробел или перенос строки в начале/конце — пересоздай секрет без пробелов.');
+      if (given.trim() !== given) hints.push('В ссылке после key= есть пробел.');
+      if (!given) hints.push('В ссылке нет ?key=… или ключ пустой.');
+      if (expected.trim() === given.trim() && expected !== given) hints.push('Ключи совпадают, если убрать пробелы — дело в пробелах.');
+      if (/[^A-Za-z0-9_-]/.test(expected)) hints.push('В ADMIN_KEY есть символы кроме латиницы, цифр, _ и - (их ломает ссылка). Задай ключ только из букв и цифр.');
+    }
+    return text(`Forbidden\n\n${hints.join('\n')}`, 403);
+  }
   const missing = missingSecrets(env);
   if (missing.length) return text(`Не заданы или некорректны секреты: ${missing.join(', ')}`, 500);
   const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN, fetcher);

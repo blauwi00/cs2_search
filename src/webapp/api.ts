@@ -11,7 +11,7 @@ import { classifyLiquidity, LIQUIDITY_RU } from '../core/liquidity.ts';
 import { stats } from '../core/analyzer.ts';
 import { valuation, viewLot, realizedStats, PLATFORMS, PLATFORM_RU, walletFor, parseDateInput, openQty } from '../core/portfolio.ts';
 import { steamSellerProceeds } from '../core/fees.ts';
-import { SETTINGS_META, parseSettingInput, displayValue } from '../telegram/settings.ts';
+import { settingsFor, parseSettingInput, displayValue } from '../telegram/settings.ts';
 import { listJobs, setJobEnabled } from '../core/scheduler.ts';
 import { warsawDate } from '../utils/time.ts';
 import { steamListingUrl, safeLink } from '../utils/http.ts';
@@ -19,6 +19,7 @@ import { backtest } from '../core/quality.ts';
 import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
 import { buildRecs, MARKETS, type Rec } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
+import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -71,7 +72,7 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
     chunkedAll(ids, async (p, ph) => (await d.prepare(`SELECT item_id, CAST(AVG(price_kop) AS INTEGER) AS avg, MIN(observed_at) AS first FROM price_snapshots
       WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL AND observed_at >= ? AND item_id IN (${ph}) GROUP BY item_id`)
       .bind(now - 7 * 86400, ...p).all<{ item_id: number; avg: number | null; first: number }>()).results),
-    db.activeSignals(d, 'spread', 90, now - 2 * 3600),
+    db.activeSignals(d, 'spread', 90, now - 2 * 3600, { tid, minProfitKop: 0, minRoiBp: 0 }),
     T.openTrades(d, tid),
     db.getSettings(d, tid),
   ]);
@@ -107,8 +108,16 @@ const bad = (error: string, status = 400) => json({ ok: false, error }, status);
 
 export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: D1Database): Promise<Response> {
   const user = await verifyInitData(req.headers.get('X-Init-Data') ?? '', env.TELEGRAM_BOT_TOKEN, now);
-  if (!user || user.id !== Number(env.ADMIN_TELEGRAM_ID)) return bad('forbidden', 403);
+  // Бот для всех: любой пользователь Telegram с правильной подписью. Владелец бота — ещё и технические экраны.
+  if (!user) return bad('forbidden', 403);
   const tid = user.id;
+  const isAdmin = tid === Number(env.ADMIN_TELEGRAM_ID);
+  const d0 = budgetedDb(rawDb ?? env.DB, newBudget());
+  await db.ensureUser(d0, tid, isAdmin, now);
+  const userDeals = async (limit: number, order: 'spread' | 'roi' | 'priority' = 'spread') => {
+    const s = await db.getSettings(d, tid);
+    return db.activeSignals(d, order, limit, now - 2 * 3600, { tid, minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp) });
+  };
   const d = budgetedDb(rawDb ?? env.DB, newBudget());
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/app\/api\//, '');
@@ -124,7 +133,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     // ---------- Сводка ----------
     if (path === 'summary' && method === 'GET') {
       const [sources, watched, deals, lots, jobs] = await Promise.all([
-        db.listSourceStatus(d), db.countActiveWatched(d), db.activeSignals(d, 'spread', 5, now - 2 * 3600), T.openTrades(d, tid), listJobs(d),
+        db.listSourceStatus(d), db.countActiveWatched(d), userDeals(5), T.openTrades(d, tid), listJobs(d),
       ]);
       const quotes = await quotesChunked(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 360));
       let cost = 0, value = 0, unknown = 0;
@@ -174,11 +183,11 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     // ---------- Сделки ----------
     if (path === 'deals' && method === 'GET') {
       const order = url.searchParams.get('order') === 'roi' ? 'roi' : url.searchParams.get('order') === 'priority' ? 'priority' : 'spread';
-      const rows = await db.activeSignals(d, order, 60, now - 2 * 3600);
+      const rows = await userDeals(60, order);
       return json({ ok: true, deals: rows.map(dealDto) });
     }
     if (seg[0] === 'deals' && seg[2] === 'hide' && method === 'POST') {
-      await db.setSignalState(d, Number(seg[1]), 'dismissed', now);
+      await db.hideSignal(d, tid, Number(seg[1]), now);
       return json({ ok: true });
     }
 
@@ -203,7 +212,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const histBy = new Map<number, typeof histAll>();
       for (const h of histAll) { const l = histBy.get(h.item_id) ?? []; l.push(h); histBy.set(h.item_id, l); }
       return json({
-        ok: true,
+        ok: true, limit: isAdmin ? null : WATCH_LIMIT, own: w.filter((x) => x.source !== 'inventory').length,
         items: w.map((x) => {
           const q = quotes.get(x.item_id) ?? [];
           const g = (s: string, t: string) => q.find((y) => y.source === s && y.price_type === t);
@@ -223,6 +232,14 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     if (path === 'watch' && method === 'POST') {
       const names = (Array.isArray(body.names) ? body.names : [body.name]).filter((n): n is string => typeof n === 'string' && n.trim().length >= 3).map((n) => n.trim()).slice(0, 60);
       if (!names.length) return bad('name_required');
+      if (!isAdmin) {
+        const have = await db.countUserWatch(d, tid);
+        if (have + names.length > WATCH_LIMIT) {
+          return bad(have >= WATCH_LIMIT
+            ? `Лимит — ${WATCH_LIMIT} предметов на человека. Удали ненужные («✏️ Изменить список»), чтобы добавить новые.`
+            : `Можно добавить ещё ${WATCH_LIMIT - have} (лимит — ${WATCH_LIMIT} предметов на человека).`);
+        }
+      }
       const stmts: D1PreparedStatement[] = [];
       for (const n of names) {
         stmts.push(...db.upsertItemStmts(d, n, now));
@@ -317,6 +334,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       });
     }
     if (path === 'inventory' && method === 'POST') {
+      if (!isAdmin && (await T.openTrades(d, tid)).length >= LOTS_LIMIT) return bad(`Лимит — ${LOTS_LIMIT} открытых позиций в инвентаре. Отметь проданные или удали лишние.`);
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       const qty = Number(body.qty), price = Number(body.priceKop), fee = Number(body.feeKop ?? 0);
       const platform = String(body.platform ?? '');
@@ -384,10 +402,10 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
     // ---------- Настройки и состояние ----------
     if (path === 'settings' && method === 'GET') {
       const s = await db.getSettings(d, tid);
-      return json({ ok: true, settings: SETTINGS_META.map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
+      return json({ ok: true, settings: settingsFor(isAdmin).map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
     }
     if (path === 'settings' && method === 'POST') {
-      const m = SETTINGS_META.find((x) => x.key === body.key);
+      const m = settingsFor(isAdmin).find((x) => x.key === body.key);
       if (!m) return bad('unknown_setting');
       let value: string;
       if (m.kind === 'toggle') value = body.value === true || body.value === '1' ? '1' : '0';
@@ -403,6 +421,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const s = await db.getSettings(d, tid);
       return json({ ok: true, display: displayValue(m, s), value });
     }
+    if ((path === 'status' || path === 'jobs/enable') && !isAdmin) return bad('admin_only', 403);
     if (path === 'status' && method === 'GET') {
       const [jobs, sources, c, fx, errs, cat] = await Promise.all([listJobs(d), db.listSourceStatus(d), db.counters(d, now), db.loadLatestFx(d), db.recentErrors(d, 5), catalogInfo(d)]);
       const external = env.COLLECTOR === 'github' ? new Set(['steam', 'skinport_items', 'skinport_sales']) : new Set<string>();

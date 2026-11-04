@@ -19,14 +19,19 @@ async function call(env: ReturnType<typeof testEnv>, path: string, opt: { method
   return { status: res.status, body: await res.json() as Record<string, unknown> };
 }
 
-test('Mini App: подпись Telegram проверяется; чужой пользователь, подделка и старые данные — отказ', async () => {
+test('Mini App: подпись Telegram проверяется; подделка и старые данные — отказ; технические экраны — только владельцу', async () => {
   const good = await init();
   assert.equal((await verifyInitData(good, TOKEN, NOW))?.id, ADMIN);
   assert.equal(await verifyInitData(good, 'OTHER_TOKEN', NOW), null, 'другой токен бота');
   assert.equal(await verifyInitData(good.replace('first_name', 'first_namE'), TOKEN, NOW), null, 'изменённые данные');
   assert.equal(await verifyInitData(await init(ADMIN, NOW - 3 * 86400), TOKEN, NOW), null, 'старше суток');
   const env = testEnv(migratedDb());
-  assert.equal((await call(env, 'summary', { userId: 999 })).status, 403);
+  assert.equal((await call(env, 'summary', { userId: 999 })).status, 200, 'приложение открыто для всех');
+  assert.equal((await call(env, 'status', { userId: 999 })).status, 403, 'состояние системы — только владельцу');
+  assert.equal((await call(env, 'status')).status, 200);
+  const st = await call(env, 'settings', { userId: 999 });
+  assert.ok(!(st.body.settings as { key: string }[]).some((x) => x.key === 'src_steam'), 'источники включает/выключает только владелец');
+  assert.equal((await call(env, 'settings', { userId: 999, method: 'POST', body: { key: 'src_steam', value: false } })).status, 400);
   const noHeader = await handleAppApi(new Request('https://w/app/api/summary'), env, NOW);
   assert.equal(noHeader.status, 403);
 });

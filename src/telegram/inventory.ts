@@ -2,6 +2,7 @@
 
 import * as db from '../storage/db.ts';
 import * as T from '../storage/trades.ts';
+import { LOTS_LIMIT } from '../core/audience.ts';
 import { esc, type Keyboard } from './api.ts';
 import { say, show, type H, type View } from './context.ts';
 import { formatUah, formatSignedUah, formatBp, parseUahInput } from '../utils/money.ts';
@@ -34,7 +35,7 @@ async function loadValuations(d: D1Database, itemIds: number[]) {
 }
 
 export async function inventoryView(h: H): Promise<View> {
-  const lots = await T.openTrades(h.d, h.adminId);
+  const lots = await T.openTrades(h.d, h.uid);
   const vals = await loadValuations(h.d, lots.map((l) => l.item_id));
   let cost = 0, costKnown = 0, value = 0, unknown = 0, qty = 0;
   const lines = ['<b>🎒 Мой инвентарь</b>', ''];
@@ -60,7 +61,7 @@ export async function inventoryView(h: H): Promise<View> {
 }
 
 export async function lotCard(h: H, id: number): Promise<View> {
-  const l = await T.getTrade(h.d, h.adminId, id);
+  const l = await T.getTrade(h.d, h.uid, id);
   if (!l) return { text: 'Запись не найдена.', keyboard: [back] };
   const v0 = (await loadValuations(h.d, [l.item_id])).get(l.item_id) ?? { ...valuation(null, null, null), fetchedAt: null };
   const v = viewLot(l, v0);
@@ -84,8 +85,8 @@ export async function lotCard(h: H, id: number): Promise<View> {
 }
 
 export async function tradesView(h: H): Promise<View> {
-  const trades = await T.allTrades(h.d, h.adminId);
-  const sales = await T.salesFor(h.d, h.adminId);
+  const trades = await T.allTrades(h.d, h.uid);
+  const sales = await T.salesFor(h.d, h.uid);
   const withCost = T.salesWithCost(trades, sales);
   const st = realizedStats(trades, withCost);
   const lines = [
@@ -119,7 +120,7 @@ export async function tradesView(h: H): Promise<View> {
 
 // ---------- Пошаговый ввод ----------
 
-async function setDraft(h: H, step: string, d: Draft) { await db.setState(h.d, h.adminId, step, d, h.now); }
+async function setDraft(h: H, step: string, d: Draft) { await db.setState(h.d, h.uid, step, d, h.now); }
 
 const platformKb = (prefix: string, withGift: boolean): Keyboard => {
   const list = PLATFORMS.filter((p) => withGift || p !== 'gift');
@@ -157,9 +158,10 @@ async function saveTrade(h: H, d: Draft, date: string) {
   if (!d.name || !d.qty || d.price === undefined || !d.platform) return say(h, 'Не хватает данных, начни заново.');
   const item = d.itemId ? await db.getItem(h.d, d.itemId) : await db.upsertItem(h.d, d.name, h.now);
   if (!item) return say(h, 'Предмет не найден.');
-  const id = await T.addTrade(h.d, { tid: h.adminId, itemId: item.id, signalId: d.signalId ?? null, quantity: d.qty, buyPriceKop: d.price, buyFeeKop: d.fee ?? 0, platform: d.platform, buyDate: date, note: null, now: h.now });
-  await T.addWatchFromInventory(h.d, h.adminId, item.id, h.now);
-  await db.clearState(h.d, h.adminId);
+  if (!h.isAdmin && (await T.openTrades(h.d, h.uid)).length >= LOTS_LIMIT) return say(h, `❌ Лимит — ${LOTS_LIMIT} открытых позиций в инвентаре. Отметь проданные или удали лишние.`);
+  const id = await T.addTrade(h.d, { tid: h.uid, itemId: item.id, signalId: d.signalId ?? null, quantity: d.qty, buyPriceKop: d.price, buyFeeKop: d.fee ?? 0, platform: d.platform, buyDate: date, note: null, now: h.now });
+  await T.addWatchFromInventory(h.d, h.uid, item.id, h.now);
+  await db.clearState(h.d, h.uid);
   await say(h, `✅ Записано: ${esc(item.market_hash_name)} ×${d.qty} по ${formatUah(d.price)}. Предмет добавлен в мониторинг с повышенным приоритетом.`);
   return show(h, await lotCard(h, id));
 }
@@ -172,8 +174,8 @@ async function askSalePlatform(h: H, d: Draft) {
 async function finishSale(h: H, d: Draft, date: string) {
   if (!d.tradeId || !d.qty || d.salePrice === undefined || d.received === undefined || !d.salePlatform) return say(h, 'Не хватает данных, начни заново.');
   try {
-    const r = await T.addSale(h.d, h.adminId, { tradeId: d.tradeId, quantity: d.qty, sellPriceKop: d.salePrice, receivedKop: d.received, platform: d.salePlatform, sellDate: date, now: h.now });
-    await db.clearState(h.d, h.adminId);
+    const r = await T.addSale(h.d, h.uid, { tradeId: d.tradeId, quantity: d.qty, sellPriceKop: d.salePrice, receivedKop: d.received, platform: d.salePlatform, sellDate: date, now: h.now });
+    await db.clearState(h.d, h.uid);
     const res = d.received - r.costKop;
     const wallet = walletFor(d.salePlatform) === 'steam_wallet' ? 'Steam Wallet (вывести нельзя)' : 'External Cash';
     await say(h, `✅ Продажа записана.\nПолучено: ${formatUah(d.received)} → ${wallet}\nСебестоимость: ${formatUah(r.costKop)}\nРезультат: <b>${formatSignedUah(res)}</b>${r.closed ? '\nЛот закрыт.' : ''}`,
@@ -193,7 +195,7 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
       if (t.length < 2) { await say(h, 'Слишком короткий запрос.'); return true; }
       const hits = await searchCatalog(h.d, t, 12);
       if (!hits.length) { await say(h, 'Ничего не найдено. Попробуй другое название на английском или /addlist с точным названием.'); return true; }
-      await db.setState(h.d, h.adminId, 'inv_pick', hits, h.now);
+      await db.setState(h.d, h.uid, 'inv_pick', hits, h.now);
       await say(h, 'Выбери предмет:', [...hits.map((x, i) => [{ text: x.slice(0, 60), callback_data: `ip:${i}` }]), [{ text: 'Отмена', callback_data: 'm:inv' }]]);
       return true;
     }
@@ -255,8 +257,8 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
     const id = Number(st.awaiting.slice('inv_target:'.length));
     const k = parseUahInput(t);
     if (k === null || k <= 0) { await say(h, '❌ Введи цену в гривнах'); return true; }
-    await T.setTradeTarget(h.d, h.adminId, id, k, h.now);
-    await db.clearState(h.d, h.adminId);
+    await T.setTradeTarget(h.d, h.uid, id, k, h.now);
+    await db.clearState(h.d, h.uid);
     await say(h, `🎯 Цель продажи ${formatUah(k)} сохранена. Сообщу, когда самое дешёвое объявление в Steam будет не ниже.`);
     await show(h, await lotCard(h, id));
     return true;
@@ -268,12 +270,12 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
 export async function onCallback(h: H, data: string, msgId?: number): Promise<boolean> {
   const [a, b] = data.split(':');
   const n = Number(b);
-  const st = await (a === 'm' ? Promise.resolve(null) : db.getState(h.d, h.adminId, h.now));
+  const st = await (a === 'm' ? Promise.resolve(null) : db.getState(h.d, h.uid, h.now));
   const d = ((st?.payload ?? {}) as Draft);
   const today = warsawDate(h.now);
   switch (a) {
     case 'ia':
-      await db.setState(h.d, h.adminId, 'inv_search', null, h.now);
+      await db.setState(h.d, h.uid, 'inv_search', null, h.now);
       await say(h, 'Напиши часть названия предмета на английском, например <code>fracture case</code>:');
       return true;
     case 'ip': {
@@ -298,18 +300,18 @@ export async function onCallback(h: H, data: string, msgId?: number): Promise<bo
     }
     case 'iv': if (Number.isInteger(n)) await show(h, await lotCard(h, n), msgId); return true;
     case 'itg':
-      await db.setState(h.d, h.adminId, `inv_target:${n}`, null, h.now);
+      await db.setState(h.d, h.uid, `inv_target:${n}`, null, h.now);
       await say(h, 'Цель продажи в Steam за 1 шт. (цена покупателя), в гривнах:');
       return true;
     case 'idel':
       await say(h, 'Удалить эту запись? История продаж не затрагивается (удалить можно только лот без продаж).', [[{ text: 'Да, удалить', callback_data: `idely:${n}` }, { text: 'Нет', callback_data: `iv:${n}` }]]);
       return true;
     case 'idely':
-      await say(h, (await T.deleteTrade(h.d, h.adminId, n)) ? 'Удалено.' : 'Нельзя удалить: по лоту уже есть продажи.');
+      await say(h, (await T.deleteTrade(h.d, h.uid, n)) ? 'Удалено.' : 'Нельзя удалить: по лоту уже есть продажи.');
       await show(h, await inventoryView(h));
       return true;
     case 'sl': {
-      const t = await T.getTrade(h.d, h.adminId, n);
+      const t = await T.getTrade(h.d, h.uid, n);
       if (!t || openQty(t) < 1) { await say(h, 'Нечего продавать в этой позиции.'); return true; }
       const nd: Draft = { tradeId: t.id, left: openQty(t), name: t.market_hash_name };
       if (nd.left === 1) await askSalePlatform(h, { ...nd, qty: 1 });

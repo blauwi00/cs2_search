@@ -24,6 +24,7 @@ import { valuation, viewLot, roiBucket } from './portfolio.ts';
 import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
+import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
 
 export interface Ctx {
   env: Env;
@@ -34,7 +35,10 @@ export interface Ctx {
   fetcher?: Fetcher;
   budget: Budget;
   settings: db.Settings;
-  cache: { fx?: Map<Currency, FxRate>; sentLastHour?: number; counters: Map<string, number> };
+  cache: {
+    fx?: Map<Currency, FxRate>; sentLastHour?: number; counters: Map<string, number>;
+    users?: Map<number, db.Settings>; watchers?: Map<number, { tid: number; target: number | null }[]>;
+  };
   /** Сколько запросов D1 текущая задача обязана оставить следующим задачам этого вызова. */
   reserveD1: number;
 }
@@ -69,9 +73,43 @@ async function fxMap(ctx: Ctx): Promise<Map<Currency, FxRate>> {
   return ctx.cache.fx;
 }
 
-async function sentLastHour(ctx: Ctx): Promise<number> {
-  if (ctx.cache.sentLastHour === undefined) ctx.cache.sentLastHour = await db.countNotificationsSince(ctx.db, ctx.adminId, ctx.now - 3600);
-  return ctx.cache.sentLastHour;
+/** Общее решение «новость ли это» не зависит от счётчика одного человека: лимиты в час проверяет очередь для каждого. */
+async function sentLastHour(_ctx: Ctx): Promise<number> { return 0; }
+
+async function watchersOf(ctx: Ctx, itemId: number): Promise<{ tid: number; target: number | null }[]> {
+  ctx.cache.watchers ??= new Map();
+  let w = ctx.cache.watchers.get(itemId);
+  if (!w) {
+    w = (await ctx.db.prepare('SELECT telegram_id AS tid, target_buy_kop AS target FROM watchlist WHERE item_id = ? AND active = 1 LIMIT 500')
+      .bind(itemId).all<{ tid: number; target: number | null }>()).results;
+    ctx.cache.watchers.set(itemId, w);
+  }
+  return w;
+}
+
+/**
+ * Рассылка: каждому получателю — по его настройкам; сообщение ставится в очередь outbox.
+ * recipients не задан → все, кто следит за предметом. Возвращает true, если хоть кому-то поставлено.
+ */
+async function fanout(ctx: Ctx, itemId: number, del: Delivery, pending: D1PreparedStatement[], recipients?: number[]): Promise<boolean> {
+  const tids = recipients ?? (await watchersOf(ctx, itemId)).map((w) => w.tid);
+  if (!tids.length) return false;
+  ctx.cache.users ??= new Map();
+  const missing = tids.filter((t) => !ctx.cache.users!.has(t));
+  for (let i = 0; i < missing.length; i += 90) {
+    for (const [t, st] of await loadUserSettings(ctx.db, missing.slice(i, i + 90))) ctx.cache.users.set(t, st);
+  }
+  let n = 0;
+  for (const t of tids) {
+    const at = deliverAt(ctx.cache.users.get(t) ?? withDefaults([]), del, ctx.now);
+    if (at === null) continue;
+    pending.push(enqueueStmt(ctx.db, t, del, at, ctx.now));
+    n++;
+  }
+  if (n === 0) return false;
+  if (del.signalId !== null) pending.push(db.markNotifiedStmt(ctx.db, del.signalId, null, ctx.now));
+  bump(ctx, 'notifications', n);
+  return true;
 }
 
 /** Пересчёт в UAH. Без курса цена в UAH остаётся неизвестной (null) — ничего не выдумываем. */
@@ -356,7 +394,8 @@ export async function evaluateLoaded(ctx: Ctx, item: db.ItemRow, quotes: db.Quot
         fxNote: rate ? `Курс НБУ: ${(rate.rateMicro / 1e6).toFixed(4).replace('.', ',')} грн за 1 ${rate.base}, дата курса ${rate.rateDate}` : null,
         arb, score, liquidity, dataAt: Math.min(buyRow.fetched_at, steamSide.fetchedAt), now: ctx.now,
       });
-      await send(ctx, 'arbitrage', String(sig.id), view.text, view.keyboard, sig.id, pending);
+      await fanout(ctx, item.id, { kind: 'arbitrage', ref: String(sig.id), signalId: sig.id, priority: score.priority,
+        spreadKop: arb.netSpreadKop, roiBp: arb.returnOnCostBp, buyKop: arb.purchaseCostKop, text: view.text, keyboard: view.keyboard }, pending);
     }
   }
   if (pending.length) await ctx.db.batch(pending);
@@ -367,15 +406,14 @@ async function expire(ctx: Ctx, prev: db.SignalRow | undefined, pending: D1Prepa
   pending.push(db.setStateStmt(ctx.db, prev.id, 'expired', ctx.now));
   bump(ctx, 'signals_expired');
   // Отправленное сообщение помечаем правкой, а не новым сообщением — без спама.
-  if (prev.state === 'notified' && prev.telegram_msg_id && spendExternal(ctx)) {
-    try {
-      await ctx.tg.editMessage(ctx.adminId, prev.telegram_msg_id,
-        `⚫ <b>НЕАКТУАЛЬНО</b>\nУсловия сделки больше не выполняются (повторная проверка ${new Date(ctx.now * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC).\nСигнал #${prev.id}`);
-    } catch (e) { await db.log(ctx.db, 'warn', 'telegram', 'edit', (e as Error).message, ctx.now); }
+  if (prev.state === 'notified' || prev.notified_at) {
+    pending.push(enqueueEditsStmt(ctx.db, prev.id,
+      `⚫ <b>НЕАКТУАЛЬНО</b>\nУсловия сделки больше не выполняются (повторная проверка ${new Date(ctx.now * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC).\nСигнал #${prev.id}`, ctx.now));
   }
 }
 
-async function send(ctx: Ctx, kind: string, ref: string, text: string, keyboard: Keyboard, signalId: number | null, pending: D1PreparedStatement[]): Promise<boolean> {
+/** Прямая отправка администратору (технические предупреждения). */
+async function sendAdmin(ctx: Ctx, kind: string, ref: string, text: string, keyboard: Keyboard, signalId: number | null, pending: D1PreparedStatement[]): Promise<boolean> {
   if (!spendExternal(ctx)) return false;
   try {
     const m = await ctx.tg.sendMessage(ctx.adminId, text, keyboard);
@@ -394,9 +432,12 @@ async function checkSteamEvents(ctx: Ctx, item: db.ItemRow, low: db.QuoteRow, me
   signals: Map<string, db.SignalRow>, pending: D1PreparedStatement[]): Promise<void> {
   const url = steamListingUrl(item.market_hash_name);
 
-  // Целевая цена из списка наблюдения.
-  const target = item.target_buy_kop ?? null;
-  if (target && low.price_kop !== null && low.price_kop <= target && canD1(ctx, 3)) {
+  // Целевые цены из списков наблюдения: у каждого своя. Сигнал — на каждое значение цели, получатели — у кого она такая.
+  const anyTarget = item.target_buy_kop ?? null;
+  const targets = anyTarget && low.price_kop !== null && low.price_kop <= anyTarget && canD1(ctx, 4)
+    ? [...new Set((await watchersOf(ctx, item.id)).filter((w) => w.target !== null && low.price_kop! <= w.target).map((w) => w.target!))].slice(0, 5) : [];
+  for (const target of targets) {
+    if (!canD1(ctx, 3) || low.price_kop === null) break;
     const key = dedupKey('target_price', item.id, 'steam', String(target));
     const prev = signals.get(key);
     const sig = await db.upsertSignal(ctx.db, {
@@ -408,7 +449,8 @@ async function checkSteamEvents(ctx: Ctx, item: db.ItemRow, low: db.QuoteRow, me
       prevForDecision(prev), await sentLastHour(ctx), warsawHour(ctx.now), ctx.now);
     if (d.send && sig.state !== 'dismissed') {
       const m = targetMessage(item.market_hash_name, low.price_kop, target, url);
-      await send(ctx, 'target', String(sig.id), m.text, m.keyboard, sig.id, pending);
+      const who = (await watchersOf(ctx, item.id)).filter((w) => w.target === target).map((w) => w.tid);
+      await fanout(ctx, item.id, { kind: 'target', ref: String(sig.id), signalId: sig.id, priority: 'high', text: m.text, keyboard: m.keyboard }, pending, who);
     }
   }
 
@@ -434,7 +476,7 @@ async function checkSteamEvents(ctx: Ctx, item: db.ItemRow, low: db.QuoteRow, me
     prevForDecision(prev), await sentLastHour(ctx), warsawHour(ctx.now), ctx.now);
   if (d.send && sig.state !== 'dismissed') {
     const m = changeMessage(item.market_hash_name, ev, ev.fromMinor, ev.toMinor, 'самое дешёвое объявление', med?.volume ?? null, url);
-    await send(ctx, ev.kind, String(sig.id), m.text, m.keyboard, sig.id, pending);
+    await fanout(ctx, item.id, { kind: 'change', ref: String(sig.id), signalId: sig.id, priority, text: m.text, keyboard: m.keyboard }, pending);
   }
 }
 
@@ -461,9 +503,8 @@ async function checkInventory(ctx: Ctx, item: db.ItemRow, low: db.QuoteRow, med:
       const d = decideNotify(notifyPolicy(ctx.settings, ctx.settings.sig_inventory === '1'), 'high', { spreadKop: null, buyKop: low.price_kop },
         prevForDecision(prev), await sentLastHour(ctx), warsawHour(ctx.now), ctx.now);
       if (d.send && sig.state !== 'dismissed') {
-        await send(ctx, 'inventory', String(sig.id),
-          `🎯 <b>ЦЕЛЬ ПРОДАЖИ ДОСТИГНУТА</b>\n\n<b>${esc(item.market_hash_name)}</b>\nСамое дешёвое объявление Steam: ${formatUah(low.price_kop)} (цель ${formatUah(lot.target_sell_kop)})\nОценка на баланс после комиссий: ${formatUah(v.steamProceedsPerUnit)}/шт.\nОценочная разница по позиции: ${formatUah(lv.unrealizedSteamKop)} — это ещё не прибыль, пока не продано.`,
-          [[{ text: 'Открыть Steam Market', url }], [{ text: '💸 Продал', callback_data: `sl:${lot.id}` }]], sig.id, pending);
+        await fanout(ctx, item.id, { kind: 'inventory', ref: String(sig.id), signalId: sig.id, priority: 'high', keyboard: [[{ text: 'Открыть Steam Market', url }], [{ text: '💸 Продал', callback_data: `sl:${lot.id}` }]], text:
+          `🎯 <b>ЦЕЛЬ ПРОДАЖИ ДОСТИГНУТА</b>\n\n<b>${esc(item.market_hash_name)}</b>\nСамое дешёвое объявление Steam: ${formatUah(low.price_kop)} (цель ${formatUah(lot.target_sell_kop)})\nОценка на баланс после комиссий: ${formatUah(v.steamProceedsPerUnit)}/шт.\nОценочная разница по позиции: ${formatUah(lv.unrealizedSteamKop)} — это ещё не прибыль, пока не продано.` }, pending, [lot.telegram_id]);
       }
     }
     // Изменение оценки относительно покупки: уведомление при переходе в новую «корзину» порога (по умолчанию каждые 15%).
@@ -481,9 +522,8 @@ async function checkInventory(ctx: Ctx, item: db.ItemRow, low: db.QuoteRow, med:
       null, await sentLastHour(ctx), warsawHour(ctx.now), ctx.now);
     if (d.send) {
       const up = lv.unrealizedRoiBp > 0;
-      await send(ctx, 'inventory', String(sig.id),
-        `${up ? '📈' : '📉'} <b>ИНВЕНТАРЬ: ${up ? 'ПОДОРОЖАЛ' : 'ПОДЕШЕВЕЛ'}</b>\n\n<b>${esc(item.market_hash_name)}</b> ×${lv.openQty}\nОценка к цене покупки: ${formatBp(lv.unrealizedRoiBp)}\nСебестоимость: ${formatUah(lv.openCostKop)} → оценка в Steam: ${formatUah(lv.steamValueKop)} (на баланс, после комиссий)\n<i>Это оценка, а не прибыль.</i>`,
-        [[{ text: 'Открыть Steam Market', url }], [{ text: 'Позиция', callback_data: `iv:${lot.id}` }]], sig.id, pending);
+      await fanout(ctx, item.id, { kind: 'inventory', ref: String(sig.id), signalId: sig.id, priority: 'medium', keyboard: [[{ text: 'Открыть Steam Market', url }], [{ text: 'Позиция', callback_data: `iv:${lot.id}` }]], text:
+        `${up ? '📈' : '📉'} <b>ИНВЕНТАРЬ: ${up ? 'ПОДОРОЖАЛ' : 'ПОДЕШЕВЕЛ'}</b>\n\n<b>${esc(item.market_hash_name)}</b> ×${lv.openQty}\nОценка к цене покупки: ${formatBp(lv.unrealizedRoiBp)}\nСебестоимость: ${formatUah(lv.openCostKop)} → оценка в Steam: ${formatUah(lv.steamValueKop)} (на баланс, после комиссий)\n<i>Это оценка, а не прибыль.</i>` }, pending, [lot.telegram_id]);
     }
   }
 }
@@ -556,7 +596,7 @@ export async function jobHealth(ctx: Ctx): Promise<void> {
     const c = rows.find((r) => r.source === 'collector');
     const last = c?.last_ok_at ?? null;
     if ((!last || ctx.now - last > 45 * 60) && !(c?.alerted_at && (!last || c.alerted_at > last))) {
-      const sent = await send(ctx, 'tech', 'collector',
+      const sent = await sendAdmin(ctx, 'tech', 'collector',
         `⚠️ <b>Сборщик цен (GitHub Actions) не присылает данные</b> ${last ? `уже ${Math.floor((ctx.now - last) / 60)} мин` : 'ни разу'}.\nПроверь вкладку Actions в репозитории: включены ли workflows и нет ли ошибок. Цены Steam и Skinport сейчас не обновляются.`,
         [], null, pending);
       if (sent) pending.push(ctx.db.prepare(
@@ -572,7 +612,7 @@ export async function jobHealth(ctx: Ctx): Promise<void> {
     if (r.alerted_at && r.alerted_at >= r.down_since) continue;
     const mins = Math.floor((ctx.now - r.down_since) / 60);
     const name = r.source === 'nbu' ? 'Курсы НБУ' : r.source;
-    const sent = await send(ctx, 'tech', r.source,
+    const sent = await sendAdmin(ctx, 'tech', r.source,
       `⚠️ <b>${name}</b> недоступен ${mins} мин.\nПоследняя ошибка: ${r.last_error ?? '—'}\nСравнения с этим источником временно не обновляются. Остальные источники продолжают работать.`,
       [], null, pending);
     if (sent) pending.push(ctx.db.prepare('UPDATE source_status SET alerted_at = ? WHERE source = ?').bind(ctx.now, r.source));
@@ -580,38 +620,117 @@ export async function jobHealth(ctx: Ctx): Promise<void> {
   if (pending.length) await ctx.db.batch(pending);
 }
 
+/** Ежедневная сводка — каждому, у кого она включена и наступил его час. До 4 человек за запуск (лимиты вызова). */
 export async function jobDailyReport(ctx: Ctx): Promise<void> {
-  const s = ctx.settings;
-  if (s.daily_report !== '1') return;
   const today = warsawDate(ctx.now);
-  if (s.last_daily_report === today) return;
-  if (warsawHour(ctx.now) < (db.num(s.daily_hour) || 20)) return;
-  const c = await db.counters(ctx.db, ctx.now);
-  const top = await db.activeSignals(ctx.db, 'spread', 3, ctx.now - 86400);
-  const src = await db.listSourceStatus(ctx.db);
-  const pf = await portfolioSummary(ctx.db, ctx.adminId, today);
-  const lines = [
-    `📊 <b>Сводка за ${today}</b>`, '',
-    `Сохранено наблюдений цен: ${c.snapshots ?? 0}`,
-    `Новых сигналов: ${c.signals_new ?? 0}, стали неактуальными: ${c.signals_expired ?? 0}`,
-    `Отправлено уведомлений: ${c.notifications ?? 0}`, '',
-    '<b>Реальный результат сделок за день</b>',
-    `• Steam Wallet: ${formatUah(pf.realizedSteamToday)}`,
-    `• External Cash: ${formatUah(pf.realizedCashToday)}`,
-    `• продаж: ${pf.salesToday}`,
-    '<b>Инвентарь (оценка, не прибыль)</b>',
-    pf.openLots ? `• позиций: ${pf.openLots}; себестоимость ${formatUah(pf.inventoryCost)} → оценка в Steam ${formatUah(pf.inventoryValue)}${pf.inventoryUnknown ? ` (+${pf.inventoryUnknown} без цены)` : ''}` : '• пусто',
-    '<b>Теоретические возможности</b> (это не доход):',
-    ...(top.length ? top.map((x) => `• ${x.market_hash_name}: ${formatUah(x.spread_kop)} (приоритет ${x.priority})`) : ['• нет активных']), '',
-    '<b>Источники:</b>',
-    ...src.map((x) => `• ${x.source}: ${x.status}${x.disabled_reason ? ` — ${x.disabled_reason}` : x.last_error && x.status !== 'ok' ? ` — ${x.last_error}` : ''}`),
-  ];
+  const hour = warsawHour(ctx.now);
+  // Кому ещё не отправляли сегодня: пользователи без отметки last_daily_report = сегодня.
+  const cands = (await ctx.db.prepare(
+    `SELECT u.telegram_id AS tid FROM users u
+     WHERE NOT EXISTS (SELECT 1 FROM user_settings s WHERE s.telegram_id = u.telegram_id AND s.key = 'last_daily_report' AND s.value = ?)
+       AND (EXISTS (SELECT 1 FROM watchlist w WHERE w.telegram_id = u.telegram_id AND w.active = 1)
+            OR EXISTS (SELECT 1 FROM trades t WHERE t.telegram_id = u.telegram_id))
+     ORDER BY u.telegram_id LIMIT 40`,
+  ).bind(today).all<{ tid: number }>()).results.map((r) => r.tid);
+  if (!cands.length) return;
+  const st = await loadUserSettings(ctx.db, cands);
+  const due = cands.filter((t) => { const s = st.get(t)!; return s.daily_report === '1' && hour >= (db.num(s.daily_hour) || 20); }).slice(0, 4);
   const pending: D1PreparedStatement[] = [];
-  if (await send(ctx, 'daily', today, lines.join('\n'), [], null, pending)) {
+  for (const tid of due) {
+    if (!canD1(ctx, 6)) break;
+    const pf = await portfolioSummary(ctx.db, tid, today);
+    const top = (await ctx.db.prepare(
+      `SELECT i.market_hash_name AS name, s.spread_kop FROM signals s JOIN items i ON i.id = s.item_id
+       JOIN watchlist w ON w.item_id = s.item_id AND w.telegram_id = ? AND w.active = 1
+       WHERE s.kind = 'arbitrage_steam' AND s.state IN ('confirmed','notified') AND s.updated_at >= ?
+         AND NOT EXISTS (SELECT 1 FROM hidden_signals h WHERE h.telegram_id = ? AND h.signal_id = s.id)
+       ORDER BY s.spread_kop DESC LIMIT 3`,
+    ).bind(tid, ctx.now - 86400, tid).all<{ name: string; spread_kop: number | null }>()).results;
+    const lines = [
+      `📊 <b>Сводка за ${today}</b>`, '',
+      '<b>Твои сделки за день</b>',
+      `• на баланс Steam: ${formatUah(pf.realizedSteamToday)}`,
+      `• деньгами: ${formatUah(pf.realizedCashToday)}`,
+      `• продаж: ${pf.salesToday}`,
+      '<b>Инвентарь (оценка, не прибыль)</b>',
+      pf.openLots ? `• позиций: ${pf.openLots}; куплено за ${formatUah(pf.inventoryCost)} → оценка в Steam ${formatUah(pf.inventoryValue)}${pf.inventoryUnknown ? ` (+${pf.inventoryUnknown} без цены)` : ''}` : '• пусто',
+      '<b>Возможности по твоему списку</b> (это ещё не доход):',
+      ...(top.length ? top.map((x) => `• ${esc(x.name)}: ${formatUah(x.spread_kop)}`) : ['• сейчас нет']),
+      '', 'Идеи по всему рынку — в приложении, вкладка «Идеи».',
+    ];
+    pending.push(enqueueStmt(ctx.db, tid, { kind: 'inventory', ref: `daily:${today}`, signalId: null, priority: 'low', text: lines.join('\n'), keyboard: [] }, ctx.now, ctx.now));
     pending.push(ctx.db.prepare(
       `INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'last_daily_report', ?, ?)
        ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    ).bind(ctx.adminId, today, ctx.now));
+    ).bind(tid, today, ctx.now));
   }
+  // Сегодня не нужно (выключено или час не наступил) — проверим в следующий раз; выключенным ставим отметку, чтобы не перебирать.
+  for (const t of cands) if (st.get(t)!.daily_report !== '1') pending.push(ctx.db.prepare(
+    `INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'last_daily_report', ?, ?)
+     ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).bind(t, today, ctx.now));
   if (pending.length) await ctx.db.batch(pending);
+}
+
+/**
+ * Отправка очереди уведомлений. Лимиты: внешние запросы вызова, лимит «в час» у каждого человека.
+ * Неактуальные к моменту отправки сделки не отправляются. Заблокировавшим бота — больше не пишем.
+ */
+export const OUTBOX_PER_RUN = 25;
+export async function jobOutbox(ctx: Ctx): Promise<void> {
+  const rows = (await ctx.db.prepare(
+    `SELECT id, telegram_id, kind, signal_id, text, keyboard, edit_msg_id, created_at FROM outbox
+     WHERE state = 'pending' AND not_before <= ? ORDER BY edit_msg_id IS NULL, not_before LIMIT ?`,
+  ).bind(ctx.now, OUTBOX_PER_RUN).all<{ id: number; telegram_id: number; kind: string; signal_id: number | null; text: string; keyboard: string | null; edit_msg_id: number | null; created_at: number }>()).results;
+  if (!rows.length) return;
+  const tids = [...new Set(rows.map((r) => r.telegram_id))];
+  const sigIds = [...new Set(rows.map((r) => r.signal_id).filter((x): x is number => x !== null))];
+  const [st, sent, sigs] = await Promise.all([
+    loadUserSettings(ctx.db, tids),
+    ctx.db.prepare(`SELECT telegram_id, COUNT(*) AS n FROM outbox WHERE state = 'sent' AND edit_msg_id IS NULL AND sent_at >= ? AND telegram_id IN (${tids.map(() => '?').join(',')}) GROUP BY telegram_id`)
+      .bind(ctx.now - 3600, ...tids).all<{ telegram_id: number; n: number }>(),
+    sigIds.length ? ctx.db.prepare(`SELECT id, state FROM signals WHERE id IN (${sigIds.map(() => '?').join(',')})`).bind(...sigIds).all<{ id: number; state: string }>() : Promise.resolve({ results: [] as { id: number; state: string }[] }),
+  ]);
+  const count = new Map(sent.results.map((r) => [r.telegram_id, r.n]));
+  const sigState = new Map(sigs.results.map((r) => [r.id, r.state]));
+  const upd: D1PreparedStatement[] = [];
+  const drop = (id: number) => upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'dropped' WHERE id = ?`).bind(id));
+  const blocked = new Set<number>();
+  for (const r of rows) {
+    if (blocked.has(r.telegram_id)) { drop(r.id); continue; }
+    if (r.signal_id !== null && !['confirmed', 'notified'].includes(sigState.get(r.signal_id) ?? '')) { drop(r.id); continue; }
+    if (r.edit_msg_id === null) {
+      if (ctx.now - r.created_at > 12 * 3600) { drop(r.id); continue; } // устарело (например, долго ждало конца тихих часов)
+      const limit = db.num(st.get(r.telegram_id)?.max_per_hour ?? '6') || 6;
+      if ((count.get(r.telegram_id) ?? 0) >= limit) {
+        upd.push(ctx.db.prepare('UPDATE outbox SET not_before = ? WHERE id = ?').bind(ctx.now + 600, r.id));
+        continue;
+      }
+    }
+    if (!spendExternal(ctx)) break;
+    try {
+      if (r.edit_msg_id !== null) {
+        await ctx.tg.editMessage(r.telegram_id, r.edit_msg_id, r.text);
+        upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ? WHERE id = ?`).bind(ctx.now, r.id));
+      } else {
+        const m = await ctx.tg.sendMessage(r.telegram_id, r.text, r.keyboard ? JSON.parse(r.keyboard) as Keyboard : undefined);
+        upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ?, msg_id = ? WHERE id = ?`).bind(ctx.now, m.message_id, r.id));
+        upd.push(ctx.db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(r.telegram_id, r.kind, String(r.id), ctx.now));
+        count.set(r.telegram_id, (count.get(r.telegram_id) ?? 0) + 1);
+      }
+    } catch (e) {
+      const msg = (e as Error).message;
+      // 403: человек заблокировал бота / удалил чат — выключаем ему уведомления, чтобы не тратить лимиты.
+      if (/\b403\b|Forbidden|blocked|deactivated|chat not found/i.test(msg)) {
+        blocked.add(r.telegram_id);
+        upd.push(ctx.db.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'notify_enabled', '0', ?)
+          ON CONFLICT(telegram_id, key) DO UPDATE SET value = '0', updated_at = excluded.updated_at`).bind(r.telegram_id, ctx.now));
+      } else if (r.edit_msg_id === null && !/\b429\b|Too Many Requests/i.test(msg)) {
+        await db.log(ctx.db, 'warn', 'telegram', 'send', msg.slice(0, 300), ctx.now);
+      }
+      if (r.edit_msg_id !== null || blocked.has(r.telegram_id)) drop(r.id);
+      if (/\b429\b|Too Many Requests/i.test(msg)) break;
+    }
+  }
+  for (let i = 0; i < upd.length; i += 90) await ctx.db.batch(upd.slice(i, i + 90));
 }

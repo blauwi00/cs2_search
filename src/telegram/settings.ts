@@ -33,6 +33,10 @@ export const SETTINGS_META: SettingMeta[] = [
   { key: 'src_csfloat', label: 'Источник CSFloat', kind: 'toggle' },
 ];
 
+/** Общие настройки системы — менять может только владелец бота. */
+export const ADMIN_ONLY: readonly string[] = ['src_steam', 'src_skinport', 'src_csfloat', 'max_stale_min'];
+export const settingsFor = (isAdmin: boolean): SettingMeta[] => SETTINGS_META.filter((m) => isAdmin || !ADMIN_ONLY.includes(m.key));
+
 export function metaFor(key: string): SettingMeta | undefined {
   return SETTINGS_META.find((m) => m.key === key);
 }

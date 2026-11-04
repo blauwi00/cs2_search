@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migratedDb, testEnv, mockFetch, json } from './helpers.ts';
 import { handleWebhook } from '../src/telegram/webhook.ts';
+import { handleIngest } from '../src/ingest.ts';
 import { handleAppApi } from '../src/webapp/api.ts';
 import { signInitData } from '../src/webapp/auth.ts';
 import { termsText, privacyPolicyText, TERMS_VERSION } from '../src/core/terms.ts';
@@ -81,4 +82,26 @@ test('партнёрские ссылки: /ref только владельцу,
   assert.match(String(sent.at(-1)!.body.text), /должна быть https/);
   await msg('/ref waxpeer https://waxpeer.com/?ref=me', ADMIN);
   assert.match(String(sent.at(-1)!.body.text), /✅ <b>Waxpeer<\/b>/);
+});
+
+test('цены на всех площадках: сборщик присылает раз в 6 ч, приложение показывает по возрастанию, Steam отдельно', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const SECRET = 'ingest_secret_test_123';
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  const hdr = { 'X-Ingest-Secret': SECRET };
+  await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+  const item = await db.upsertItem(D, 'Kilowatt Case', NOW);
+  await db.addWatch(D, 4242, item.id, NOW);
+  const items = async (t: number) => (await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, t)).json()) as { sitePriceNames: string[] };
+  assert.deepEqual((await items(NOW)).sitePriceNames, ['Kilowatt Case']);
+  const up = await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'site_prices', fetchedAt: NOW, done: true,
+    items: [{ name: 'Kilowatt Case', p: { skinport: 120, buff163: 95, waxpeer: 110, evil: 1, csmoney: -5 } }] }) }), env, NOW);
+  assert.equal(up.status, 200);
+  assert.deepEqual((await items(NOW + 3600)).sitePriceNames, [], 'следующий раз — через 6 часов');
+  assert.equal((await items(NOW + 7 * 3600)).sitePriceNames.length, 1);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 4242, first_name: 'E', language_code: 'uk' }) }, 'TEST_TOKEN');
+  const r = await (await handleAppApi(new Request('https://w/app/api/prices?name=' + encodeURIComponent('Kilowatt Case'), { headers: { 'X-Init-Data': init } }), env, NOW)).json() as { sites: { key: string; kop: number; group: string }[] };
+  assert.deepEqual(r.sites.map((x) => [x.key, x.kop]), [['buff163', 3800], ['waxpeer', 4400], ['skinport', 4800]], 'по возрастанию, мусор отброшен');
+  assert.equal(r.sites[0].group, 'china');
 });

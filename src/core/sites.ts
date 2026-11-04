@@ -4,7 +4,7 @@
 
 import { getMeta, setMetaStmt } from './channel.ts';
 
-export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'steam';
+export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'steam';
 
 export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; desc: string }[] = [
   { key: 'skinport', name: 'Skinport', url: 'https://skinport.com/', host: /(^|\.)skinport\.com$/, desc: 'Объявления от игроков, вывод денег на карту' },
@@ -12,6 +12,7 @@ export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; des
   { key: 'waxpeer', name: 'Waxpeer', url: 'https://waxpeer.com/', host: /(^|\.)waxpeer\.com$/, desc: 'Рынок между игроками, низкие комиссии' },
   { key: 'lisskins', name: 'LIS-SKINS', url: 'https://lis-skins.com/', host: /(^|\.)lis-skins\.(com|ru)$/, desc: 'Быстрые покупки, моментальная продажа' },
   { key: 'csfloat', name: 'CSFloat', url: 'https://csfloat.com/', host: /(^|\.)csfloat\.com$/, desc: 'Поиск по float и паттерну' },
+  { key: 'csmoney', name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
   { key: 'steam', name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
 ];
 
@@ -41,4 +42,32 @@ export const siteIcon = (url: string) => `https://www.google.com/s2/favicons?sz=
 
 export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean; icon: string }[] {
   return SITES.map((s) => ({ key: s.key, name: s.name, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key], icon: siteIcon(s.url) }));
+}
+
+/** Площадки в таблице «Цены на площадках» карточки предмета. group: cash — можно вывести деньги, china — китайские (нужен свой аккаунт там). */
+export const PRICE_SITES: { key: string; name: string; group: 'cash' | 'china' | 'steam'; home: string; url: (n: string) => string }[] = [
+  { key: 'skinport', name: 'Skinport', group: 'cash', home: 'https://skinport.com/', url: (n) => `https://skinport.com/market?search=${encodeURIComponent(n)}&sort=price&order=asc` },
+  { key: 'csgomarket', name: 'Market.CSGO', group: 'cash', home: 'https://market.csgo.com/', url: (n) => `https://market.csgo.com/?search=${encodeURIComponent(n)}` },
+  { key: 'waxpeer', name: 'Waxpeer', group: 'cash', home: 'https://waxpeer.com/', url: (n) => `https://waxpeer.com/?search=${encodeURIComponent(n)}&sort=ASC&order=price` },
+  { key: 'lisskins', name: 'LIS-SKINS', group: 'cash', home: 'https://lis-skins.com/', url: (n) => `https://lis-skins.com/market/csgo/?query=${encodeURIComponent(n)}` },
+  { key: 'csfloat', name: 'CSFloat', group: 'cash', home: 'https://csfloat.com/', url: (n) => `https://csfloat.com/search?market_hash_name=${encodeURIComponent(n)}&sort_by=lowest_price` },
+  { key: 'csmoney', name: 'CS.MONEY', group: 'cash', home: 'https://cs.money/', url: (n) => `https://cs.money/market/buy/?search=${encodeURIComponent(n)}` },
+  { key: 'buff163', name: 'BUFF163', group: 'china', home: 'https://buff.163.com/', url: () => 'https://buff.163.com/market/csgo' },
+  { key: 'youpin898', name: 'YouPin', group: 'china', home: 'https://www.youpin898.com/', url: () => 'https://www.youpin898.com/' },
+  { key: 'c5game', name: 'C5GAME', group: 'china', home: 'https://www.c5game.com/', url: () => 'https://www.c5game.com/' },
+];
+
+export interface SitePrice { key: string; name: string; group: string; kop: number; url: string; icon: string; ref: boolean }
+
+/** Цены предмета на всех площадках (самое дешёвое объявление), в копейках. Партнёрская ссылка — на главную площадки. */
+export function sitePriceList(name: string, usdCents: Record<string, number>, toKopUsd: (c: number) => number | null, links: RefLinks): SitePrice[] {
+  const out: SitePrice[] = [];
+  for (const s of PRICE_SITES) {
+    const c = usdCents[s.key];
+    const kop = c ? toKopUsd(c) : null;
+    if (!kop) continue;
+    const ref = links[s.key as SiteKey];
+    out.push({ key: s.key, name: s.name, group: s.group, kop, url: ref ?? s.url(name), icon: siteIcon(s.home), ref: !!ref });
+  }
+  return out.sort((a, b) => a.kop - b.kop);
 }

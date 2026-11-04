@@ -25,7 +25,7 @@ export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
 
 interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: unknown; error?: unknown }
-interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown }
+interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown; done?: unknown }
 
 export async function handleIngest(req: Request, env: Env, now: number, rawDb?: D1Database): Promise<Response> {
   if (!env.INGEST_SECRET || !safeEqual(req.headers.get('X-Ingest-Secret')?.trim(), env.INGEST_SECRET.trim())) return json({ ok: false, error: 'forbidden' }, 403);
@@ -63,6 +63,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       trackNames: track,
       // Картинка для поста канала, которую нужно нарисовать (null — ничего не нужно).
       card: await pendingCard(d),
+      // Цены со всех площадок — раз в 6 часов для предметов из списков, инвентарей и идей.
+      sitePriceNames: await sitePriceNames(d, now),
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -289,6 +291,18 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         setMetaStmt(d, 'public_origin', url.origin),
       ]);
       result.stored = 1;
+    } else if (body.kind === 'site_prices') {
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as { name?: unknown; p?: unknown }[];
+      const stmts: D1PreparedStatement[] = [];
+      for (const r of rows) {
+        if (typeof r?.name !== 'string' || r.name.length > 200 || !r.p || typeof r.p !== 'object') continue;
+        const p: Record<string, number> = {};
+        for (const [k, v] of Object.entries(r.p as Record<string, unknown>)) if (SITE_PRICE_KEYS.has(k) && typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v < 1e8) p[k] = v;
+        if (Object.keys(p).length) stmts.push(d.prepare('INSERT INTO site_prices (name, json, updated_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at').bind(r.name, JSON.stringify(p), now));
+      }
+      if (body.done === true) stmts.push(setMetaStmt(d, 'site_prices_at', String(now)), d.prepare('DELETE FROM site_prices WHERE updated_at < ?').bind(now - 3 * 86400));
+      for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
+      result.stored = stmts.length;
     } else if (body.kind === 'fx_usd') {
       // Курсы к доллару из открытого файла CSGO Trader — для валют, которых нет у НБУ (RUB, BRL, ARS).
       const r = parseUsdRates(body.rates);
@@ -334,4 +348,19 @@ async function pendingCard(d: D1Database): Promise<unknown> {
     const have = await d.prepare('SELECT 1 AS x FROM cards WHERE id = ?').bind(card.id).first();
     return have ? null : card;
   } catch { return null; }
+}
+
+const SITE_PRICE_KEYS = new Set(['skinport', 'csgomarket', 'waxpeer', 'lisskins', 'buff163', 'youpin898', 'c5game', 'csfloat', 'csmoney']);
+export const SITE_PRICES_EVERY_SEC = 6 * 3600;
+
+/** Какие предметы сборщику оценить на всех площадках (пусто — ещё рано). */
+async function sitePriceNames(d: D1Database, now: number): Promise<string[]> {
+  const at = Number(await getMeta(d, 'site_prices_at')) || 0;
+  if (now - at < SITE_PRICES_EVERY_SEC) return [];
+  const own = (await d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i WHERE
+      EXISTS (SELECT 1 FROM watchlist w WHERE w.item_id = i.id AND w.active = 1)
+      OR EXISTS (SELECT 1 FROM steam_inventory v WHERE v.item_id = i.id)
+      OR EXISTS (SELECT 1 FROM trades t WHERE t.item_id = i.id AND t.status = 'open') LIMIT 1500`).all<{ n: string }>()).results.map((r) => r.n);
+  const scan = await loadScan(d);
+  return [...new Set([...own, ...(scan?.entries ?? []).map((e) => e.name)])].slice(0, 2000);
 }

@@ -40,7 +40,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
 // Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
 if (card && card.id) {
   const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
@@ -330,6 +330,42 @@ try {
   console.log(`Сканирование рынка: межплощадочных кандидатов ${scored.length}, отобрано ${scan.length}, с историей Skinport ${scan.filter((e) => e.s7).length}`);
 } catch (e) {
   console.error('Сканирование рынка:', e.message);
+}
+
+// 2ж. Цены со всех площадок для карточек предметов (раз в несколько часов, когда Worker попросит).
+// Прямые прайсы (Skinport, Market.CSGO, Waxpeer, LIS-SKINS) уже загружены выше; BUFF163, YouPin, C5GAME, CSFloat, CS.MONEY —
+// из открытых файлов CSGO Trader (lowest listing). Всё в центах USD; Skinport переводим из евро по НБУ.
+if (sitePriceNames.length) {
+  try {
+    const extra = { buff163: 'starting_at', youpin898: 'starting_at', c5game: 'starting_at', csfloat: 'starting_at', csmoney: null };
+    const files = {};
+    for (const [prov] of Object.entries(extra)) {
+      try { files[prov] = await getJson(`https://prices.csgotrader.app/latest/${prov}.json`); } catch (e) { console.error(`CSGO Trader ${prov}:`, e.message); }
+    }
+    const sp = new Map(allItems.filter((x) => x && x.min_price > 0).map((x) => [x.market_hash_name, x.min_price]));
+    const eurUsd = fx.EUR && fx.USD ? fx.EUR / fx.USD : null;
+    const cents = (v) => (typeof v === 'number' && v > 0 && v < 1e6 ? Math.round(v * 100) : null);
+    const out = [];
+    for (const n of sitePriceNames.slice(0, 2000)) {
+      const p = {};
+      if (sp.has(n) && eurUsd) p.skinport = cents(sp.get(n) * eurUsd);
+      for (const m of ['csgomarket', 'waxpeer', 'lisskins']) { const v = markets[m].get(n); if (v) p[m] = cents(v.p); }
+      for (const [prov, mode] of Object.entries(extra)) {
+        const x = files[prov]?.[n];
+        const v = mode ? x?.[mode]?.price : x?.price;
+        if (v) p[prov] = cents(Number(v));
+      }
+      for (const k of Object.keys(p)) if (!p[k]) delete p[k];
+      if (Object.keys(p).length) out.push({ name: n, p });
+    }
+    for (let i = 0; i < out.length; i += 400) {
+      const r = await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: out.slice(i, i + 400), done: i + 400 >= out.length });
+      console.log(`Цены всех площадок: ${Math.min(i + 400, out.length)}/${out.length}`, r);
+    }
+    if (!out.length) await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: [], done: true });
+  } catch (e) {
+    console.error('Цены всех площадок:', e.message);
+  }
 }
 
 // 2е. Курсы валют к доллару (открытый файл CSGO Trader) — для валют, которых нет у НБУ (RUB, BRL, ARS).

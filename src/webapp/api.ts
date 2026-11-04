@@ -29,6 +29,7 @@ import { PRIVACY_POINTS } from '../core/privacy.ts';
 import { steamSellPrice } from '../core/sellprice.ts';
 import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '../core/terms.ts';
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
+import { sitePriceList } from '../core/sites.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -586,6 +587,44 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'terms' && method === 'POST') {
       await db.setSetting(d, tid, 'terms_ok', TERMS_VERSION, now);
       return json({ ok: true });
+    }
+    // Цены предмета на всех площадках (+ Steam), для карточки предмета и идеи.
+    if (path === 'prices' && method === 'GET') {
+      const name = (url.searchParams.get('name') ?? '').slice(0, 200);
+      if (!name) return bad('no_name');
+      const [row, links, fxm, item] = await Promise.all([
+        d.prepare('SELECT json, updated_at FROM site_prices WHERE name = ?').bind(name).first<{ json: string; updated_at: number }>(),
+        loadRefLinks(d), db.loadLatestFx(d),
+        d.prepare('SELECT id FROM items WHERE market_hash_name = ?').bind(name).first<{ id: number }>(),
+      ]);
+      const usd = fxm.get('USD') ?? null;
+      const toK = (c: number) => (usd ? toKop(c, 'USD', usd) : null);
+      let cents: Record<string, number> = {};
+      try { cents = row ? JSON.parse(row.json) as Record<string, number> : {}; } catch { cents = {}; }
+      // Нет общей таблицы — берём площадки из последней проверки рынка (если предмет там был).
+      let at = row?.updated_at ?? null;
+      if (!row) {
+        const scan = await loadScan(d);
+        const e = scan?.entries.find((x) => x.name === name);
+        if (e && scan) {
+          at = scan.fetchedAt;
+          for (const o of e.offers) {
+            const r = fxm.get(o.cur) ?? null;
+            const k = o.cur === 'USD' ? o.minor : r && usd ? Math.round((o.minor * r.rateMicro) / usd.rateMicro) : null;
+            if (k) cents[o.m] = k;
+          }
+        }
+      }
+      const list = sitePriceList(name, cents, toK, links);
+      let steam: { kop: number; live: boolean } | null = null;
+      if (item) {
+        const [q, sa] = await Promise.all([quotesChunked(d, [item.id]), steamAvgFor(d, [item.id])]);
+        const live = (q.get(item.id) ?? []).find((x) => x.source === 'steam' && x.price_type === 'lowest_listing' && now - x.fetched_at < 6 * 3600);
+        const a = sa.get(item.id);
+        const avgK = a?.d1 ? toK(a.d1) : a?.d7 ? toK(a.d7) : null;
+        if (live?.price_kop) steam = { kop: live.price_kop, live: true }; else if (avgK) steam = { kop: avgK, live: false };
+      }
+      return json({ ok: true, at, sites: list, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
     }
     if (path === 'privacy' && method === 'GET') {
       return json({ ok: true, ...PRIVACY_POINTS });

@@ -4,7 +4,7 @@
 
 import { getMeta, setMetaStmt } from './channel.ts';
 
-export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'dmarket' | 'steam';
+export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'dmarket' | 'buffmarket' | 'skinbaron' | 'csdeals' | 'tradeit' | 'steam';
 
 export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; desc: string }[] = [
   { key: 'steam', name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
@@ -14,6 +14,10 @@ export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; des
   { key: 'csmoney', name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
   { key: 'waxpeer', name: 'Waxpeer', url: 'https://waxpeer.com/', host: /(^|\.)waxpeer\.com$/, desc: 'Рынок между игроками, низкие комиссии' },
   { key: 'lisskins', name: 'LIS-SKINS', url: 'https://lis-skins.com/', host: /(^|\.)lis-skins\.(com|ru)$/, desc: 'Быстрые покупки, моментальная продажа' },
+  { key: 'buffmarket', name: 'BUFF Market', url: 'https://buff.market/', host: /(^|\.)buff\.market$/, desc: 'Международная версия BUFF, комиссия 2,5%' },
+  { key: 'skinbaron', name: 'SkinBaron', url: 'https://skinbaron.de/', host: /(^|\.)skinbaron\.(de|com)$/, desc: 'Немецкая компания, вывод на банк (SEPA)' },
+  { key: 'csdeals', name: 'CS.Deals', url: 'https://cs.deals/', host: /(^|\.)cs\.deals$/, desc: 'Рынок и обмен, комиссия продавца 2%' },
+  { key: 'tradeit', name: 'Tradeit.gg', url: 'https://tradeit.gg/', host: /(^|\.)tradeit\.gg$/, desc: 'Обмен через ботов, без вывода денег' },
   { key: 'dmarket', name: 'DMarket', url: 'https://dmarket.com/', host: /(^|\.)dmarket\.com$/, desc: 'Рынок и обмен, вывод денег' },
 ];
 

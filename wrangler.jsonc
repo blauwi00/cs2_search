@@ -5,6 +5,8 @@
   "compatibility_date": "2026-10-01",
   // Публичный адрес *.workers.dev нужен для webhook Telegram и страниц /admin/*.
   "workers_dev": true,
+  // Не удалять переменные, добавленные в панели Cloudflare, при деплое из GitHub.
+  "keep_vars": true,
   "observability": { "enabled": true },
   // Cron: каждую минуту вызывается планировщик; он сам решает, какие источники пора опрашивать.
   "triggers": { "crons": ["* * * * *"] },

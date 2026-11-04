@@ -8,24 +8,17 @@ jobs:
         with: { node-version: 22 }
       - run: |
           cat > p.mjs <<'JS'
-          const show = async (u, h = {}) => {
-            try {
-              const r = await fetch(u, { headers: { 'User-Agent': 'cs2-market-bot-collector/1.0', ...h } });
-              const t = await r.text();
-              console.log('####', r.status, t.length, u.slice(0, 160));
-              let j = null; try { j = JSON.parse(t); } catch {}
-              if (j && !Array.isArray(j) && Object.keys(j).length > 50) {
-                const ks = Object.keys(j).filter((k) => /Doppler|Gamma Doppler/.test(k)).slice(0, 2);
-                console.log('keys', Object.keys(j).length, JSON.stringify(Object.fromEntries(ks.map((k) => [k, j[k]]))).slice(0, 900));
-              } else console.log(t.slice(0, 500));
-            } catch (e) { console.log('####', 'ERR', u, e.message); }
-          };
-          await show('https://api.csfloat.com/?url=steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198084749846A698323590D7935523998312483177');
-          await show('https://api.csfloat.com/?url=steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198084749846A698323590D7935523998312483177', { Origin: 'https://csfloat.com' });
-          await show('https://csfloat.com/api/v1/me');
-          await show('https://prices.csgotrader.app/latest/csfloat.json');
-          await show('https://prices.csgotrader.app/latest/buff163.json');
-          // Пример инвентаря с описаниями наклеек — публичный инвентарь известного трейдера не нужен: смотрим структуру на любом открытом
-          await show('https://steamcommunity.com/inventory/76561198084749846/730/2?l=english&count=5');
+          const r = await fetch('https://steamcommunity.com/inventory/76561198084749846/730/2?l=english&count=200', { headers: { 'User-Agent': 'cs2-market-bot-collector/1.0' } });
+          console.log('####', r.status);
+          const j = await r.json().catch(() => null);
+          if (j) {
+            console.log('KEYS', Object.keys(j).join(','));
+            console.log('PROPS', JSON.stringify(j.asset_properties?.slice(0, 3)).slice(0, 1200));
+            const withSt = (j.descriptions || []).filter((d) => JSON.stringify(d.descriptions || []).match(/Sticker|Charm|sticker_info|keychain/));
+            console.log('STICK', withSt.length, JSON.stringify(withSt[0]?.descriptions).slice(0, 1500));
+            const dop = (j.descriptions || []).find((d) => /Doppler/.test(d.market_hash_name || ''));
+            console.log('DOP', JSON.stringify(dop).slice(0, 1500));
+            console.log('DESC0', JSON.stringify((j.descriptions || []).find((d) => /\(/.test(d.market_hash_name || ''))).slice(0, 2000));
+          }
           JS
           node p.mjs

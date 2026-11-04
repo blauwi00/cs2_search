@@ -8,9 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [dir, out] = process.argv.slice(2);
-const FPS = 30, LEAD = 0.35, GAP = 0.18, TAIL = 0.9;
+const FPS = 30, LEAD = 0.35, GAP = 0.18, TAIL = 0.8;
+const SPEED = Number(process.env.SPEED || 1); // ускорение голоса без смены тона (atempo)
 const T = JSON.parse(readFileSync(join(dir, 'timing.json'), 'utf8'));
-const dur = (f) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString());
+const dur = (f) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString()) / SPEED;
+if (SPEED !== 1) for (const w of T.words ?? []) { w.start /= SPEED; w.dur /= SPEED; }
 
 // Таймлайн: сцена = сегмент озвучки.
 let t = LEAD;
@@ -64,7 +66,7 @@ console.log('Длительность:', total.toFixed(2), 'с');
 // Аудио: сегменты на свои места.
 const wav = join(dir, 'voice_full.wav');
 const inputs = audio.flatMap((a) => ['-i', a.f]);
-const filt = audio.map((a, i) => `[${i}:a]adelay=${Math.round(a.at * 1000)}|${Math.round(a.at * 1000)},aresample=44100[a${i}]`).join(';') +
+const filt = audio.map((a, i) => `[${i}:a]${SPEED !== 1 ? `atempo=${SPEED},` : ''}adelay=${Math.round(a.at * 1000)}|${Math.round(a.at * 1000)},aresample=44100[a${i}]`).join(';') +
   ';' + audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0,apad=whole_dur=${total.toFixed(2)},loudnorm=I=-14:TP=-1.5[out]`;
 execFileSync('ffmpeg', ['-y', '-v', 'error', ...inputs, '-filter_complex', filt, '-map', '[out]', '-t', total.toFixed(2), wav]);
 

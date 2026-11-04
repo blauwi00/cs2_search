@@ -4,16 +4,17 @@
 
 import { getMeta, setMetaStmt } from './channel.ts';
 
-export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'steam';
+export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'dmarket' | 'steam';
 
 export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; desc: string }[] = [
+  { key: 'steam', name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
   { key: 'skinport', name: 'Skinport', url: 'https://skinport.com/', host: /(^|\.)skinport\.com$/, desc: 'Объявления от игроков, вывод денег на карту' },
+  { key: 'csfloat', name: 'CSFloat', url: 'https://csfloat.com/', host: /(^|\.)csfloat\.com$/, desc: 'Поиск по float и паттерну' },
   { key: 'csgomarket', name: 'Market.CSGO', url: 'https://market.csgo.com/', host: /(^|\.)(market\.csgo\.com|csgo\.com)$/, desc: 'Большой рынок, часто дешевле Steam' },
+  { key: 'csmoney', name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
   { key: 'waxpeer', name: 'Waxpeer', url: 'https://waxpeer.com/', host: /(^|\.)waxpeer\.com$/, desc: 'Рынок между игроками, низкие комиссии' },
   { key: 'lisskins', name: 'LIS-SKINS', url: 'https://lis-skins.com/', host: /(^|\.)lis-skins\.(com|ru)$/, desc: 'Быстрые покупки, моментальная продажа' },
-  { key: 'csfloat', name: 'CSFloat', url: 'https://csfloat.com/', host: /(^|\.)csfloat\.com$/, desc: 'Поиск по float и паттерну' },
-  { key: 'csmoney', name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
-  { key: 'steam', name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
+  { key: 'dmarket', name: 'DMarket', url: 'https://dmarket.com/', host: /(^|\.)dmarket\.com$/, desc: 'Рынок и обмен, вывод денег' },
 ];
 
 export type RefLinks = Partial<Record<SiteKey, string>>;

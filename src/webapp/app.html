@@ -35,6 +35,15 @@ button{font:inherit;color:inherit}
 .tk-in .warn{color:var(--amber)}.tk-in .bad{color:var(--red)}.tk-in .pos{color:var(--green)}
 @keyframes tk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){.tk-in{animation:none}.ticker{overflow-x:auto}}
+.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 10px;margin:4px 2px 6px}
+.stile{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;min-width:0;-webkit-tap-highlight-color:transparent}
+.stile:active .sq{transform:scale(.94)}
+.stile .sq{width:100%;max-width:76px;aspect-ratio:1;border-radius:20px;background:#fff;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:transform .12s;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.stile .sq img{width:62%;height:62%;object-fit:contain;position:relative;border-radius:8px}
+.stile .sq b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:#1c7ed6}
+.stile .sq.noimg{background:var(--card2,#2a3442)}.stile .sq.noimg b{color:var(--link)}
+.stile .sq i{position:absolute;top:4px;right:6px;font-style:normal;font-size:11px;color:#f59f00}
+.stile .sn{font-size:12px;font-weight:600;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -364,11 +373,10 @@ function home() {
     if (s.today.sales) h += '<div class="mut" style="font-size:13px;margin:2px 2px 0">Сегодня продано: ' + s.today.sales + ' · Steam ' + uah(s.today.steamKop, true) + ' · деньгами ' + uah(s.today.cashKop, true) + '</div>';
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
-    h += '<div class="sec">Площадки</div>';
-    h += sites.map(function (x) {
-      return '<div class="row" data-site="' + esc(x.key) + '">' + siteIc(x) + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' + esc(x.desc) + (x.ref ? ' · <span style="color:var(--amber)">партнёрская ссылка</span>' : '') + '</div></div><div class="mut">↗</div></div>';
-    }).join('');
-    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">Партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
+    h += '<div class="sec">Площадки</div><div class="sgrid">' + sites.map(function (x) {
+      return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">★</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div></div>';
+    }).join('') + '</div>';
+    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">★ — партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();

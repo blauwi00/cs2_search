@@ -734,3 +734,31 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
   }
   for (let i = 0; i < upd.length; i += 90) await ctx.db.batch(upd.slice(i, i + 90));
 }
+
+/**
+ * Запуск сборщика цен на GitHub (workflow_dispatch). Расписание GitHub Actions срабатывает ненадёжно
+ * (бывает, что не запускается часами), поэтому Worker «нажимает Run workflow» сам каждые 10 минут.
+ * Без токена GH_DISPATCH_TOKEN ничего не делает. Если сборщик присылал данные меньше 6 минут назад — не трогаем.
+ */
+export async function jobKickCollector(ctx: Ctx): Promise<void> {
+  const token = ctx.env.GH_DISPATCH_TOKEN?.trim();
+  const repo = ctx.env.GH_REPO?.trim();
+  if (ctx.env.COLLECTOR !== 'github' || !token || !repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return;
+  const st = (await db.listSourceStatus(ctx.db)).find((r) => r.source === 'collector');
+  if (st?.last_ok_at && ctx.now - st.last_ok_at < 6 * 60) return;
+  if (!spendExternal(ctx)) return;
+  bump(ctx, 'ext_requests');
+  const f = ctx.fetcher ?? fetch;
+  const res = await f(`https://api.github.com/repos/${repo}/actions/workflows/collect.yml/dispatches`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'cs2-market-bot', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+  if (res.status !== 204) {
+    const t = (await res.text()).slice(0, 200);
+    await db.log(ctx.db, 'warn', 'collector', 'dispatch', `GitHub ответил ${res.status}: ${t}`, ctx.now);
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      await db.sourceFail(ctx.db, 'collector', 'down', `не получилось запустить сборщик: GitHub ${res.status} (проверь токен GH_DISPATCH_TOKEN)`, ctx.now, 1);
+    }
+  }
+}

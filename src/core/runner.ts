@@ -19,6 +19,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'steam', intervalSec: 60, lockSec: 120, minD1: 12 },
   { name: 'csfloat', intervalSec: 3 * 60, lockSec: 120, minD1: 12 },
   { name: 'outbox', intervalSec: 60, lockSec: 90, minD1: 5 },
+  { name: 'kick_collector', intervalSec: 10 * 60, lockSec: 60, minD1: 2 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },
   { name: 'daily_report', intervalSec: 5 * 60, lockSec: 60, minD1: 3, firstDelaySec: 3 * 60 },
@@ -84,6 +85,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
         case 'evaluate': await P.jobEvaluate(ctx); break;
         case 'csfloat': await P.jobCsfloat(ctx); break;
         case 'outbox': await P.jobOutbox(ctx); break;
+        case 'kick_collector': await P.jobKickCollector(ctx); break;
         case 'health': await P.jobHealth(ctx); break;
         case 'quality': await P.jobQuality(ctx); break;
         case 'daily_report': await P.jobDailyReport(ctx); break;

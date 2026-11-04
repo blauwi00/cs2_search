@@ -14,4 +14,11 @@ export interface Env {
   INGEST_SECRET?: string;
   /** 'github' — цены Steam/Skinport собирает GitHub Actions; Worker их не запрашивает (обычная переменная в wrangler.jsonc). */
   COLLECTOR?: string;
+  /**
+   * Токен GitHub (fine-grained, доступ только к этому репозиторию, право Actions: Read and write) — Secret.
+   * Нужен, потому что расписание GitHub Actions срабатывает ненадёжно: Worker сам запускает сборщик каждые 10 минут.
+   */
+  GH_DISPATCH_TOKEN?: string;
+  /** Репозиторий сборщика, например blauwi00/cs2_search (обычная переменная в wrangler.jsonc). */
+  GH_REPO?: string;
 }

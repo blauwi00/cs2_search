@@ -63,6 +63,26 @@ export async function imagesFor(d: D1Database, names: string[]): Promise<Map<str
   return out;
 }
 
+/**
+ * Запасной ориентир для подсказки, пока своя история Steam не накопилась:
+ * 1) самое дешёвое на Skinport против медианы реальных продаж Skinport за 30 дней (или 7), если продаж хватает;
+ * 2) самое дешёвое в Steam против медианы продаж Steam за сутки, если продаж за сутки от 10.
+ */
+function altReference(g: (src: string, t: string) => db.QuoteRow | undefined): { curKop: number; refKop: number; where: string; basis: string } | null {
+  const spLow = g('skinport', 'lowest_listing');
+  const m30 = g('skinport', 'sale_median_30d'), m7 = g('skinport', 'sale_median_7d');
+  const ref = m30?.price_kop && (m30.volume ?? 0) >= 10 ? { q: m30, txt: 'средней цены продаж за месяц' }
+    : m7?.price_kop && (m7.volume ?? 0) >= 5 ? { q: m7, txt: 'средней цены продаж за неделю' } : null;
+  if (spLow?.price_kop && (spLow.quantity ?? 0) > 0 && ref) {
+    return { curKop: spLow.price_kop, refKop: ref.q.price_kop!, where: 'на Skinport', basis: `${ref.txt} там (${ref.q.volume} шт.)` };
+  }
+  const low = g('steam', 'lowest_listing'), med = g('steam', 'median_24h');
+  if (low?.price_kop && med?.price_kop && (med.volume ?? 0) >= 10) {
+    return { curKop: low.price_kop, refKop: med.price_kop, where: 'в Steam', basis: `средней цены продаж за сутки (${med.volume} шт.)` };
+  }
+  return null;
+}
+
 async function adviceFor(d: D1Database, tid: number, now: number, items: { id: number; name: string }[]): Promise<Map<number, Advice>> {
   const out = new Map<number, Advice>();
   const ids = items.map((x) => x.id).slice(0, 360);
@@ -96,6 +116,7 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
         ? { spreadKop: deal.spread_kop, buyKop: deal.buy_kop, buySource: deal.buy_source ?? '', proceedsKop: deal.proceeds_kop, priority: deal.priority } : null,
       lot: openQ > 0 ? { openQty: openQ, costPerUnitKop: Math.round(cost / openQ), targetKop: myLots.find((l) => l.target_sell_kop)?.target_sell_kop ?? null } : null,
       minRoiBp: db.num(s.min_roi_bp), minProfitKop: db.num(s.min_profit_kop),
+      alt: altReference(g),
     }));
   }
   return out;

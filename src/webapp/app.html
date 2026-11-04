@@ -676,6 +676,9 @@ function steamBlock(st) {
 }
 function bindSteamBlock(st) {
   if (!st) return;
+  // Пока инвентарь загружается — сами проверяем каждые 30 секунд (только на этой вкладке и при открытом приложении).
+  clearTimeout(state.invPoll);
+  if (st.pending) state.invPoll = setTimeout(function () { if (state.tab === 'inv' && document.visibilityState === 'visible' && !$('#sheet').classList.contains('on')) inventory(); }, 30000);
   var again = function () { inventory(); };
   if (!st.linked) {
     $('#st-login').onclick = function () {

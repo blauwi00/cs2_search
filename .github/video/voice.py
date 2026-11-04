@@ -53,10 +53,35 @@ def piper():
         res.append({'id': seg['id'], 'text': seg['text'], 'words': []})
     json.dump({'engine': 'piper', 'segments': res}, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
+def eleven():
+    # ElevenLabs с таймингами каждого символа → точные тайминги слов для субтитров.
+    import base64, urllib.error
+    full = ' '.join(x['text'] for x in S['segments'])
+    body = json.dumps({'text': full, 'model_id': 'eleven_multilingual_v2',
+                       'voice_settings': {'stability': 0.45, 'similarity_boost': 0.8, 'style': 0.25, 'use_speaker_boost': True}}).encode()
+    req = urllib.request.Request(f"https://api.elevenlabs.io/v1/text-to-speech/{S['voice']}/with-timestamps?output_format=mp3_44100_128", data=body,
+                                 headers={'xi-api-key': os.environ['ELEVENLABS_API_KEY'], 'Content-Type': 'application/json'})
+    r = json.load(urllib.request.urlopen(req, timeout=120))
+    open('out/all.mp3', 'wb').write(base64.b64decode(r['audio_base64']))
+    al = r['alignment']; words = []; cur = None
+    for ch, a, b in zip(al['characters'], al['character_start_times_seconds'], al['character_end_times_seconds']):
+        if ch.isspace():
+            if cur: words.append(cur); cur = None
+            continue
+        if cur is None: cur = {'type': 'WordBoundary', 'text': '', 'start': a, 'dur': 0}
+        cur['text'] += ch; cur['dur'] = b - cur['start']
+    if cur: words.append(cur)
+    for w in words: w['text'] = w['text'].strip('.,!?…:;«»"')
+    json.dump({'engine': 'eleven', 'single': 'all.mp3', 'segments': [{'id': x['id'], 'text': x['text'], 'nwords': len(x['text'].split())} for x in S['segments']], 'words': words},
+              open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+
 import edge_tts as _e
 print('edge-tts', getattr(_e, '__version__', '?'))
 try:
-    asyncio.run(main())
+    if S.get('engine') == 'eleven':
+        eleven()
+    else:
+        asyncio.run(main())
 except Exception as e:
     print('edge-tts failed:', e)
     for f in os.listdir('out'):

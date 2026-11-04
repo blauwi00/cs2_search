@@ -8,13 +8,25 @@ on:
 permissions:
   contents: write
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.l.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/video
+      - id: l
+        run: echo "list=$(python3 -c "import json;print(json.dumps([v['n'] for v in json.load(open('.github/video/voices.json'))['voices']]))")" >> "$GITHUB_OUTPUT"
   sample:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 8
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
-        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        n: ${{ fromJson(needs.plan.outputs.list) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,6 +36,8 @@ jobs:
           python-version: '3.12'
       - run: pip install -U edge-tts piper-tts
       - run: python .github/video/sample.py ${{ matrix.n }}
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       - uses: actions/upload-artifact@v4
         with:
           name: s${{ matrix.n }}

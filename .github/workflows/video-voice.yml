@@ -19,6 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -U edge-tts piper-tts
+      - run: python .github/video/debug.py || true
       - run: python .github/video/voice.py
       # Результат кладём в отдельную ветку video-assets (её удобно забрать git'ом).
       - name: Сохранить в ветку video-assets

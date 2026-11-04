@@ -3,6 +3,8 @@
   "name": "cs2-market-bot",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  // Публичный адрес *.workers.dev нужен для webhook Telegram и страниц /admin/*.
+  "workers_dev": true,
   "observability": { "enabled": true },
   // Cron: каждую минуту вызывается планировщик; он сам решает, какие источники пора опрашивать.
   "triggers": { "crons": ["* * * * *"] },

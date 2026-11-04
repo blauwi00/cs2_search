@@ -31,12 +31,13 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
-    const [cat, fx, noImg, noAvg] = await Promise.all([
+    const [cat, fx, noImg, noAvg, avgAt] = await Promise.all([
       catalogInfo(d), db.loadLatestFx(d),
       d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
         LEFT JOIN item_images m ON m.name = i.market_hash_name WHERE m.name IS NULL LIMIT 400`).all<{ n: string }>(),
       d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
         LEFT JOIN steam_avg a ON a.item_id = i.id WHERE a.item_id IS NULL OR a.updated_at < ? LIMIT 400`).bind(now - 20 * 3600).all<{ n: string }>(),
+      d.prepare(`SELECT value FROM meta WHERE key = 'steam_avg_file_at'`).first<{ value: string }>(),
     ]);
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
     // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
@@ -45,6 +46,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       fx: Object.fromEntries([...fx.values()].map((r) => [r.base, r.rateMicro / 1e6])),
       missingImages: noImg.results.map((r) => r.n),
       needSteamAvg: noAvg.results.map((r) => r.n),
+      steamAvgAt: Number(avgAt?.value ?? 0) || 0,
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -172,6 +174,11 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         stmts.push(d.prepare(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(item_id) DO UPDATE SET d1 = excluded.d1, d7 = excluded.d7, d30 = excluded.d30, d90 = excluded.d90, updated_at = excluded.updated_at`)
           .bind(id, c(r.d1), c(r.d7), c(r.d30), c(r.d90), now));
+      }
+      // Время версии прайса (Last-Modified файла) — чтобы новую версию разослать по всем предметам сразу.
+      const fileAt = Number((body as { fileAt?: unknown }).fileAt);
+      if (Number.isInteger(fileAt) && fileAt > 1.6e9 && fileAt <= now + 300) {
+        stmts.push(d.prepare(`INSERT INTO meta (key, value) VALUES ('steam_avg_file_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(fileAt)));
       }
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
       result.stored = stmts.length;

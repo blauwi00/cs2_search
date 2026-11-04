@@ -3,7 +3,7 @@
 // Данные — то же сканирование рынка, что и во вкладке «Идеи». Нет содержательных данных — пост пропускается.
 // В каждом посте кнопка на бота с меткой ?start=ch — так видно, сколько людей пришло из канала.
 
-import { buildRecs, MARKETS, type ScanEntry } from './recs.ts';
+import { buildRecs, MARKETS, safeImg, type ScanEntry } from './recs.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
 import { esc, type Keyboard, type TelegramClient } from '../telegram/api.ts';
 import { warsawDate, warsawHour } from '../utils/time.ts';
@@ -28,6 +28,11 @@ export function botButton(botUsername: string | null, text = '🤖 Все иде
 
 /** Текст поста для слота или null, если показать нечего. Чистая функция — проверяется тестами. */
 export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): string | null {
+  return buildPostLead(slot, entries, fx, now)?.text ?? null;
+}
+
+/** То же + lead: главный предмет поста (его картинка пойдёт превью над текстом). */
+export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null } | null {
   const date = warsawDate(now).split('-').reverse().slice(0, 2).join('.');
   if (slot === 'ideas') {
     const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
@@ -41,7 +46,7 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
       lines.push('');
     });
     lines.push('<i>Цены на момент публикации, комиссии площадок учтены. Это не финансовый совет: проверь цену перед покупкой — объявление могут купить раньше.</i>');
-    return lines.join('\n');
+    return { text: lines.join('\n'), lead: top[0].name };
   }
   if (slot === 'trends') {
     const { trends } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
@@ -50,7 +55,7 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
     const lines = [`📈 <b>Растут в цене · ${date}</b>`, ''];
     for (const t of top) lines.push(`• <b>${esc(t.name)}</b> — ${pct(t.trendBp ?? 0)} за неделю к месяцу${t.sales7 ? ` (${t.sales7} продаж)` : ''}, сейчас от ${fmt(t.payKop)} на ${MARKETS[t.buyAt].name}`);
     lines.push('', '<i>Рост уже случился и может развернуться — это не гарантия. Покупай только то, что готов держать.</i>');
-    return lines.join('\n');
+    return { text: lines.join('\n'), lead: top[0].name };
   }
   // cases: средние продажи Steam за сутки против месяца (прайс Steam), только кейсы с продажами.
   const usd = fx.get('USD') ?? null;
@@ -65,7 +70,7 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
   if (up.length) { lines.push('🔺 <b>Дорожают</b>'); for (const x of up) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
   if (down.length) { lines.push('🔻 <b>Дешевеют</b>'); for (const x of down) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
   lines.push('<i>Цены ≈: из долларов по курсу НБУ. Дешевеющий кейс — не обязательно выгодная покупка.</i>');
-  return lines.join('\n');
+  return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name };
 }
 
 export async function getMeta(d: D1Database, key: string): Promise<string | null> {
@@ -99,24 +104,47 @@ export function dueSlot(now: number, done: Partial<Record<Slot, string | null>>)
   return null;
 }
 
+export interface ChannelPost { text: string; image: string | null }
+
 /** Собирает текст поста для слота из базы (общий для расписания, предпросмотра и «Опубликовать сейчас»). */
 export async function composePost(d: D1Database, slot: Slot, now: number): Promise<string | null> {
+  return (await composeChannelPost(d, slot, now))?.text ?? null;
+}
+
+/** Пост + картинка главного предмета (превью над текстом). Нет картинки — пост выходит обычным текстом. */
+export async function composeChannelPost(d: D1Database, slot: Slot, now: number): Promise<ChannelPost | null> {
   const [scan, fx] = await Promise.all([loadScan(d), loadLatestFx(d)]);
   const fresh = scan && now - scan.fetchedAt < 6 * 3600 ? scan.entries : null;
+  const withImage = async (text: string | null, lead: string | null): Promise<ChannelPost | null> =>
+    text ? { text, image: lead ? await itemImage(d, lead, fresh) : null } : null;
   if (slot === 'ideas') {
     const today = await ensureTodayIdeas(d, fresh, fx, now);
     const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 86400)).all<IdeaRow>()).results;
-    return ideasPost(today, yesterday, now);
+    const bestY = [...yesterday].filter((r) => r.outcome === 'plus' || r.outcome === 'minus').sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
+    return withImage(ideasPost(today, yesterday, now), today[0]?.name ?? bestY?.name ?? null);
   }
-  if (slot === 'trends') return fresh ? buildPost('trends', fresh, fx, now) : null;
+  if (slot === 'trends') {
+    const p = fresh ? buildPostLead('trends', fresh, fx, now) : null;
+    return withImage(p?.text ?? null, p?.lead ?? null);
+  }
   const cases = await caseStats(d);
   if (slot === 'cases') {
     const entries: ScanEntry[] = cases.length ? cases.map((c) => ({ name: c.name, offers: [], s7: null, s30: null, steam: null, sa: { d1: c.d1, d7: c.d7, d30: c.d30, d90: null } })) : fresh ?? [];
-    return buildPost('cases', entries, fx, now);
+    const p = buildPostLead('cases', entries, fx, now);
+    return withImage(p?.text ?? null, p?.lead ?? null);
   }
   const week = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
   const u = await d.prepare('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS w FROM users').bind(now - 7 * 86400).first<{ n: number; w: number | null }>();
-  return weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now);
+  const leader = cases.filter((c) => c.d7 && c.d30).sort((a, b) => b.d7! / b.d30! - a.d7! / a.d30!)[0];
+  return withImage(weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now), leader?.name ?? null);
+}
+
+/** Картинка предмета: из сканирования, иначе из каталога картинок. Только проверенные адреса Steam CDN. */
+export async function itemImage(d: D1Database, name: string, entries: ScanEntry[] | null): Promise<string | null> {
+  const fromScan = safeImg(entries?.find((e) => e.name === name)?.img);
+  if (fromScan) return fromScan;
+  const r = await d.prepare('SELECT url FROM item_images WHERE name = ?').bind(name).first<{ url: string }>();
+  return safeImg(r?.url);
 }
 
 export async function caseStats(d: D1Database): Promise<CaseStat[]> {

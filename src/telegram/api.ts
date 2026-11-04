@@ -29,9 +29,11 @@ export class TelegramClient {
     return json.result as T;
   }
 
-  sendMessage(chatId: number, text: string, keyboard?: Keyboard): Promise<{ message_id: number }> {
+  /** image — адрес картинки: Telegram покажет её большим превью над текстом (лимит текста остаётся 4096, а не 1024 как у фото). */
+  sendMessage(chatId: number, text: string, keyboard?: Keyboard, image?: string | null): Promise<{ message_id: number }> {
     return this.call('sendMessage', {
-      chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true,
+      chat_id: chatId, text, parse_mode: 'HTML',
+      link_preview_options: image ? { url: image, prefer_large_media: true, show_above_text: true } : { is_disabled: true },
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
   }

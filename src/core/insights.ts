@@ -119,7 +119,18 @@ export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: n
   return lines.join('\n');
 }
 
-export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number }
+export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number; image?: string | null }
+
+const NEWS_IMG_OK = /^https:\/\/[a-z0-9.-]*steamstatic\.com\/[^\s"'\]\[<>]{1,400}\.(png|jpe?g|gif|webp)$/i;
+/** Первая картинка из текста новости Steam ({STEAM_CLAN_IMAGE}/… или прямая ссылка на steamstatic). */
+export function newsImage(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  for (const m of raw.matchAll(/\{STEAM_CLAN_IMAGE\}(\/[^\s"'\]\[<>]+)|(https:\/\/[a-z0-9.-]*steamstatic\.com\/[^\s"'\]\[<>]+)/gi)) {
+    const u = m[1] ? `https://clan.akamai.steamstatic.com/images${m[1]}` : m[2];
+    if (NEWS_IMG_OK.test(u)) return u;
+  }
+  return null;
+}
 
 /** Текст новости Steam: убираем разметку Steam ([b], [img], {STEAM_CLAN_IMAGE}…) и HTML. */
 export function cleanSnippet(raw: unknown): string | null {

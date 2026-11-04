@@ -87,3 +87,38 @@ test('обновления CS2: первые новости только зап�
   assert.equal(newsPosts[0].body.reply_markup.inline_keyboard[0][0].url, 'https://store.steampowered.com/news/app/730/view/3');
   void ADMIN;
 });
+
+test('картинки в канале: обложка новости из Steam и иконка главного предмета — превью над текстом', async () => {
+  const { newsImage } = await import('../src/core/insights.ts');
+  const { composeChannelPost } = await import('../src/core/channel.ts');
+  assert.equal(newsImage('[p]{STEAM_CLAN_IMAGE}/3381077/abc123.png[/p] text'), 'https://clan.akamai.steamstatic.com/images/3381077/abc123.png');
+  assert.equal(newsImage('[img src="https://evil.example/x.png"][/img]'), null, 'чужие адреса не берём');
+  assert.equal(newsImage('без картинок'), null);
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  await db.storeFx(D, [EUR, USD], DAY1);
+  const img = 'https://community.akamai.steamstatic.com/economy/image/abc';
+  await ingest(env, { kind: 'scan', items: [{ ...scanItem(13), img }] }, DAY1);
+  const p = (await composeChannelPost(D, 'ideas', DAY1))!;
+  assert.equal(p.image, img);
+  // Новость с картинкой уходит в канал с превью над текстом; пост без картинки — превью выключено.
+  const news = (gid: string, contents: string) => ({ gid, title: `Update ${gid}`, url: `https://store.steampowered.com/news/app/730/view/${gid}`, date: DAY1, contents });
+  await ingest(env, { kind: 'news', items: [news('1', 'x')] }, DAY1);
+  await ingest(env, { kind: 'news', items: [news('2', '{STEAM_CLAN_IMAGE}/1/cover.jpg Fixed')] }, DAY1);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+  ]);
+  await runCycle(env, { now: DAY1, fetcher });
+  await runCycle(env, { now: DAY1 + 400, fetcher });
+  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  const n = posts.find((s) => /Обновление CS2/.test(s.body.text))!;
+  assert.deepEqual(n.body.link_preview_options, { url: 'https://clan.akamai.steamstatic.com/images/1/cover.jpg', prefer_large_media: true, show_above_text: true });
+  const idea = posts.find((s) => /Идеи дня/.test(s.body.text));
+  if (idea) assert.equal(idea.body.link_preview_options.url, img);
+  const admin = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id !== -1001234);
+  if (admin) assert.deepEqual(admin.body.link_preview_options, { is_disabled: true });
+});

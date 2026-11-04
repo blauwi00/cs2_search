@@ -16,7 +16,7 @@ import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
 import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
-import { ideasToTrack, checkStmts, cleanSnippet, type IdeaRow } from './core/insights.ts';
+import { ideasToTrack, checkStmts, cleanSnippet, newsImage, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 
@@ -286,8 +286,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         const url2 = typeof r?.url === 'string' && /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net|www\.counter-strike\.net)\//.test(r.url) ? r.url : null;
         const date = Number(r?.date);
         if (!gid || !title || !url2 || !Number.isInteger(date) || date > now + 3600) continue;
-        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at) VALUES (?, ?, ?, ?, ?, ?)')
-          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now));
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now, newsImage(r.contents)));
       }
       if (stmts.length) await d.batch(stmts);
       result.stored = stmts.length;

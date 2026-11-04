@@ -2,7 +2,7 @@
 
 import { esc } from './api.ts';
 import { say, type H } from './context.ts';
-import { composePost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
+import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
 const SLOT_RU: Record<Slot, string> = { ideas: 'Идеи дня + итог вчерашних (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
@@ -55,11 +55,11 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
 export async function postPreview(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
   const slot = ALL_SLOTS.find((s) => s === arg.trim()) ?? 'ideas';
-  const text = await composePost(h.d, slot, h.now);
-  if (!text) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post trends</code>, <code>/post cases</code>, <code>/post weekly</code>`);
+  const p = await composeChannelPost(h.d, slot, h.now);
+  if (!p) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post trends</code>, <code>/post cases</code>, <code>/post weekly</code>`);
   const channel = await getMeta(h.d, 'channel_id');
   await say(h, '👀 <b>Предпросмотр</b> — так пост будет выглядеть в канале:');
-  await say(h, text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])]);
+  await h.tg.sendMessage(h.uid, p.text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])], p.image);
 }
 
 export async function publishNow(h: H, slot: string): Promise<void> {
@@ -67,10 +67,10 @@ export async function publishNow(h: H, slot: string): Promise<void> {
   const channel = await getMeta(h.d, 'channel_id');
   const s = ALL_SLOTS.find((x) => x === slot);
   if (!channel || !s) return say(h, 'Канал не подключён: /channel');
-  const text = await composePost(h.d, s, h.now);
-  if (!text) return say(h, 'Сейчас нечего публиковать.');
+  const p = await composeChannelPost(h.d, s, h.now);
+  if (!p) return say(h, 'Сейчас нечего публиковать.');
   try {
-    await h.tg.sendMessage(Number(channel), text, botButton(await botUsername(h.d, h.tg)));
+    await h.tg.sendMessage(Number(channel), p.text, botButton(await botUsername(h.d, h.tg)), p.image);
     return say(h, '✅ Опубликовано.');
   } catch (e) {
     return say(h, `❌ ${esc((e as Error).message).slice(0, 200)}`);

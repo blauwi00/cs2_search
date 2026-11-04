@@ -25,7 +25,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { composePost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
+import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 
@@ -777,10 +777,10 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   if (!chat) return;
   const writes: D1PreparedStatement[] = [];
   const user = await botUsername(ctx.db, ctx.tg);
-  const post = async (text: string, kb: Keyboard): Promise<boolean> => {
+  const post = async (text: string, kb: Keyboard, image: string | null): Promise<boolean> => {
     if (!spendExternal(ctx)) return false;
     try {
-      await ctx.tg.sendMessage(Number(chat), text, kb);
+      await ctx.tg.sendMessage(Number(chat), text, kb, image);
       bump(ctx, 'channel_posts');
       return true;
     } catch (e) {
@@ -797,7 +797,7 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? ORDER BY published_at LIMIT 1').bind(ctx.now - 3 * 86400).first<NewsItem>();
   if (n) {
     writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
-    await post(newsPost(n), [[{ text: '📰 Читать в Steam', url: n.url }], ...botButton(user)]);
+    await post(newsPost(n), [[{ text: '📰 Читать в Steam', url: n.url }], ...botButton(user)], n.image ?? null);
   } else {
     // 2. Посты по расписанию.
     const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;
@@ -805,8 +805,8 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     const slot = dueSlot(ctx.now, done);
     if (slot) {
       writes.push(setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now)));
-      const text = await composePost(ctx.db, slot, ctx.now);
-      if (text) await post(text, botButton(user));
+      const p = await composeChannelPost(ctx.db, slot, ctx.now);
+      if (p) await post(p.text, botButton(user), p.image);
     }
   }
   if (writes.length) await ctx.db.batch(writes);

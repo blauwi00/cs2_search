@@ -307,6 +307,8 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         adviceFor(d, tid, now, w.map((x) => ({ id: x.item_id, name: x.market_hash_name }))),
         imagesFor(d, w.map((x) => x.market_hash_name)),
       ]);
+      const [avgsW, fxW] = await Promise.all([steamAvgFor(d, ids), db.loadLatestFx(d)]);
+      const usdW = fxW.get('USD') ?? null;
       const histBy = new Map<number, typeof histAll>();
       for (const h of histAll) { const l = histBy.get(h.item_id) ?? []; l.push(h); histBy.set(h.item_id, l); }
       return json({
@@ -323,6 +325,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
             steamLowKop: low?.price_kop ?? null, steamMedKop: g('steam', 'median_24h')?.price_kop ?? null, sales24h: g('steam', 'median_24h')?.volume ?? null,
             skinportKop: g('skinport', 'lowest_listing')?.price_kop ?? null, skinportQty: g('skinport', 'lowest_listing')?.quantity ?? null,
             change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null, img: imgs.get(x.market_hash_name) ?? null,
+            steamAvgKop: (() => { const a = avgsW.get(x.item_id); const c = a?.d7 ?? a?.d30 ?? null; return c && usdW ? toKop(c, 'USD', usdW) : null; })(),
           };
         }),
       });

@@ -22,9 +22,27 @@ async def one(seg):
 
 async def main():
     res = [await one(s) for s in S['segments']]
-    json.dump(res, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    json.dump({'engine': 'edge', 'segments': res}, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
-asyncio.run(main())
+def piper():
+    # Запасной вариант: открытый голос Piper (без таймингов слов — их оценит монтаж по длине текста).
+    import subprocess
+    base = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/'
+    for f in ['ru_RU-dmitri-medium.onnx', 'ru_RU-dmitri-medium.onnx.json']:
+        urllib.request.urlretrieve(base + f, f)
+    res = []
+    for seg in S['segments']:
+        subprocess.run(['piper', '-m', 'ru_RU-dmitri-medium.onnx', '-f', f"out/{seg['id']}.wav"], input=seg['text'].encode(), check=True)
+        res.append({'id': seg['id'], 'text': seg['text'], 'words': []})
+    json.dump({'engine': 'piper', 'segments': res}, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+
+import edge_tts as _e
+print('edge-tts', getattr(_e, '__version__', '?'))
+try:
+    asyncio.run(main())
+except Exception as e:
+    print('edge-tts failed:', e)
+    piper()
 
 # Картинки кейсов (Steam CDN) из каталога ByMykel/CSGO-API.
 try:

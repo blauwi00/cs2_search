@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install edge-tts==7.0.2
+      - run: pip install -U edge-tts piper-tts
       - run: python .github/video/voice.py
       - uses: actions/upload-artifact@v4
         with:

@@ -128,6 +128,11 @@ export async function diagnostics(env: Env, now: number, fetcher?: Fetcher): Pro
     const ago = (t: number | null | undefined) => (t ? `${Math.round((now - t) / 60)} мин назад` : 'ни разу');
     const c = rows.find((r) => r.source === 'collector');
     out.push(`Сборщик (GitHub Actions): ${c?.last_ok_at && now - c.last_ok_at < 45 * 60 ? '✅' : '❌'} последние данные ${ago(c?.last_ok_at)}${env.INGEST_SECRET ? '' : ' — не задан секрет INGEST_SECRET'}`);
+    if (!env.GH_DISPATCH_TOKEN) out.push('Автозапуск сборщика: ⚠️ не задан секрет GH_DISPATCH_TOKEN — расписание GitHub срабатывает ненадёжно, цены могут не обновляться часами');
+    else {
+      const r = await (fetcher ?? fetch)(`https://api.github.com/repos/${env.GH_REPO ?? ''}/actions/workflows/collect.yml`, { headers: { Authorization: `Bearer ${env.GH_DISPATCH_TOKEN.trim()}`, Accept: 'application/vnd.github+json', 'User-Agent': 'cs2-market-bot' } }).catch(() => null);
+      out.push(`Автозапуск сборщика (Worker → GitHub): ${r?.ok ? '✅ токен работает' : `❌ GitHub ответил ${r?.status ?? 'ошибкой'} — проверь токен GH_DISPATCH_TOKEN и доступ к репозиторию`}`);
+    }
     for (const s of ['steam', 'skinport']) {
       const r = rows.find((x) => x.source === s);
       out.push(`${s === 'steam' ? 'Steam Market' : 'Skinport'} (через сборщик): ${r?.status === 'ok' ? '✅' : '❌'} успех ${ago(r?.last_ok_at)}${r?.status !== 'ok' && r?.last_error ? ` — ${r.last_error}` : ''}`);

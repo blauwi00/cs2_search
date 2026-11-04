@@ -107,3 +107,34 @@ test('скрытая сделка скрыта только у того, кто 
   assert.equal((await api(env, ALICE, 'deals')).body.deals.length, 0);
   assert.equal((await api(env, BOB, 'deals')).body.deals.length, 1, 'у Боба сделка осталась');
 });
+
+test('автозапуск сборщика: Worker раз в 10 минут запускает GitHub workflow, если данные не приходят', async () => {
+  const d = migratedDb();
+  const env = testEnv(d, { COLLECTOR: 'github', GH_DISPATCH_TOKEN: 'ghp_test', GH_REPO: 'blauwi00/cs2_search' });
+  const calls: { url: string; body: string; auth: string }[] = [];
+  const sent: { method: string; body: Record<string, unknown> }[] = [];
+  const { fetcher } = mockFetch([
+    telegramRoute(sent),
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+    { match: (u) => u.startsWith('https://api.github.com/'), respond: (u, init) => {
+      calls.push({ url: u, body: String(init?.body), auth: String((init?.headers as Record<string, string>).Authorization) });
+      return new Response(null, { status: 204 });
+    } },
+  ]);
+  await runCycle(env, { now: NOW, fetcher });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.github.com/repos/blauwi00/cs2_search/actions/workflows/collect.yml/dispatches');
+  assert.equal(calls[0].auth, 'Bearer ghp_test');
+  assert.deepEqual(JSON.parse(calls[0].body), { ref: 'main' });
+  await runCycle(env, { now: NOW + 60, fetcher });
+  assert.equal(calls.length, 1, 'не чаще раза в 10 минут');
+  // Сборщик только что прислал данные — не дёргаем.
+  d.db.prepare(`INSERT INTO source_status (source, status, last_ok_at) VALUES ('collector', 'ok', ?) ON CONFLICT(source) DO UPDATE SET last_ok_at = excluded.last_ok_at`).run(NOW + 600);
+  await runCycle(env, { now: NOW + 660, fetcher });
+  assert.equal(calls.length, 1);
+  // Без токена — ничего не делает.
+  const env2 = testEnv(migratedDb(), { COLLECTOR: 'github' });
+  const before = calls.length;
+  await runCycle(env2, { now: NOW, fetcher });
+  assert.equal(calls.length, before);
+});

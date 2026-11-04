@@ -35,8 +35,13 @@ async def retry(seg):
     raise RuntimeError(f"{seg['id']}: {last}")
 
 async def main():
-    res = [await retry(s) for s in S['segments']]
-    json.dump({'engine': 'edge', 'segments': res}, open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    # Один запрос на весь текст (несколько подряд edge-tts иногда обрывает), сцены — по словам каждого сегмента.
+    full = {'id': 'all', 'text': ' '.join(x['text'] for x in S['segments'])}
+    r = await retry(full)
+    words = [w for w in r['words'] if w['type'] == 'WordBoundary']
+    print('words', len(words), 'types', sorted(set(w['type'] for w in r['words'])))
+    json.dump({'engine': 'edge', 'single': 'all.mp3', 'segments': [{'id': x['id'], 'text': x['text'], 'nwords': len(x['text'].split())} for x in S['segments']], 'words': words},
+              open('out/timing.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 def piper():
     # Запасной вариант: открытый голос Piper (без таймингов слов — их оценит монтаж по длине текста).

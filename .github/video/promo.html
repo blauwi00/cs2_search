@@ -12,7 +12,7 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e13;font-fam
 .pic img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))}
 .glow{position:absolute;border-radius:50%;filter:blur(90px)}
 /* сцена 2 */
-.bar{position:absolute;left:90px;right:90px;height:118px;border-radius:24px;background:rgba(255,255,255,.05);overflow:hidden}
+.bar{position:absolute;left:90px;right:90px;height:100px;border-radius:24px;background:rgba(255,255,255,.05);overflow:hidden}
 .bar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:24px}
 .bar .lb{position:absolute;left:30px;top:0;bottom:0;display:flex;align-items:center;font-size:40px;font-weight:700}
 .bar .pr{position:absolute;right:30px;top:0;bottom:0;display:flex;align-items:center;font-size:46px;font-weight:800}
@@ -25,15 +25,16 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e13;font-fam
 .step .m{font-size:44px;font-weight:700;margin-top:6px}
 .step .v{position:absolute;right:40px;top:0;bottom:0;display:flex;align-items:center;font-size:64px;font-weight:800}
 /* сцена 5 */
-#phone{position:absolute;left:190px;top:330px;width:700px;height:1320px;border-radius:80px;background:#000;padding:22px;box-shadow:0 60px 120px rgba(0,0,0,.6),0 0 0 4px #2a2f37}
+#phone{position:absolute;left:225px;top:300px;width:630px;height:1180px;border-radius:80px;background:#000;padding:22px;box-shadow:0 60px 120px rgba(0,0,0,.6),0 0 0 4px #2a2f37}
 #phone .scr{width:100%;height:100%;border-radius:60px;overflow:hidden;background:#17212b}
 #phone img{width:100%;display:block}
-#notif{position:absolute;left:120px;right:120px;top:390px;border-radius:36px;background:rgba(40,46,56,.96);padding:28px 32px;box-shadow:0 30px 60px rgba(0,0,0,.5);display:flex;gap:24px;align-items:center}
+#notif{position:absolute;left:110px;right:110px;top:360px;border-radius:36px;background:rgba(40,46,56,.96);padding:28px 32px;box-shadow:0 30px 60px rgba(0,0,0,.5);display:flex;gap:24px;align-items:center}
 #notif .ic{width:96px;height:96px;border-radius:24px;overflow:hidden;flex:none;background:#222}
 #notif .ic img{width:100%;height:100%}
 #notif .t{font-size:30px;color:#adb5bd}#notif .b{font-size:36px;font-weight:700;margin-top:4px;line-height:1.25}
 /* субтитры */
-#cap{position:absolute;left:80px;right:80px;top:1290px;text-align:center;font-size:66px;font-weight:800;line-height:1.15;text-shadow:0 6px 24px rgba(0,0,0,.9),0 0 4px #000}
+#cap{position:absolute;left:70px;right:70px;top:1400px;text-align:center;font-size:66px;font-weight:800;line-height:1.15;text-shadow:0 6px 24px rgba(0,0,0,.9),0 0 4px #000}
+#cap:not(:empty){background:rgba(8,10,14,.72);border-radius:28px;padding:18px 20px}
 #cap span{display:inline-block;margin:0 10px}
 #cap .on{color:#3ee08f}
 .note{position:absolute;left:0;right:0;font-size:26px;color:#5c636a;text-align:center}
@@ -52,10 +53,10 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e13;font-fam
 <!-- 2. Сравнение цен -->
 <div class="sc" id="s2">
   <div class="big" style="position:absolute;top:230px;left:60px;right:60px;font-size:84px">Один кейс —<br>разные цены</div>
-  <div class="pic" style="position:absolute;left:390px;top:440px;width:300px;height:230px"><img src="img0.png"></div>
+  <div class="pic" style="position:absolute;left:110px;top:440px;width:300px;height:230px"><img src="img0.png"></div>
   <div id="bars"></div>
-  <div id="s2badge" style="position:absolute;right:90px;top:1160px;background:#3ee08f;color:#0b0e13;font-size:54px;font-weight:800;padding:12px 28px;border-radius:20px">−26% к Steam</div>
-  <div class="note" style="top:1250px">цены для примера</div>
+  <div id="s2badge" style="position:absolute;right:90px;top:575px;background:#3ee08f;color:#0b0e13;font-size:54px;font-weight:800;padding:12px 28px;border-radius:20px">−26% к Steam</div>
+  <div class="note" style="top:1290px">цены для примера</div>
 </div>
 
 <!-- 3. Сканирование -->
@@ -99,7 +100,7 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e13;font-fam
 var bars = [['Steam', 132, '#ff6b6b'], ['Skinport', 112, '#4dabf7'], ['Market.CSGO', 105, '#ffa94d'], ['Waxpeer', 108, '#9775fa'], ['BUFF163', 98, '#3ee08f']];
 (function () {
   var h = '';
-  bars.forEach(function (b, i) { h += '<div class="bar" style="top:' + (720 + i * 138) + 'px"><div class="fill" id="bf' + i + '" style="background:' + b[2] + '33;border-right:6px solid ' + b[2] + '"></div><div class="lb">' + b[0] + '</div><div class="pr">' + (b[1] / 100).toFixed(2).replace('.', ',') + ' $</div></div>'; });
+  bars.forEach(function (b, i) { h += '<div class="bar" style="top:' + (700 + i * 116) + 'px"><div class="fill" id="bf' + i + '" style="background:' + b[2] + '33;border-right:6px solid ' + b[2] + '"></div><div class="lb">' + b[0] + '</div><div class="pr">' + (b[1] / 100).toFixed(2).replace('.', ',') + ' $</div></div>'; });
   document.getElementById('bars').innerHTML = h;
   var sites = ['Steam', 'Skinport', 'Market.CSGO', 'Waxpeer', 'LIS-SKINS', 'CSFloat', 'CS.MONEY', 'BUFF163', 'YouPin'];
   var c = '';

@@ -47,13 +47,14 @@ groups.forEach((g, gi) => {
   const start = g[0].start - 0.05, end = Math.max(g.at(-1).end + 0.25, start + 0.5);
   const next = groups[gi + 1] ? groups[gi + 1][0].start - 0.06 : Infinity;
   const stop = Math.min(end, next);
-  js += `    tl.set("#cap-g${gi}", { opacity: 1, visibility: "visible" }, ${t(start)});\n`;
-  js += `    tl.fromTo("#cap-g${gi}", { scale: 0.92 }, { scale: 1, duration: 0.12, ease: "power2.out" }, ${t(start)});\n`;
+  // Только fromTo с явными значениями «до» и «после»: кадр не зависит от порядка перемотки.
+  const on = (sel, a, b, at) => `    tl.fromTo("${sel}", ${a}, { ...${b}, duration: 0.001, immediateRender: false }, ${at});\n`;
+  js += on(`#cap-g${gi}`, '{ opacity: 0, visibility: "hidden", scale: 0.92 }', '{ opacity: 1, visibility: "visible", scale: 1 }', t(start));
   g.forEach((w, wi) => {
-    js += `    tl.set("#cap-w${gi}-${wi}", { color: "#3ee08f" }, ${t(w.start)});\n`;
-    if (wi < g.length - 1) js += `    tl.set("#cap-w${gi}-${wi}", { color: "#ffffff" }, ${t(g[wi + 1].start)});\n`;
+    js += on(`#cap-w${gi}-${wi}`, '{ color: "#ffffff" }', '{ color: "#3ee08f" }', t(w.start));
+    if (wi < g.length - 1) js += on(`#cap-w${gi}-${wi}`, '{ color: "#3ee08f" }', '{ color: "#ffffff" }', t(g[wi + 1].start));
   });
-  js += `    tl.set("#cap-g${gi}", { opacity: 0, visibility: "hidden" }, ${t(stop)});\n`;
+  js += on(`#cap-g${gi}`, '{ opacity: 1, visibility: "visible" }', '{ opacity: 0, visibility: "hidden" }', t(stop));
 });
 
 writeFileSync('compositions/captions.html', `<template>

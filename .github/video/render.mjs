@@ -65,9 +65,23 @@ console.log('Длительность:', total.toFixed(2), 'с');
 
 // Аудио: сегменты на свои места.
 const wav = join(dir, 'voice_full.wav');
-const inputs = audio.flatMap((a) => ['-i', a.f]);
-const filt = audio.map((a, i) => `[${i}:a]${SPEED !== 1 ? `atempo=${SPEED},` : ''}adelay=${Math.round(a.at * 1000)}|${Math.round(a.at * 1000)},aresample=44100[a${i}]`).join(';') +
-  ';' + audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0,apad=whole_dur=${total.toFixed(2)},loudnorm=I=-14:TP=-1.5[out]`;
+// Звуковые эффекты (папка SFX_DIR): свист на смене сцен, «поп» на появлении ценника/бейджа, «динь» на прибыли, звук уведомления.
+const sfx = [];
+const SFX = process.env.SFX_DIR;
+if (SFX) {
+  const at = (id, dt) => { const sc = scenes.find((x) => x.id === id); return sc ? Math.max(0, sc.start + dt) : null; };
+  scenes.slice(1).forEach((sc) => sfx.push({ f: 'whoosh.wav', t: Math.max(0, sc.start - 0.18), v: 0.32 }));
+  [['s1', 0.9, 'pop.wav', 0.45], ['s2', 1.6, 'pop.wav', 0.4], ['s4', 1.6, 'ding.wav', 0.3], ['s5', 0.5, 'ping.wav', 0.45], ['s6', 0.05, 'pop.wav', 0.4]]
+    .forEach(([id, dt, f, v]) => { const t0 = at(id, dt); if (t0 !== null) sfx.push({ f, t: t0, v }); });
+}
+const inputs = [...audio.flatMap((a) => ['-i', a.f]), ...sfx.flatMap((x) => ['-i', join(SFX, x.f)])];
+const ms = (x) => Math.round(x * 1000);
+const vparts = audio.map((a, i) => `[${i}:a]${SPEED !== 1 ? `atempo=${SPEED},` : ''}adelay=${ms(a.at)}|${ms(a.at)},aresample=44100,aformat=channel_layouts=stereo[a${i}]`);
+const sparts = sfx.map((x, j) => `[${audio.length + j}:a]volume=${x.v},adelay=${ms(x.t)}|${ms(x.t)},aresample=44100,aformat=channel_layouts=stereo[x${j}]`);
+const voiceLoud = process.env.VOICE_READY ? '' : ',loudnorm=I=-14:TP=-1.5';
+const filt = [...vparts, ...sparts].join(';') + ';' +
+  audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0${voiceLoud}[v];` +
+  `[v]${sfx.map((_, j) => `[x${j}]`).join('')}amix=inputs=${1 + sfx.length}:normalize=0,apad=whole_dur=${total.toFixed(2)},alimiter=limit=0.9[out]`;
 execFileSync('ffmpeg', ['-y', '-v', 'error', ...inputs, '-filter_complex', filt, '-map', '[out]', '-t', total.toFixed(2), wav]);
 
 // Кадры.

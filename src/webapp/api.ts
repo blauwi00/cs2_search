@@ -28,6 +28,7 @@ import { renderMoney } from '../utils/money.ts';
 import { PRIVACY_POINTS } from '../core/privacy.ts';
 import { steamSellPrice } from '../core/sellprice.ts';
 import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '../core/terms.ts';
+import { sitesFor, loadRefLinks } from '../core/sites.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -225,7 +226,8 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
         },
         ok: true, now, watched, actions,
-        recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 3), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
+        recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 6), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
+        sites: sitesFor(await loadRefLinks(d)),
         cronAlive: lastRun > 0 && now - lastRun < 300,
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),

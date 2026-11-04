@@ -76,7 +76,7 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
       // Владельцу — ещё служебные команды (видны только в его чате).
       await tg.call('setMyCommands', { scope: { type: 'chat', chat_id: adminId }, commands: [...common,
         { command: 'status', description: 'Состояние системы' }, { command: 'stats', description: 'Статистика и ссылки с метками' },
-        { command: 'channel', description: 'Автопостинг в канал' }, { command: 'post', description: 'Предпросмотр поста' },
+        { command: 'channel', description: 'Автопостинг в канал' }, { command: 'ref', description: 'Партнёрские ссылки' }, { command: 'post', description: 'Предпросмотр поста' },
       ] });
       lines.push('Команды меню: установлены');
       await tg.setMenuButton(adminId, `${url.origin}/app`);

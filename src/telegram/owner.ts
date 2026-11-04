@@ -1,3 +1,4 @@
+import { SITES, loadRefLinks, checkRefUrl, setRefStmt } from '../core/sites.ts';
 // Команды владельца бота: подключение канала для автопостинга, предпросмотр постов, статистика пользователей.
 
 import { esc } from './api.ts';
@@ -108,4 +109,27 @@ export async function statsCommand(h: H): Promise<void> {
     user ? `• канал: <code>https://t.me/${user}?start=ch</code>` : '',
     user ? '• любая своя метка: <code>?start=имя</code> (латиница, цифры, _)' : '',
   ].filter((x) => x !== '').join('\n'));
+}
+
+/** /ref — партнёрские ссылки площадок: /ref waxpeer https://… · /ref waxpeer off */
+export async function refCommand(h: H, arg: string): Promise<void> {
+  if (!h.isAdmin) return;
+  const [key, url] = arg.trim().split(/\s+/);
+  const links = await loadRefLinks(h.d);
+  if (key) {
+    const site = SITES.find((s) => s.key === key.toLowerCase());
+    if (!site) return say(h, `Не знаю площадку «${esc(key)}». Есть: ${SITES.map((s) => s.key).join(', ')}`);
+    if (!url || url === 'off') delete links[site.key];
+    else {
+      const ok = checkRefUrl(site.key, url);
+      if (!ok) return say(h, `❌ Ссылка должна быть https и вести на сайт ${esc(site.name)}.`);
+      links[site.key] = ok;
+    }
+    await setRefStmt(h.d, links).run();
+  }
+  return say(h, [
+    '<b>🤝 Партнёрские ссылки</b>', 'Показываются на главной приложения с пометкой «партнёрская ссылка».', '',
+    ...SITES.map((s) => `${links[s.key] ? '✅' : '▫️'} <b>${s.name}</b> (<code>${s.key}</code>): ${links[s.key] ? esc(links[s.key]!) : 'обычная ссылка'}`), '',
+    'Задать: <code>/ref waxpeer https://waxpeer.com/?ref=…</code>', 'Убрать: <code>/ref waxpeer off</code>',
+  ].join('\n'));
 }

@@ -269,18 +269,15 @@ function health(s) {
 }
 // ---------- Бегущая строка: состояние бота, идеи, твои предметы. Нажатие — подробности. ----------
 function tickerItems(s) {
-  var hs = health(s), out = [];
-  out.push(hs.cls === 'ok' ? '<span>✅ Цены обновлены ' + ago(s.lastPriceAt) + '</span>' : '<span class="' + hs.cls + '">' + (hs.cls === 'bad' ? '🔴 ' : '⚠️ ') + esc(hs.title) + '</span>');
-  (s.actions || []).slice(0, 3).forEach(function (x) { out.push('<span>' + ACT_ICON[x.advice.action] + ' ' + esc(x.name) + ' — ' + esc(x.advice.title.toLowerCase()) + '</span>'); });
-  var rc = s.recs || { deals: [], trends: [] };
-  rc.deals.slice(0, 3).forEach(function (r) { out.push('<span>💸 ' + esc(r.name) + ': <b class="pos">+' + uahShort(r.profitKop) + '</b> (' + esc(r.buyName) + ' → ' + esc(r.sellName) + ')</span>'); });
-  rc.trends.slice(0, 2).forEach(function (r) { out.push('<span>📈 ' + esc(r.name) + ' <b class="pos">+' + Math.round(r.trendBp / 100) + '%</b> за неделю</span>'); });
-  if (s.today && s.today.sales) out.push('<span>🧾 Сегодня продаж: ' + s.today.sales + '</span>');
-  out.push('<span>⏱ Рынок проверяется каждые ~10 минут</span>');
-  return out.join('');
+  var deals = ((s.recs || {}).deals || []);
+  state.tickerDeals = deals;
+  if (!deals.length) return '<span>🔥 Горячих предложений сейчас нет — бот проверяет рынок каждые 10 минут</span>';
+  return deals.map(function (r, i) {
+    return '<span data-tk="' + i + '">🔥 ' + esc(r.name) + ': купи на ' + esc(r.buyName) + ' за ' + uahShort(r.payKop) + ' → <b class="pos">+' + uahShort(r.profitKop) + '</b></span>';
+  }).join('');
 }
 function renderTicker(s) {
-  state.health = health(s); state.tickerData = s;
+  state.health = health(s); state.tickerData = s; if (s.recs && s.recs.fetchedAt) state.cache.recsAt = s.recs.fetchedAt;
   var items = tickerItems(s), el = $('#ticker');
   el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
   // Скорость постоянная, независимо от длины: ~45 px/с.
@@ -288,14 +285,12 @@ function renderTicker(s) {
 }
 function refreshTicker() { api('summary').then(renderTicker).catch(function () {}); }
 setInterval(function () { if (!document.hidden && state.tickerData) refreshTicker(); }, 180000);
-$('#ticker').onclick = function () {
-  var hs = state.health, s = state.tickerData; if (!hs || !s) return;
-  var h = '<h2>' + hs.icon + ' ' + esc(hs.title) + '</h2><div class="sub">Цены обновлены ' + ago(s.lastPriceAt) + '</div>';
-  if (hs.note) h += '<div class="card">' + esc(hs.note) + '</div>';
-  h += '<div class="card info">' + tickerItems(s).replace(/<span/g, '<p').replace(/<\/span>/g, '</p>') + '</div>';
-  h += '<button class="btn sec2" id="tk-how">⏱ Как часто обновляется и пишет бот</button>';
-  sheet(h);
-  $('#tk-how').onclick = function () { howOften(s.notify); };
+// Нажатие на предложение — подробности сделки; на пустое место — все идеи.
+$('#ticker').onclick = function (e) {
+  var t = e.target.closest ? e.target.closest('[data-tk]') : null;
+  var r = t && state.tickerDeals ? state.tickerDeals[+t.getAttribute('data-tk')] : null;
+  haptic();
+  if (r) recSheet(r); else go('deals');
 };
 
 // ---------- Главная ----------
@@ -344,26 +339,26 @@ function home() {
     renderTicker(s);
     var h = '';
     h += setupCard(s.setup);
-    h += '<div class="sec">Мои предметы</div>';
-    h += s.actions && s.actions.length ? s.actions.map(function (x) {
-      return '<div class="row" data-item="' + x.itemId + '">' + pic(x.img, ACT_ICON[x.advice.action]) + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d" style="white-space:normal">' + esc(x.advice.reason) + '</div></div><div class="r">' + actPill(x.advice) + '</div></div>';
-    }).join('') : '<div class="card mut" style="font-size:14px">' + (s.watched ? 'Ничего срочного — цены обычные. Напишу, когда будет выгодно купить или продать.' : 'Список пуст — добавь предметы во вкладке «Рынок», и бот подскажет, когда покупать и продавать.') + '</div>';
     if (s.inventory.lots) {
       var diff = s.inventory.valueKop - s.inventory.costKop;
       h += '<div class="row" id="h-inv"><div class="ic">🎒</div><div class="m"><div class="n">Мои покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
     }
     if (s.today.sales) h += '<div class="mut" style="font-size:13px;margin:2px 2px 0">Сегодня продано: ' + s.today.sales + ' · Steam ' + uah(s.today.steamKop, true) + ' · деньгами ' + uah(s.today.cashKop, true) + '</div>';
-    var rc = s.recs || { deals: [], trends: [] };
-    state.cache.homeRecs = rc.deals.concat(rc.trends).slice(0, 2);
-    h += '<div class="sec">Что купить<a id="alld">Все идеи ›</a></div>';
-    h += state.cache.homeRecs.map(recCard).join('');
-    if (!state.cache.homeRecs.length) h += '<div class="card mut" style="font-size:14px">' + (rc.fetchedAt ? 'Сейчас нет выгодных вариантов — бот проверяет рынок каждые 10 минут.' : 'Первые идеи появятся после проверки рынка (до 10 минут).') + '</div>';
+    // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
+    var sites = s.sites || [];
+    h += '<div class="sec">Площадки</div>';
+    h += sites.map(function (x) {
+      return '<div class="row" data-site="' + esc(x.key) + '"><div class="ic">' + ({ steam: '🎮', skinport: '🟦', csgomarket: '🟧', waxpeer: '🟩', lisskins: '🟪', csfloat: '⬜' }[x.key] || '🌐') + '</div><div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' + esc(x.desc) + (x.ref ? ' · <span style="color:var(--amber)">партнёрская ссылка</span>' : '') + '</div></div><div class="mut">↗</div></div>';
+    }).join('');
+    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">Партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
+    h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();
-    $('#alld').onclick = function () { go('deals'); };
     if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('inv'); };
-    bindRecs(state.cache.homeRecs);
-    Array.prototype.forEach.call(document.querySelectorAll('[data-item]'), function (el) { el.onclick = function () { haptic(); itemSheet(+el.getAttribute('data-item')); }; });
+    $('#h-terms').onclick = termsSheet;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
+      el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
+    });
   }).catch(fail);
 }
 function stat(l, v, s) { return '<div class="stat"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="s">' + (s || '') + '</div></div>'; }

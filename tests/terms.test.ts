@@ -59,3 +59,26 @@ test('приложение: статус согласия и принятие', 
   await call('POST');
   assert.equal((await call()).accepted, true);
 });
+
+test('партнёрские ссылки: /ref только владельцу, только https на домен площадки; на главной помечены', async () => {
+  const { checkRefUrl, sitesFor } = await import('../src/core/sites.ts');
+  assert.equal(checkRefUrl('waxpeer', 'https://waxpeer.com/?ref=abc'), 'https://waxpeer.com/?ref=abc');
+  assert.equal(checkRefUrl('waxpeer', 'https://waxpeer.com.evil.io/?ref=abc'), null, 'чужой домен');
+  assert.equal(checkRefUrl('waxpeer', 'http://waxpeer.com/'), null, 'только https');
+  assert.equal(checkRefUrl('lisskins', 'https://lis-skins.com/ru/?rf=1'), 'https://lis-skins.com/ru/?rf=1');
+  const sites = sitesFor({ waxpeer: 'https://waxpeer.com/?ref=abc' });
+  assert.equal(sites.find((x) => x.key === 'waxpeer')!.ref, true);
+  assert.equal(sites.find((x) => x.key === 'skinport')!.url, 'https://skinport.com/');
+  const { ADMIN } = await import('./helpers.ts');
+  const d = migratedDb();
+  const env = testEnv(d);
+  const sent: { body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([{ match: (u) => u.startsWith('https://api.telegram.org/'), respond: (_u, init) => { sent.push({ body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } }]);
+  const msg = (text: string, from: number) => handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, message: { message_id: 1, from: { id: from }, chat: { id: from, type: 'private' }, text } }) }), env, NOW, fetcher);
+  await msg('/ref waxpeer https://waxpeer.com/?ref=me', 4242);
+  assert.equal((d.db.prepare("SELECT COUNT(*) AS n FROM meta WHERE key = 'ref_links'").get() as { n: number }).n, 0, 'чужой не может');
+  await msg('/ref waxpeer https://evil.io/x', ADMIN);
+  assert.match(String(sent.at(-1)!.body.text), /должна быть https/);
+  await msg('/ref waxpeer https://waxpeer.com/?ref=me', ADMIN);
+  assert.match(String(sent.at(-1)!.body.text), /✅ <b>Waxpeer<\/b>/);
+});

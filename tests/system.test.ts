@@ -104,7 +104,7 @@ test('19: webhook без верного секрета отклоняется', 
   assert.equal(safeEqual('', ''), false);
 });
 
-test('20: команды принимаются только от администратора в личном чате', async () => {
+test('20: бот отвечает всем в личном чате; группы и боты игнорируются', async () => {
   const d = migratedDb();
   const env = testEnv(d);
   const sent: { method: string; body: Record<string, unknown> }[] = [];
@@ -113,9 +113,11 @@ test('20: команды принимаются только от админис
     method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET },
     body: JSON.stringify({ update_id: 1, message: { message_id: 1, from: { id: from }, chat: { id: chat, type: 'private' }, text: '/start' } }),
   });
-  assert.equal((await handleWebhook(mk(999, 999), env, NOW, fetcher)).status, 200);
   assert.equal((await handleWebhook(mk(ADMIN, -100500), env, NOW, fetcher)).status, 200); // группа
-  assert.equal(sent.length, 0, 'чужим и в группах ничего не отвечаем');
+  assert.equal(sent.length, 0, 'в группах ничего не отвечаем');
+  await handleWebhook(mk(999, 999), env, NOW, fetcher);
+  assert.equal(sent.filter((x) => x.method === 'sendMessage')[0]?.body.chat_id, 999, 'любому человеку в личке бот отвечает');
+  sent.length = 0;
   await handleWebhook(mk(ADMIN, ADMIN), env, NOW, fetcher);
   const msgs = sent.filter((x) => x.method === 'sendMessage');
   assert.equal(msgs.length, 1);
@@ -229,9 +231,12 @@ test('сделка исчезла → сигнал помечается неак
   await runCycle(env, { now: NOW + 60, fetcher: m.fetcher });
   const before = sent.filter((s) => s.method === 'sendMessage').length;
   // Цена Steam упала — спред стал отрицательным.
-  const m2 = marketRoutes(sent, { success: true, lowest_price: '300,00₴', median_price: '300,00₴', volume: '500' });
+  const m2 = marketRoutes(sent, { success: true, lowest_price: '50,00₴', median_price: '50,00₴', volume: '500' });
   await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'steam'`);
   await runCycle(env, { now: NOW + 3600, fetcher: m2.fetcher });
+  // Первый вызов через час забирают редкие служебные задачи; Steam и очередь уведомлений — в следующем.
+  await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'steam'`);
+  await runCycle(env, { now: NOW + 3660, fetcher: m2.fetcher });
   const sig = d.db.prepare("SELECT state FROM signals WHERE kind='arbitrage_steam'").get() as { state: string };
   assert.equal(sig.state, 'expired');
   assert.ok(sent.some((s) => s.method === 'editMessageText' && String(s.body.text).includes('НЕАКТУАЛЬНО')));

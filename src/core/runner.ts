@@ -5,6 +5,7 @@ import * as db from '../storage/db.ts';
 import { budgetedDb, newBudget, BudgetExceeded, D1_RESERVE, type Budget } from '../storage/budget.ts';
 import { ensureJobs, listJobs, tryAcquire, releaseOk, releaseFail, disableStuckJobs, jitterSec, type JobDef } from './scheduler.ts';
 import * as P from './pipeline.ts';
+import { SYSTEM_SETTINGS } from './audience.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import type { Fetcher } from '../utils/http.ts';
 
@@ -17,6 +18,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'evaluate', intervalSec: 60, lockSec: 120, minD1: 10 },
   { name: 'steam', intervalSec: 60, lockSec: 120, minD1: 12 },
   { name: 'csfloat', intervalSec: 3 * 60, lockSec: 120, minD1: 12 },
+  { name: 'outbox', intervalSec: 60, lockSec: 90, minD1: 5 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },
   { name: 'daily_report', intervalSec: 5 * 60, lockSec: 60, minD1: 3, firstDelaySec: 3 * 60 },
@@ -34,7 +36,10 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   const result: CycleResult = { ran: [], skipped: [], errors: [], budget, disabled: [] };
 
   await ensureJobs(d, JOBS, now);
-  const settings = await db.getSettings(d, adminId);
+  // Сигналы считаются по общим (системным) порогам; рассылка фильтруется настройками каждого человека.
+  // Включение/выключение источников — настройка администратора.
+  const admin = await db.getSettings(d, adminId);
+  const settings: db.Settings = { ...SYSTEM_SETTINGS, src_steam: admin.src_steam, src_skinport: admin.src_skinport, src_csfloat: admin.src_csfloat, max_stale_min: admin.max_stale_min };
   const ctx: P.Ctx = { env, db: d, tg, adminId, now, fetcher: opts.fetcher, budget, settings, cache: { counters: new Map() }, reserveD1: 0 };
 
   result.disabled = await disableStuckJobs(d, now);
@@ -78,6 +83,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
         case 'skinport_sales': cursor = await P.jobSkinportSales(ctx, row.cursor); break;
         case 'evaluate': await P.jobEvaluate(ctx); break;
         case 'csfloat': await P.jobCsfloat(ctx); break;
+        case 'outbox': await P.jobOutbox(ctx); break;
         case 'health': await P.jobHealth(ctx); break;
         case 'quality': await P.jobQuality(ctx); break;
         case 'daily_report': await P.jobDailyReport(ctx); break;

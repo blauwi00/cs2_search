@@ -205,7 +205,8 @@ test('фильтры сделок: площадка и категория пер
   const a = await db.upsertItem(D, 'Revolution Case', NOW);
   const b = await db.upsertItem(D, 'AK-47 | Redline (Field-Tested)', NOW);
   for (const [it, src] of [[a, 'skinport'], [b, 'csfloat']] as const) {
-    await db.upsertSignal(D, { dedupKey: `k${it.id}`, kind: 'arbitrage_steam', itemId: it.id, state: 'confirmed', priority: 'high', category: 'verified_spread', buySource: src, sellSource: 'steam', buyKop: 1000, sellKop: 2000, proceedsKop: 1700, spreadKop: 700, roiBp: 7000, reason: '', snapshot: { liquidity: { cls: 'high' } }, now: NOW });
+    await db.addWatch(D, ADMIN, it.id, NOW);
+    await db.upsertSignal(D, { dedupKey: `k${it.id}`, kind: 'arbitrage_steam', itemId: it.id, state: 'confirmed', priority: 'high', category: 'verified_spread', buySource: src, sellSource: 'steam', buyKop: 1000, sellKop: 4000, proceedsKop: 3500, spreadKop: 2500, roiBp: 25000, reason: '', snapshot: { liquidity: { cls: 'high' } }, now: NOW });
   }
   assert.ok((await dealsView(D, NOW, 'spread', ADMIN)).text.includes('Revolution Case'));
   await toggleDealFilter(D, ADMIN, 'src', NOW); // → skinport

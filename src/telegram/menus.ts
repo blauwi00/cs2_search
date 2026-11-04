@@ -1,7 +1,7 @@
 import * as db from '../storage/db.ts';
 import { listJobs } from '../core/scheduler.ts';
 import { esc, type Keyboard } from './api.ts';
-import { SETTINGS_META, displayValue } from './settings.ts';
+import { SETTINGS_META, settingsFor, displayValue } from './settings.ts';
 import { formatUah, formatBp } from '../utils/money.ts';
 import { ago } from '../utils/time.ts';
 import { SOURCE_RU } from './messages.ts';
@@ -54,7 +54,7 @@ export const cycle = (list: { v: string }[], cur: string) => list[(list.findInde
 
 export async function dealsView(d: D1Database, now: number, order: 'spread' | 'roi' | 'priority', tid: number): Promise<View> {
   const s = await db.getSettings(d, tid);
-  const all = await db.activeSignals(d, order, 60, now - 2 * 3600);
+  const all = await db.activeSignals(d, order, 60, now - 2 * 3600, { tid, minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp) });
   const budget = db.num(s.budget_kop), maxBuy = db.num(s.max_buy_kop);
   const rows = all.filter((r) => {
     if (s.deals_src !== 'all' && r.buy_source !== s.deals_src) return false;
@@ -230,11 +230,11 @@ export async function watchCard(d: D1Database, tid: number, id: number, now: num
   return { text: lines.join('\n'), keyboard: kb };
 }
 
-export async function settingsView(d: D1Database, tid: number): Promise<View> {
+export async function settingsView(d: D1Database, tid: number, isAdmin = false): Promise<View> {
   const s = await db.getSettings(d, tid);
   const lines = ['<b>⚙️ Настройки</b>', 'Все суммы — в гривнах. Нажми на параметр, чтобы изменить.', ''];
   const kb: Keyboard = [];
-  for (const m of SETTINGS_META) {
+  for (const m of settingsFor(isAdmin)) {
     lines.push(`${m.label}: <b>${displayValue(m, s)}</b>`);
     kb.push([{ text: `${m.label}: ${displayValue(m, s)}`, callback_data: `s:${m.key}` }]);
   }

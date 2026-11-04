@@ -105,7 +105,7 @@ export async function getItem(db: D1Database, id: number): Promise<ItemRow | nul
   return db.prepare('SELECT id, market_hash_name, category, is_unique_priced FROM items WHERE id = ?').bind(id).first<ItemRow>();
 }
 
-export interface WatchRow { id: number; item_id: number; market_hash_name: string; target_buy_kop: number | null; change_pct_bp: number | null; active: number; category: string }
+export interface WatchRow { id: number; item_id: number; market_hash_name: string; target_buy_kop: number | null; change_pct_bp: number | null; active: number; category: string; source?: string }
 
 export async function addWatch(db: D1Database, tid: number, itemId: number, now: number): Promise<'added' | 'exists'> {
   const r = await db.prepare(
@@ -117,7 +117,7 @@ export async function addWatch(db: D1Database, tid: number, itemId: number, now:
 
 export async function listWatch(db: D1Database, tid: number): Promise<WatchRow[]> {
   const r = await db.prepare(
-    `SELECT w.id, w.item_id, i.market_hash_name, w.target_buy_kop, w.change_pct_bp, w.active, i.category
+    `SELECT w.id, w.item_id, i.market_hash_name, w.target_buy_kop, w.change_pct_bp, w.active, i.category, w.source
      FROM watchlist w JOIN items i ON i.id = w.item_id WHERE w.telegram_id = ? AND w.active = 1 ORDER BY i.market_hash_name`,
   ).bind(tid).all<WatchRow>();
   return r.results;
@@ -125,7 +125,7 @@ export async function listWatch(db: D1Database, tid: number): Promise<WatchRow[]
 
 export async function getWatch(db: D1Database, tid: number, id: number): Promise<WatchRow | null> {
   return db.prepare(
-    `SELECT w.id, w.item_id, i.market_hash_name, w.target_buy_kop, w.change_pct_bp, w.active, i.category
+    `SELECT w.id, w.item_id, i.market_hash_name, w.target_buy_kop, w.change_pct_bp, w.active, i.category, w.source
      FROM watchlist w JOIN items i ON i.id = w.item_id WHERE w.telegram_id = ? AND w.id = ?`,
   ).bind(tid, id).first<WatchRow>();
 }
@@ -348,6 +348,11 @@ export async function upsertSignal(db: D1Database, s: SignalUpsert): Promise<Sig
   return row;
 }
 
+/** Скрыть сделку только для себя (у других она остаётся). */
+export async function hideSignal(db: D1Database, tid: number, signalId: number, now: number): Promise<void> {
+  await db.prepare('INSERT OR IGNORE INTO hidden_signals (telegram_id, signal_id, hidden_at) VALUES (?, ?, ?)').bind(tid, signalId, now).run();
+}
+
 export function markNotifiedStmt(db: D1Database, id: number, msgId: number | null, now: number): D1PreparedStatement {
   return db.prepare(`UPDATE signals SET state = 'notified', notified_at = ?, telegram_msg_id = COALESCE(?, telegram_msg_id) WHERE id = ?`).bind(now, msgId, id);
 }
@@ -360,15 +365,28 @@ export async function setSignalState(db: D1Database, id: number, state: string, 
   await setStateStmt(db, id, state, now).run();
 }
 
-export async function activeSignals(db: D1Database, order: 'spread' | 'roi' | 'priority', limit: number, since: number): Promise<(SignalRow & { market_hash_name: string })[]> {
+/**
+ * Активные сделки. С forUser — только по предметам из ЕГО списка, без скрытых им, не ниже его порогов прибыли.
+ */
+export async function activeSignals(db: D1Database, order: 'spread' | 'roi' | 'priority', limit: number, since: number,
+  forUser?: { tid: number; minProfitKop: number; minRoiBp: number }): Promise<(SignalRow & { market_hash_name: string })[]> {
   const ord = order === 'roi' ? 's.roi_bp DESC' : order === 'priority'
     ? "CASE s.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, s.spread_kop DESC" : 's.spread_kop DESC';
+  const u = forUser
+    ? `AND EXISTS (SELECT 1 FROM watchlist w WHERE w.item_id = s.item_id AND w.telegram_id = ? AND w.active = 1)
+       AND NOT EXISTS (SELECT 1 FROM hidden_signals h WHERE h.signal_id = s.id AND h.telegram_id = ?)
+       AND COALESCE(s.spread_kop, 0) >= ? AND COALESCE(s.roi_bp, 0) >= ?` : '';
   const r = await db.prepare(
     `SELECT s.*, i.market_hash_name FROM signals s JOIN items i ON i.id = s.item_id
-     WHERE s.state IN ('confirmed', 'notified', 'unconfirmed') AND s.updated_at >= ? AND s.kind = 'arbitrage_steam'
+     WHERE s.state IN ('confirmed', 'notified', 'unconfirmed') AND s.updated_at >= ? AND s.kind = 'arbitrage_steam' ${u}
      ORDER BY ${ord} LIMIT ?`,
-  ).bind(since, limit).all<SignalRow & { market_hash_name: string }>();
+  ).bind(since, ...(forUser ? [forUser.tid, forUser.tid, forUser.minProfitKop, forUser.minRoiBp] : []), limit).all<SignalRow & { market_hash_name: string }>();
   return r.results;
+}
+
+export async function countUserWatch(db: D1Database, tid: number): Promise<number> {
+  const r = await db.prepare("SELECT COUNT(*) AS n FROM watchlist WHERE telegram_id = ? AND active = 1 AND COALESCE(source, 'user') <> 'inventory'").bind(tid).first<{ n: number }>();
+  return r?.n ?? 0;
 }
 
 // ---------- Уведомления, источники, счётчики, логи ----------

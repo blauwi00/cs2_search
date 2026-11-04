@@ -262,8 +262,8 @@ function health(s) {
   var col = by.collector, now = Date.now() / 1000;
   var collectorOk = col && col.lastOk && now - col.lastOk < 45 * 60;
   if (!s.cronAlive || !collectorOk) return { cls: 'bad', icon: '🔴', title: 'Цены не обновляются', note: !s.cronAlive ? 'Планировщик бота не запускался больше 5 минут.' : 'Сборщик цен давно не присылал данные. Владелец бота получит уведомление.' };
-  var steam = by.steam, sp = by.skinport;
-  if (steam && steam.status !== 'ok') return { cls: 'warn', icon: '🟡', title: 'Работает, но Steam ограничил запросы', note: 'Живые цены Steam обновятся, когда Steam пустит (обычно через 10–60 мин). Подсказки пока считаются по суточному прайсу Steam.' };
+  // Ограничения Steam — обычное дело (бот берёт средние цены продаж), поэтому их не показываем.
+  var sp = by.skinport;
   if (sp && sp.status !== 'ok') return { cls: 'warn', icon: '🟡', title: 'Работает, но Skinport отвечает с ошибками', note: 'Остальные площадки обновляются.' };
   return { cls: 'ok', icon: '🟢', title: 'Всё работает', note: '' };
 }

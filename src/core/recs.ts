@@ -111,6 +111,17 @@ const fmt = (k: number) => `${(k / 100).toFixed(2).replace('.', ',')} ₴`;
 const pct = (bp: number) => `${(bp / 100).toString().replace('.', ',')}%`;
 const roiOf = (profit: number, cost: number) => (cost > 0 ? Math.trunc((profit * 10000) / cost) : 0);
 const MIN_QTY = 5;   // меньше объявлений — цена «самого дешёвого» случайна, продать по ней сложно
+/**
+ * Проверки здравого смысла (без них в идеи попадали неликвидные наклейки с «+3000%»):
+ * — нужна реальная цена продаж: медиана продаж Skinport за 7 дней, минимум 7 продаж;
+ * — продать на сайте можно не дороже реальной цены продаж + 15%;
+ * — объявление дешевле половины реальной цены — подозрительно (ошибка, блокировка, не тот предмет);
+ * — доходность выше 60% почти всегда ошибка данных, а не сделка.
+ */
+export const MIN_SALES_7D = 7;
+export const MAX_SELL_OVER_REF = 1.15;
+export const MIN_BUY_OF_REF = 0.5;
+export const MAX_ROI_BP = 6000;
 
 interface SellSide { m: Market; listKop: number; netKop: number; basis: string; fees: string[] }
 
@@ -122,6 +133,8 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
   for (const e of entries) {
     if (parseMarketHashName(e.name).uniquePriced) continue; // цена зависит от паттерна — общая цена ненадёжна
     const sales7 = e.s7?.volume ?? null;
+    // Реальная цена продаж — без неё сделки не предлагаем (только «растёт», ниже — тоже требует продаж).
+    const refKop = e.s7?.median && sales7 !== null && sales7 >= MIN_SALES_7D ? kop(e.s7.median, 'EUR') : null;
     // ---- Где купить: цена объявления + комиссия оплаты.
     const buys: { m: Market; listKop: number; payKop: number; qty: number | null }[] = [];
     for (const o of e.offers ?? []) {
@@ -149,6 +162,7 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
     for (const b of buys) {
       if (b.m === 'steam' || b.m === 'skinport' || (b.qty ?? 0) < MIN_QTY) continue;
       if (typical && b.listKop > typical * 1.3) continue; // одинокая завышенная цена — не ориентир
+      if (!refKop || b.listKop > refKop * MAX_SELL_OVER_REF) continue; // дороже, чем реально покупают
       const list = Math.floor(b.listKop * 0.99);
       const fee = MARKETS[b.m].sellFeeBp;
       sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000)),
@@ -157,12 +171,13 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
     // ---- Лучшая пара «купить → продать».
     let best: Rec | null = null;
     for (const b of buys) {
+      if (!refKop || b.listKop < refKop * MIN_BUY_OF_REF) continue;
       for (const sl of sells) {
         if (sl.m === b.m && b.m !== 'skinport') continue; // перепродажа на той же площадке — только по истории продаж Skinport
         if (b.m === 'skinport' && sl.m === 'skinport' && b.listKop > sl.listKop * 0.9) continue;
         const profit = sl.netKop - b.payKop;
         const roi = roiOf(profit, b.payKop);
-        if (profit < s.minProfitKop || roi < s.minRoiBp) continue;
+        if (profit < s.minProfitKop || roi < s.minRoiBp || roi > MAX_ROI_BP) continue;
         if (best && best.profitKop! >= profit) continue;
         const fees = [b.m !== 'steam' && s.depositFeeBp ? `оплата ${pct(s.depositFeeBp)}` : null, ...sl.fees].filter((x): x is string => !!x);
         const wallet = MARKETS[sl.m].wallet;

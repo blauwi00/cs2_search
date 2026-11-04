@@ -58,7 +58,7 @@ test('рекомендации: комиссии оплаты и вывода у
 test('рекомендации: между сайтами — купить на Waxpeer, продать на Market.CSGO', () => {
   const r = buildRecs([entry({
     offers: [{ m: 'waxpeer', cur: 'USD', minor: 1000, qty: 20 }, { m: 'csgomarket', cur: 'USD', minor: 1300, qty: 30 }, { m: 'lisskins', cur: 'USD', minor: 1250, qty: 2 }],
-    s7: null, s30: null,
+    s7: { median: 1100, volume: 50 }, s30: null, // реальные продажи ≈ 11 € = 495 грн; продать за 515 грн — в пределах +15%
   })], FX, S);
   const d = r.deals[0];
   assert.equal(d.buyAt, 'waxpeer'); assert.equal(d.sellAt, 'csgomarket');
@@ -69,12 +69,27 @@ test('рекомендации: между сайтами — купить на 
   assert.equal(buildRecs([entry({ offers: [{ m: 'waxpeer', cur: 'USD', minor: 1000, qty: 20 }, { m: 'lisskins', cur: 'USD', minor: 1020, qty: 20 }, { m: 'csgomarket', cur: 'USD', minor: 3000, qty: 30 }], s7: null })], FX, S).deals.length, 0);
 });
 
+test('рекомендации: «скам»-сделки отсекаются — нет продаж, цена выше реальной, +сотни процентов', () => {
+  // Наклейка: 0 продаж за неделю, на одном сайте 4,6 $, на другом — 48 $. Раньше выходило «+890%».
+  const sticker = entry({ name: 'Sticker | iM (Gold) | Austin 2025', offers: [{ m: 'lisskins', cur: 'USD', minor: 460, qty: 3 }, { m: 'waxpeer', cur: 'USD', minor: 4800, qty: 6 }], s7: { median: 900, volume: 0 }, s30: null });
+  assert.equal(buildRecs([sticker], FX, S).deals.length, 0, 'нет продаж — нет сделки');
+  // Продажи есть, но продать на сайте предлагается вдвое дороже реальной цены продаж.
+  const pricey = entry({ offers: [{ m: 'waxpeer', cur: 'USD', minor: 1000, qty: 20 }, { m: 'csgomarket', cur: 'USD', minor: 2200, qty: 30 }], s7: { median: 1100, volume: 50 }, s30: null });
+  assert.ok(buildRecs([pricey], FX, S).deals.every((x) => x.sellAt !== 'csgomarket'), 'дороже реальной цены продаж — не ориентир (остаётся честная продажа на Skinport)');
+  // Объявление подозрительно дешёвое (меньше половины реальной цены).
+  const tooCheap = entry({ offers: [{ m: 'skinport', cur: 'EUR', minor: 300, qty: 5 }], s7: { median: 1300, volume: 300 } });
+  assert.equal(buildRecs([tooCheap], FX, S).deals.length, 0);
+  // Доходность > 60% — не показываем.
+  const steam = { lowestKop: 200000, medianKop: 200000, volume24h: 100, at: NOW };
+  assert.equal(buildRecs([entry({ offers: [{ m: 'skinport', cur: 'EUR', minor: 1000, qty: 50 }], s7: { median: 1000, volume: 300 }, steam })], FX, S).deals.length, 0);
+});
+
 test('рекомендации: Skinport → Steam считает комиссию Steam; уникальные паттерны пропускаются', () => {
-  const steam = { lowestKop: 90000, medianKop: 90000, volume24h: 100, at: NOW };
+  const steam = { lowestKop: 60000, medianKop: 60000, volume24h: 100, at: NOW };
   const r = buildRecs([entry({ s7: { median: 1000, volume: 300 }, steam })], FX, S);
   const d = r.deals[0];
   assert.equal(d.sellAt, 'steam');
-  assert.equal(d.getKop, steamSellerProceeds(89999)!.sellerReceives);
+  assert.equal(d.getKop, steamSellerProceeds(59999)!.sellerReceives);
   assert.equal(d.wallet, 'steam_wallet');
   assert.equal(buildRecs([entry({ name: '★ Karambit | Doppler (Factory New)', steam })], FX, S).deals.length, 0);
 });

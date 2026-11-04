@@ -31,10 +31,12 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
-    const [cat, fx, noImg] = await Promise.all([
+    const [cat, fx, noImg, noAvg] = await Promise.all([
       catalogInfo(d), db.loadLatestFx(d),
       d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
         LEFT JOIN item_images m ON m.name = i.market_hash_name WHERE m.name IS NULL LIMIT 400`).all<{ n: string }>(),
+      d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
+        LEFT JOIN steam_avg a ON a.item_id = i.id WHERE a.item_id IS NULL OR a.updated_at < ? LIMIT 400`).bind(now - 20 * 3600).all<{ n: string }>(),
     ]);
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
     // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
@@ -42,6 +44,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400,
       fx: Object.fromEntries([...fx.values()].map((r) => [r.base, r.rateMicro / 1e6])),
       missingImages: noImg.results.map((r) => r.n),
+      needSteamAvg: noAvg.results.map((r) => r.n),
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -152,6 +155,26 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       if (names.length < 10) return json({ ok: false, error: 'catalog_too_small' }, 400); // защита от пустого/битого ответа
       await d.batch(catalogPartStmts(d, part, parts, names, now));
       result.stored = names.length;
+    } else if (body.kind === 'steam_avg') {
+      // Средние продажи Steam (USD) из открытого прайса CSGO Trader — только для предметов, которые у нас есть.
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as Record<string, unknown>[];
+      const c = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1e6 ? Math.round(x * 100) : null);
+      const names = rows.map((r) => r?.name).filter((n): n is string => typeof n === 'string' && n.length <= 200);
+      const ids = new Map<string, number>();
+      for (let i = 0; i < names.length; i += 90) {
+        const p = names.slice(i, i + 90);
+        for (const r of (await d.prepare(`SELECT id, market_hash_name FROM items WHERE market_hash_name IN (${p.map(() => '?').join(',')})`).bind(...p).all<{ id: number; market_hash_name: string }>()).results) ids.set(r.market_hash_name, r.id);
+      }
+      const stmts: D1PreparedStatement[] = [];
+      for (const r of rows) {
+        const id = typeof r?.name === 'string' ? ids.get(r.name) : undefined;
+        if (!id) continue;
+        stmts.push(d.prepare(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(item_id) DO UPDATE SET d1 = excluded.d1, d7 = excluded.d7, d30 = excluded.d30, d90 = excluded.d90, updated_at = excluded.updated_at`)
+          .bind(id, c(r.d1), c(r.d7), c(r.d30), c(r.d90), now));
+      }
+      for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
+      result.stored = stmts.length;
     } else if (body.kind === 'images') {
       const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as { name?: unknown; url?: unknown }[];
       const stmts: D1PreparedStatement[] = [];

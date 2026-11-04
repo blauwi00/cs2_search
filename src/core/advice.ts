@@ -20,7 +20,7 @@ export interface AdviceInput {
    * Запасной ориентир, пока своя история цен Steam не накопилась (1–2 дня):
    * реальные продажи на площадке (медиана Skinport за 30/7 дней) или медиана продаж Steam за сутки.
    */
-  alt?: { curKop: number; refKop: number; where: string; basis: string } | null;
+  alt?: { curKop: number; refKop: number; where: string; basis: string; liquid?: boolean } | null;
 }
 
 export interface Advice { action: Action; title: string; reason: string; diffBp: number | null }
@@ -41,7 +41,7 @@ export function advise(i: AdviceInput): Advice {
   const enoughHistory = diffBp !== null;
   const where = own ? 'в Steam' : i.alt?.where ?? '';
   const vs = own ? 'средней цены за неделю' : i.alt?.basis ?? '';
-  const liquidOk = i.liquidity === 'high' || i.liquidity === 'medium';
+  const liquidOk = i.liquidity === 'high' || i.liquidity === 'medium' || (i.liquidity === 'unknown' && !!i.alt?.liquid);
 
   // 1. Уже есть в инвентаре — главный вопрос «продавать ли».
   if (i.lot && i.lot.openQty > 0 && i.steamLowKop) {
@@ -81,6 +81,9 @@ export function advise(i: AdviceInput): Advice {
   }
   if (diffBp! <= -NOTABLE_BP && liquidOk) {
     return { action: 'buy', title: 'Дешевле обычного', reason: `${where === 'в Steam' ? 'Цена' : `Цена ${where}`} ниже ${vs} на ${pct(diffBp!)}, продаётся хорошо. Выгодно, если держать до возврата к обычной цене (перепродажа сразу съест комиссия).`, diffBp };
+  }
+  if (diffBp! <= -NOTABLE_BP) {
+    return { action: 'hold', title: 'Дёшево, но редкий', reason: `${where === 'в Steam' ? 'Цена' : `Цена ${where}`} ниже ${vs} на ${pct(diffBp!)}, но продаётся редко — перепродать быстро будет сложно.`, diffBp };
   }
   if (diffBp! >= NOTABLE_BP) {
     return { action: 'avoid', title: 'Дорого', reason: `${where === 'в Steam' ? 'Цена' : `Цена ${where}`} выше ${vs} на ${pct(diffBp!)} — покупать сейчас невыгодно.`, diffBp };

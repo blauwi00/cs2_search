@@ -42,7 +42,8 @@ button{font:inherit;color:inherit}
 .stile .sq img{width:62%;height:62%;object-fit:contain;position:relative;border-radius:8px}
 .stile .sq b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:28px;color:#1c7ed6}
 .stile .sq.noimg{background:var(--card2,#2a3442)}.stile .sq.noimg b{color:var(--link)}
-.stile .sq i{position:absolute;top:4px;right:6px;font-style:normal;font-size:11px;color:#f59f00}
+.stile .sq i{position:absolute;top:3px;right:5px;font-style:normal;font-size:12px}
+.stile .sr{font-size:11px;font-weight:700;margin-top:-4px}.stile .sr.hi{color:var(--green)}.stile .sr.mid{color:var(--amber)}.stile .sr.lo{color:var(--red)}.stile .sr.off{color:var(--hint);font-weight:500}
 .stile .sn{font-size:12px;font-weight:600;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
@@ -322,6 +323,11 @@ $('#ticker').onclick = function (e) {
 function siteIc(x) {
   return '<div class="ic site"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + '</div>';
 }
+function rateHtml(x) {
+  if (x.key === 'steam') return '<div class="sr off">официальный</div>';
+  if (x.rating == null) return '<div class="sr off">нет оценки</div>';
+  return '<div class="sr ' + (x.rating >= 4.5 ? 'hi' : x.rating >= 3.5 ? 'mid' : 'lo') + '">★ ' + x.rating.toFixed(1) + '</div>';
+}
 function setupCard(su) {
   if (!su) return '';
   var steamOk = su.steam === 'ok';
@@ -374,9 +380,10 @@ function home() {
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
     h += '<div class="sec">Площадки</div><div class="sgrid">' + sites.map(function (x) {
-      return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">★</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div></div>';
+      return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">🤝</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div>' + rateHtml(x) + '</div>';
     }).join('') + '</div>';
-    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">★ — партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
+    h += '<div class="note">★ — оценка на Trustpilot из 5 (по сводке CSDB, июль 2026). Это отзывы людей, а не гарантия. Ниже 3.5 — много жалоб, будь осторожнее.</div>';
+    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">🤝 — партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();

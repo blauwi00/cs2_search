@@ -6,19 +6,21 @@ import { getMeta, setMetaStmt } from './channel.ts';
 
 export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'dmarket' | 'buffmarket' | 'skinbaron' | 'csdeals' | 'tradeit' | 'steam';
 
-export const SITES: { key: SiteKey; name: string; url: string; host: RegExp; desc: string }[] = [
-  { key: 'steam', name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
-  { key: 'skinport', name: 'Skinport', url: 'https://skinport.com/', host: /(^|\.)skinport\.com$/, desc: 'Объявления от игроков, вывод денег на карту' },
-  { key: 'csfloat', name: 'CSFloat', url: 'https://csfloat.com/', host: /(^|\.)csfloat\.com$/, desc: 'Поиск по float и паттерну' },
-  { key: 'csgomarket', name: 'Market.CSGO', url: 'https://market.csgo.com/', host: /(^|\.)(market\.csgo\.com|csgo\.com)$/, desc: 'Большой рынок, часто дешевле Steam' },
-  { key: 'csmoney', name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
-  { key: 'waxpeer', name: 'Waxpeer', url: 'https://waxpeer.com/', host: /(^|\.)waxpeer\.com$/, desc: 'Рынок между игроками, низкие комиссии' },
-  { key: 'lisskins', name: 'LIS-SKINS', url: 'https://lis-skins.com/', host: /(^|\.)lis-skins\.(com|ru)$/, desc: 'Быстрые покупки, моментальная продажа' },
-  { key: 'buffmarket', name: 'BUFF Market', url: 'https://buff.market/', host: /(^|\.)buff\.market$/, desc: 'Международная версия BUFF, комиссия 2,5%' },
-  { key: 'skinbaron', name: 'SkinBaron', url: 'https://skinbaron.de/', host: /(^|\.)skinbaron\.(de|com)$/, desc: 'Немецкая компания, вывод на банк (SEPA)' },
-  { key: 'csdeals', name: 'CS.Deals', url: 'https://cs.deals/', host: /(^|\.)cs\.deals$/, desc: 'Рынок и обмен, комиссия продавца 2%' },
-  { key: 'tradeit', name: 'Tradeit.gg', url: 'https://tradeit.gg/', host: /(^|\.)tradeit\.gg$/, desc: 'Обмен через ботов, без вывода денег' },
-  { key: 'dmarket', name: 'DMarket', url: 'https://dmarket.com/', host: /(^|\.)dmarket\.com$/, desc: 'Рынок и обмен, вывод денег' },
+/** rating — оценка на Trustpilot по сводке CSDB (csdb.gg/trading-sites, проверено июль 2026); null — оценки нет. Обновлять вручную. */
+export const RATING_SOURCE = 'Trustpilot, по сводке CSDB, июль 2026';
+export const SITES: { key: SiteKey; rating: number | null; name: string; url: string; host: RegExp; desc: string }[] = [
+  { key: 'steam', rating: null, name: 'Steam Market', url: 'https://steamcommunity.com/market/search?appid=730', host: /^steamcommunity\.com$/, desc: 'Официальный рынок, деньги остаются в Steam' },
+  { key: 'skinport', rating: 4.8, name: 'Skinport', url: 'https://skinport.com/', host: /(^|\.)skinport\.com$/, desc: 'Объявления от игроков, вывод денег на карту' },
+  { key: 'csfloat', rating: 4.8, name: 'CSFloat', url: 'https://csfloat.com/', host: /(^|\.)csfloat\.com$/, desc: 'Поиск по float и паттерну' },
+  { key: 'csgomarket', rating: null, name: 'Market.CSGO', url: 'https://market.csgo.com/', host: /(^|\.)(market\.csgo\.com|csgo\.com)$/, desc: 'Большой рынок, часто дешевле Steam' },
+  { key: 'csmoney', rating: 4.7, name: 'CS.MONEY', url: 'https://cs.money/', host: /(^|\.)cs\.money$/, desc: 'Большой рынок и обмен скинов' },
+  { key: 'waxpeer', rating: 2.6, name: 'Waxpeer', url: 'https://waxpeer.com/', host: /(^|\.)waxpeer\.com$/, desc: 'Рынок между игроками, низкие комиссии' },
+  { key: 'lisskins', rating: 4.8, name: 'LIS-SKINS', url: 'https://lis-skins.com/', host: /(^|\.)lis-skins\.(com|ru)$/, desc: 'Быстрые покупки, моментальная продажа' },
+  { key: 'buffmarket', rating: 4.6, name: 'BUFF Market', url: 'https://buff.market/', host: /(^|\.)buff\.market$/, desc: 'Международная версия BUFF, комиссия 2,5%' },
+  { key: 'skinbaron', rating: 4.6, name: 'SkinBaron', url: 'https://skinbaron.de/', host: /(^|\.)skinbaron\.(de|com)$/, desc: 'Немецкая компания, вывод на банк (SEPA)' },
+  { key: 'csdeals', rating: 4.7, name: 'CS.Deals', url: 'https://cs.deals/', host: /(^|\.)cs\.deals$/, desc: 'Рынок и обмен, комиссия продавца 2%' },
+  { key: 'tradeit', rating: 4.7, name: 'Tradeit.gg', url: 'https://tradeit.gg/', host: /(^|\.)tradeit\.gg$/, desc: 'Обмен через ботов, без вывода денег' },
+  { key: 'dmarket', rating: 4.0, name: 'DMarket', url: 'https://dmarket.com/', host: /(^|\.)dmarket\.com$/, desc: 'Рынок и обмен, вывод денег' },
 ];
 
 export type RefLinks = Partial<Record<SiteKey, string>>;
@@ -45,8 +47,8 @@ export function setRefStmt(d: D1Database, links: RefLinks): D1PreparedStatement 
 /** Иконка сайта (favicon) через открытый сервис Google — без запросов к самим площадкам. */
 export const siteIcon = (url: string) => `https://www.google.com/s2/favicons?sz=128&domain=${new URL(url).hostname}`;
 
-export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean; icon: string }[] {
-  return SITES.map((s) => ({ key: s.key, name: s.name, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key], icon: siteIcon(s.url) }));
+export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean; icon: string; rating: number | null }[] {
+  return SITES.map((s) => ({ key: s.key, name: s.name, rating: s.rating, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key], icon: siteIcon(s.url) }));
 }
 
 /** Площадки в таблице «Цены на площадках» карточки предмета. group: cash — можно вывести деньги, china — китайские (нужен свой аккаунт там). */

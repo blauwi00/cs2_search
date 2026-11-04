@@ -158,7 +158,8 @@ try {
     const typical = list.map((x) => x.uah).sort((a, b) => a - b)[Math.floor(list.length / 2)];
     let bestNet = 0;
     for (const s of list) if (s.m !== buy.m && s.q >= 5 && s.uah <= typical * 1.3) bestNet = Math.max(bestNet, s.uah * 0.99 * (1 - FEE[s.m]));
-    if (bestNet > buy.uah * 1.04) scored.push({ n, r: bestNet / buy.uah });
+    // Отсекаем заведомо нереальное: разница > 60% почти всегда ошибка/неликвид; на Skinport должно быть хотя бы 10 объявлений.
+    if (bestNet > buy.uah * 1.04 && bestNet < buy.uah * 1.6 && (sp.get(n)?.quantity ?? 0) >= 10) scored.push({ n, r: bestNet / buy.uah });
   }
   scored.sort((a, b) => b.r - a.r);
   const picked = new Set(scored.slice(0, 50).map((x) => x.n));

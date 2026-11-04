@@ -1,10 +1,8 @@
 name: hyperframes
 # Рендер роликов на HyperFrames (HTML → MP4): video/<проект>. Результат (mp4, кадры, отчёт проверки) — в ветке video-renders.
+# Голос автора в репозитории не хранится — ролик с голосом собирается не здесь. Запуск только вручную (без голоса).
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['video/**', '.github/workflows/hyperframes.yml']
 permissions:
   contents: write
 concurrency:
@@ -30,14 +28,7 @@ jobs:
       - name: Браузер для рендера
         run: npx -y $HF browser ensure
       - name: Распознавание голоса для субтитров (русский)
-        run: npx -y $HF transcribe assets/voice.mp3 --model small --language ru --json || echo "распознавание не удалось — будут запасные тайминги"
-      - name: Распознавание новой записи (если есть assets/raw.mp3 — для нарезки дублей)
-        run: |
-          if [ -f assets/raw.mp3 ]; then
-            mkdir -p out /tmp/raw && cp assets/raw.mp3 /tmp/raw/ && cd /tmp/raw
-            npx -y $HF transcribe raw.mp3 --model small --language ru --json || true
-            cp assets/transcript.json "$GITHUB_WORKSPACE/video/promo/out/raw-transcript.json" 2>/dev/null || cp transcript.json "$GITHUB_WORKSPACE/video/promo/out/raw-transcript.json" 2>/dev/null || ls -R /tmp/raw
-          fi
+        run: '[ -f assets/voice.mp3 ] && npx -y $HF transcribe assets/voice.mp3 --model small --language ru --json || echo "голоса нет — запасные тайминги"'
       - name: Субтитры
         run: node build-captions.mjs
       - name: Проверка

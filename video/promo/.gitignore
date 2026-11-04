@@ -1,3 +1,6 @@
 out/
 .hyperframes/
 assets/transcript.json
+# Голос автора не хранится в репозитории
+assets/voice.*
+assets/raw.*

@@ -8,9 +8,16 @@ import { toKop, type FxRate } from '../currency/nbu.ts';
 import { esc, type Keyboard, type TelegramClient } from '../telegram/api.ts';
 import { warsawDate, warsawHour } from '../utils/time.ts';
 import type { Currency } from '../types/market.ts';
+import { loadScan } from '../storage/scan.ts';
+import { loadLatestFx } from '../storage/db.ts';
+import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
 
-export type Slot = 'ideas' | 'trends' | 'cases';
-export const SLOTS: { slot: Slot; hour: number }[] = [{ slot: 'ideas', hour: 10 }, { slot: 'trends', hour: 15 }, { slot: 'cases', hour: 20 }];
+export type Slot = 'ideas' | 'trends' | 'cases' | 'weekly';
+/** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
+export const SLOTS: { slot: Slot; hour: number; weekday?: number }[] = [
+  { slot: 'ideas', hour: 10 }, { slot: 'trends', hour: 15 }, { slot: 'weekly', hour: 19, weekday: 0 }, { slot: 'cases', hour: 20 },
+];
+export const ALL_SLOTS: Slot[] = ['ideas', 'trends', 'cases', 'weekly'];
 
 const fmt = (k: number | null) => (k === null ? '—' : `${(k / 100).toLocaleString('ru-RU', { minimumFractionDigits: k >= 100000 ? 0 : 2, maximumFractionDigits: k >= 100000 ? 0 : 2 })} ₴`);
 const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
@@ -79,8 +86,39 @@ export async function botUsername(d: D1Database, tg: TelegramClient): Promise<st
 }
 
 /** Какой слот пора публиковать (сейчас или пропущенный сегодня), если ещё не публиковали. */
-export function dueSlot(now: number, done: Record<Slot, string | null>): Slot | null {
-  const h = warsawHour(now), today = warsawDate(now);
-  for (const s of [...SLOTS].reverse()) if (h >= s.hour && h < s.hour + 3 && done[s.slot] !== today) return s.slot;
+export function warsawWeekday(t: number): number {
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Warsaw', weekday: 'short' }).format(new Date(t * 1000)));
+}
+
+export function dueSlot(now: number, done: Partial<Record<Slot, string | null>>): Slot | null {
+  const h = warsawHour(now), today = warsawDate(now), wd = warsawWeekday(now);
+  for (const s of [...SLOTS].reverse()) {
+    if (s.weekday !== undefined && s.weekday !== wd) continue;
+    if (h >= s.hour && h < s.hour + 3 && done[s.slot] !== today) return s.slot;
+  }
   return null;
+}
+
+/** Собирает текст поста для слота из базы (общий для расписания, предпросмотра и «Опубликовать сейчас»). */
+export async function composePost(d: D1Database, slot: Slot, now: number): Promise<string | null> {
+  const [scan, fx] = await Promise.all([loadScan(d), loadLatestFx(d)]);
+  const fresh = scan && now - scan.fetchedAt < 6 * 3600 ? scan.entries : null;
+  if (slot === 'ideas') {
+    const today = await ensureTodayIdeas(d, fresh, fx, now);
+    const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 86400)).all<IdeaRow>()).results;
+    return ideasPost(today, yesterday, now);
+  }
+  if (slot === 'trends') return fresh ? buildPost('trends', fresh, fx, now) : null;
+  const cases = await caseStats(d);
+  if (slot === 'cases') {
+    const entries: ScanEntry[] = cases.length ? cases.map((c) => ({ name: c.name, offers: [], s7: null, s30: null, steam: null, sa: { d1: c.d1, d7: c.d7, d30: c.d30, d90: null } })) : fresh ?? [];
+    return buildPost('cases', entries, fx, now);
+  }
+  const week = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
+  const u = await d.prepare('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS w FROM users').bind(now - 7 * 86400).first<{ n: number; w: number | null }>();
+  return weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now);
+}
+
+export async function caseStats(d: D1Database): Promise<CaseStat[]> {
+  try { return JSON.parse((await getMeta(d, 'cases_stats')) ?? '[]') as CaseStat[]; } catch { return []; }
 }

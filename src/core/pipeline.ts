@@ -25,7 +25,8 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { buildPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, type Slot } from './channel.ts';
+import { composePost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
+import { ensureTodayIdeas, newsPost, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 
 export interface Ctx {
@@ -770,23 +771,18 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
   }
 }
 
-/** Автопостинг в канал/группу (если владелец привязал его командой /channel). */
+/** Автопостинг в канал/группу (если владелец привязал его командой /channel): сначала свежие обновления CS2, потом посты по расписанию. */
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
-  const keys: Slot[] = ['ideas', 'trends', 'cases'];
-  const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key IN ('channel_done_ideas','channel_done_trends','channel_done_cases')`).all<{ key: string; value: string }>()).results;
-  const done = Object.fromEntries(keys.map((k) => [k, doneRows.find((r) => r.key === `channel_done_${k}`)?.value ?? null])) as Record<Slot, string | null>;
-  const slot = dueSlot(ctx.now, done);
-  if (!slot) return;
-  const [scan, fx] = await Promise.all([loadScan(ctx.db), db.loadLatestFx(ctx.db)]);
-  const text = scan && ctx.now - scan.fetchedAt < 6 * 3600 ? buildPost(slot, scan.entries, fx, ctx.now) : null;
-  const writes: D1PreparedStatement[] = [setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now))];
-  if (text && spendExternal(ctx)) {
-    const user = await botUsername(ctx.db, ctx.tg);
+  const writes: D1PreparedStatement[] = [];
+  const user = await botUsername(ctx.db, ctx.tg);
+  const post = async (text: string, kb: Keyboard): Promise<boolean> => {
+    if (!spendExternal(ctx)) return false;
     try {
-      await ctx.tg.sendMessage(Number(chat), text, botButton(user));
+      await ctx.tg.sendMessage(Number(chat), text, kb);
       bump(ctx, 'channel_posts');
+      return true;
     } catch (e) {
       const msg = (e as Error).message;
       await db.log(ctx.db, 'warn', 'channel', 'post', msg.slice(0, 300), ctx.now);
@@ -794,7 +790,31 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
         writes.push(ctx.db.prepare(`DELETE FROM meta WHERE key = 'channel_id'`));
         await sendAdmin(ctx, 'tech', 'channel', `⚠️ Не получилось опубликовать пост в канал: ${esc(msg.slice(0, 200))}\nАвтопостинг выключен. Проверь, что бот — администратор с правом публиковать, и подключи снова: /channel`, [], null, writes);
       }
+      return false;
+    }
+  };
+  // 1. Обновление CS2 — не старше 3 суток, по одному за запуск.
+  const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? ORDER BY published_at LIMIT 1').bind(ctx.now - 3 * 86400).first<NewsItem>();
+  if (n) {
+    writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
+    await post(newsPost(n), [[{ text: '📰 Читать в Steam', url: n.url }], ...botButton(user)]);
+  } else {
+    // 2. Посты по расписанию.
+    const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;
+    const done = Object.fromEntries(ALL_SLOTS.map((k) => [k, doneRows.find((r) => r.key === `channel_done_${k}`)?.value ?? null])) as Record<Slot, string | null>;
+    const slot = dueSlot(ctx.now, done);
+    if (slot) {
+      writes.push(setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now)));
+      const text = await composePost(ctx.db, slot, ctx.now);
+      if (text) await post(text, botButton(user));
     }
   }
-  await ctx.db.batch(writes);
+  if (writes.length) await ctx.db.batch(writes);
+}
+
+/** Идеи дня записываются каждый день с 10:00, даже без канала: из них потом честная статистика «сработало / нет». */
+export async function jobIdeas(ctx: Ctx): Promise<void> {
+  if (warsawHour(ctx.now) < 10) return;
+  const [scan, fx] = await Promise.all([loadScan(ctx.db), db.loadLatestFx(ctx.db)]);
+  await ensureTodayIdeas(ctx.db, scan && ctx.now - scan.fetchedAt < 6 * 3600 ? scan.entries : null, fx, ctx.now);
 }

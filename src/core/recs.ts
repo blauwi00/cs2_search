@@ -129,54 +129,60 @@ export const MAX_ROI_BP = 6000;
 
 interface SellSide { m: Market; listKop: number; netKop: number; basis: string; fees: string[] }
 
+/** Где купить и где продать один предмет (все проверки здравого смысла). Общая часть для идей и проверки идей через сутки. */
+export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSettings) {
+  const kop = (minor: number, cur: Currency) => toKop(minor, cur, fx.get(cur) ?? null);
+  const afterWithdraw = (k: number) => Math.floor((k * (10000 - s.withdrawFeeBp)) / 10000);
+  const sales7 = e.s7?.volume ?? null;
+  // Реальная цена продаж — без неё сделки не предлагаем.
+  const refKop = e.s7?.median && sales7 !== null && sales7 >= MIN_SALES_7D ? kop(e.s7.median, 'EUR') : null;
+  // ---- Где купить: цена объявления + комиссия оплаты.
+  const buys: { m: Market; listKop: number; payKop: number; qty: number | null }[] = [];
+  for (const o of e.offers ?? []) {
+    const k = kop(o.minor, o.cur);
+    if (k) buys.push({ m: o.m, listKop: k, payKop: Math.ceil((k * (10000 + s.depositFeeBp)) / 10000), qty: o.qty });
+  }
+  if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null });
+  // ---- Где продать: реалистичная цена − комиссия площадки − комиссия вывода.
+  const sells: SellSide[] = [];
+  const wFee = s.withdrawFeeBp ? [`вывод ${pct(s.withdrawFeeBp)}`] : [];
+  if (e.steam?.lowestKop && (e.steam.volume24h ?? 0) >= 5) {
+    const list = e.steam.lowestKop - 1;
+    const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
+    sells.push({ m: 'steam', listKop: list, netKop: net, basis: `на 1 коп. дешевле самого дешёвого (${e.steam.volume24h} продаж за сутки)`, fees: ['Steam 15%'] });
+  } else if (e.sa?.d7 && e.sa.d1) {
+    // Живой цены Steam нет — ориентир: средняя цена продаж в Steam за неделю (прайс CSGO Trader, USD → грн по НБУ).
+    const list = kop(Math.min(e.sa.d7, e.sa.d1), 'USD');
+    const net = list ? steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0 : 0;
+    if (list) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
+  }
+  if (e.s7?.median && sales7 !== null && sales7 >= 7) {
+    const list = kop(e.s7.median, 'EUR');
+    const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;
+    if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - feeBp)) / 10000)),
+      basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}`, ...wFee] });
+  }
+  // Остальные сайты: истории продаж нет — ориентир «на 1% дешевле самого дешёвого», только если объявлений много.
+  const offerKops = buys.filter((b) => b.m !== 'steam').map((b) => b.listKop).sort((a, b) => a - b);
+  const typical = offerKops.length ? offerKops[Math.floor(offerKops.length / 2)] : null;
+  for (const b of buys) {
+    if (b.m === 'steam' || b.m === 'skinport' || (b.qty ?? 0) < MIN_QTY) continue;
+    if (typical && b.listKop > typical * 1.3) continue; // одинокая завышенная цена — не ориентир
+    if (!refKop || b.listKop > refKop * MAX_SELL_OVER_REF) continue; // дороже, чем реально покупают
+    const list = Math.floor(b.listKop * 0.99);
+    const fee = MARKETS[b.m].sellFeeBp;
+    sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000)),
+      basis: `на 1% дешевле самого дешёвого (${b.qty} объявлений)`, fees: [`${MARKETS[b.m].name} ${pct(fee)}`, ...wFee] });
+  }
+  return { sales7, refKop, buys, sells };
+}
+
 export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: RecSettings): { deals: Rec[]; trends: Rec[] } {
   const deals: Rec[] = [];
   const trends: Rec[] = [];
-  const kop = (minor: number, cur: Currency) => toKop(minor, cur, fx.get(cur) ?? null);
-  const afterWithdraw = (k: number) => Math.floor((k * (10000 - s.withdrawFeeBp)) / 10000);
   for (const e of entries) {
     if (parseMarketHashName(e.name).uniquePriced) continue; // цена зависит от паттерна — общая цена ненадёжна
-    const sales7 = e.s7?.volume ?? null;
-    // Реальная цена продаж — без неё сделки не предлагаем (только «растёт», ниже — тоже требует продаж).
-    const refKop = e.s7?.median && sales7 !== null && sales7 >= MIN_SALES_7D ? kop(e.s7.median, 'EUR') : null;
-    // ---- Где купить: цена объявления + комиссия оплаты.
-    const buys: { m: Market; listKop: number; payKop: number; qty: number | null }[] = [];
-    for (const o of e.offers ?? []) {
-      const k = kop(o.minor, o.cur);
-      if (k) buys.push({ m: o.m, listKop: k, payKop: Math.ceil((k * (10000 + s.depositFeeBp)) / 10000), qty: o.qty });
-    }
-    if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null });
-    // ---- Где продать: реалистичная цена − комиссия площадки − комиссия вывода.
-    const sells: SellSide[] = [];
-    const wFee = s.withdrawFeeBp ? [`вывод ${pct(s.withdrawFeeBp)}`] : [];
-    if (e.steam?.lowestKop && (e.steam.volume24h ?? 0) >= 5) {
-      const list = e.steam.lowestKop - 1;
-      const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
-      sells.push({ m: 'steam', listKop: list, netKop: net, basis: `на 1 коп. дешевле самого дешёвого (${e.steam.volume24h} продаж за сутки)`, fees: ['Steam 15%'] });
-    } else if (e.sa?.d7 && e.sa.d1) {
-      // Живой цены Steam нет — ориентир: средняя цена продаж в Steam за неделю (прайс CSGO Trader, USD → грн по НБУ).
-      const list = kop(Math.min(e.sa.d7, e.sa.d1), 'USD');
-      const net = list ? steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0 : 0;
-      if (list) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
-    }
-    if (e.s7?.median && sales7 !== null && sales7 >= 7) {
-      const list = kop(e.s7.median, 'EUR');
-      const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;
-      if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - feeBp)) / 10000)),
-        basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}`, ...wFee] });
-    }
-    // Остальные сайты: истории продаж нет — ориентир «на 1% дешевле самого дешёвого», только если объявлений много.
-    const offerKops = buys.filter((b) => b.m !== 'steam').map((b) => b.listKop).sort((a, b) => a - b);
-    const typical = offerKops.length ? offerKops[Math.floor(offerKops.length / 2)] : null;
-    for (const b of buys) {
-      if (b.m === 'steam' || b.m === 'skinport' || (b.qty ?? 0) < MIN_QTY) continue;
-      if (typical && b.listKop > typical * 1.3) continue; // одинокая завышенная цена — не ориентир
-      if (!refKop || b.listKop > refKop * MAX_SELL_OVER_REF) continue; // дороже, чем реально покупают
-      const list = Math.floor(b.listKop * 0.99);
-      const fee = MARKETS[b.m].sellFeeBp;
-      sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000)),
-        basis: `на 1% дешевле самого дешёвого (${b.qty} объявлений)`, fees: [`${MARKETS[b.m].name} ${pct(fee)}`, ...wFee] });
-    }
+    const { sales7, refKop, buys, sells } = marketSides(e, fx, s);
     // ---- Лучшая пара «купить → продать».
     let best: Rec | null = null;
     for (const b of buys) {

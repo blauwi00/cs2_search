@@ -2,11 +2,9 @@
 
 import { esc } from './api.ts';
 import { say, type H } from './context.ts';
-import { buildPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, type Slot } from '../core/channel.ts';
-import { loadScan } from '../storage/scan.ts';
-import * as db from '../storage/db.ts';
+import { composePost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
-const SLOT_RU: Record<Slot, string> = { ideas: 'Идеи дня (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)' };
+const SLOT_RU: Record<Slot, string> = { ideas: 'Идеи дня + итог вчерашних (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
 export async function channelCommand(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
@@ -17,7 +15,7 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
     return say(h, [
       '<b>📣 Автопостинг в канал/группу</b>', '',
       id ? `Сейчас: <b>${esc(title ?? id)}</b>` : 'Сейчас: не подключён.', '',
-      'Расписание (Варшава): ' + SLOTS.map((s) => SLOT_RU[s.slot]).join(', ') + '.',
+      'Расписание (Варшава): ' + SLOTS.map((s) => SLOT_RU[s.slot]).join(', ') + '. Плюс новости CS2 из Steam — сразу, как выходят.',
       'Если показать нечего (нет выгодных сделок) — пост пропускается.', '',
       'Как подключить:',
       '1. Создай канал или группу в Telegram.',
@@ -41,9 +39,10 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
     const user = me.username ?? (await botUsername(h.d, h.tg));
     await h.tg.sendMessage(chat.id, [
       '👋 <b>Здесь каждый день — идеи по рынку скинов CS2</b>', '',
-      '• 10:00 — где купить дешевле и где продать дороже (с учётом комиссий)',
+      '• 10:00 — где купить дешевле и где продать дороже (с учётом комиссий) и честный итог вчерашних идей',
       '• 15:00 — что растёт в цене',
-      '• 20:00 — какие кейсы дорожают и дешевеют', '',
+      '• 20:00 — какие кейсы дорожают и дешевеют',
+      '• по воскресеньям — итог недели, а ещё обновления CS2, как только выходят', '',
       'Цены в гривнах. Личные подсказки «купить / продать / держать», свой инвентарь Steam и уведомления — в боте 👇',
     ].join('\n'), botButton(user, '🤖 Открыть бота'));
     await h.d.batch([setMetaStmt(h.d, 'channel_id', String(chat.id)), setMetaStmt(h.d, 'channel_title', chat.title ?? chat.username ?? String(chat.id))]);
@@ -55,10 +54,9 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
 
 export async function postPreview(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
-  const slot = (['ideas', 'trends', 'cases'] as Slot[]).find((s) => s === arg.trim()) ?? 'ideas';
-  const scan = await loadScan(h.d);
-  const text = scan ? buildPost(slot, scan.entries, await db.loadLatestFx(h.d), h.now) : null;
-  if (!text) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post trends</code>, <code>/post cases</code>`);
+  const slot = ALL_SLOTS.find((s) => s === arg.trim()) ?? 'ideas';
+  const text = await composePost(h.d, slot, h.now);
+  if (!text) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post trends</code>, <code>/post cases</code>, <code>/post weekly</code>`);
   const channel = await getMeta(h.d, 'channel_id');
   await say(h, '👀 <b>Предпросмотр</b> — так пост будет выглядеть в канале:');
   await say(h, text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])]);
@@ -67,10 +65,9 @@ export async function postPreview(h: H, arg: string): Promise<void> {
 export async function publishNow(h: H, slot: string): Promise<void> {
   if (!h.isAdmin) return;
   const channel = await getMeta(h.d, 'channel_id');
-  const s = (['ideas', 'trends', 'cases'] as Slot[]).find((x) => x === slot);
+  const s = ALL_SLOTS.find((x) => x === slot);
   if (!channel || !s) return say(h, 'Канал не подключён: /channel');
-  const scan = await loadScan(h.d);
-  const text = scan ? buildPost(s, scan.entries, await db.loadLatestFx(h.d), h.now) : null;
+  const text = await composePost(h.d, s, h.now);
   if (!text) return say(h, 'Сейчас нечего публиковать.');
   try {
     await h.tg.sendMessage(Number(channel), text, botButton(await botUsername(h.d, h.tg)));

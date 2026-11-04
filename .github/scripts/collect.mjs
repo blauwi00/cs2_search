@@ -40,7 +40,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [] } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
@@ -147,6 +147,9 @@ try {
     console.log('Средние Steam для наблюдения:', await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt: fresh && i + 400 >= send.length ? fileAt : undefined, items: send.slice(i, i + 400) }));
   }
   if (fresh && !send.length && fileAt) await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt, items: [] });
+  // Все кейсы — для «индекса кейсов» и вечернего поста в канале.
+  const cases = [...steamAvg.entries()].filter(([n]) => / Case$/.test(n)).map(([name, v]) => ({ name, ...v }));
+  if (cases.length) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
 } catch (e) {
   console.error('Прайс Steam:', e.message);
 }
@@ -292,7 +295,8 @@ try {
     if (bestNet > buy.uah * 1.04 && bestNet < buy.uah * 1.6 && (sp.get(n)?.quantity ?? 0) >= 10) scored.push({ n, r: bestNet / buy.uah });
   }
   scored.sort((a, b) => b.r - a.r);
-  const picked = new Set(scored.slice(0, 50).map((x) => x.n));
+  // Вчерашние идеи бота — всегда в сканировании: по ним считается честный итог «сработало / нет».
+  const picked = new Set([...trackNames.filter((n) => typeof n === 'string'), ...scored.slice(0, 50).map((x) => x.n)]);
   const base = [...sp.values()].filter((x) => x.min_price >= 0.3 && x.quantity >= 3 && !UNIQUE.test(x.market_hash_name));
   for (const x of base.filter((x) => x.suggested_price > 0 && x.min_price <= x.suggested_price * 0.88)
     .sort((a, b) => a.min_price / a.suggested_price - b.min_price / b.suggested_price)) { if (picked.size >= 65) break; picked.add(x.market_hash_name); }
@@ -318,6 +322,17 @@ try {
   console.log(`Сканирование рынка: межплощадочных кандидатов ${scored.length}, отобрано ${scan.length}, с историей Skinport ${scan.filter((e) => e.s7).length}`);
 } catch (e) {
   console.error('Сканирование рынка:', e.message);
+}
+
+// 2д. Новости CS2: объявления разработчиков из Steam (открытый API новостей, к рынку Steam не относится).
+try {
+  const r = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=600&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  const news = (j?.appnews?.newsitems ?? []).map((n) => ({ gid: String(n.gid), title: n.title, url: n.url, date: n.date, contents: n.contents }));
+  if (news.length) console.log('Новости CS2:', await toWorker('/ingest', { kind: 'news', fetchedAt: now(), items: news }));
+} catch (e) {
+  console.error('Новости CS2:', e.message);
 }
 
 // 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.

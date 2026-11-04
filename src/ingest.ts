@@ -16,6 +16,8 @@ import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
 import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
+import { ideasToTrack, checkStmts, cleanSnippet, type IdeaRow } from './core/insights.ts';
+import { setMetaStmt } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -32,7 +34,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
-    const [cat, fx, noImg, noAvg, avgAt, invQ] = await Promise.all([
+    const [cat, fx, noImg, noAvg, avgAt, invQ, track] = await Promise.all([
       catalogInfo(d), db.loadLatestFx(d),
       d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i JOIN watchlist w ON w.item_id = i.id AND w.active = 1
         LEFT JOIN item_images m ON m.name = i.market_hash_name WHERE m.name IS NULL LIMIT 400`).all<{ n: string }>(),
@@ -46,6 +48,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       d.prepare(`SELECT telegram_id AS tid, steam_id AS steamId, steam_vanity AS vanity FROM users
         WHERE (steam_id IS NOT NULL OR steam_vanity IS NOT NULL) AND inv_requested_at IS NOT NULL
           AND (inv_synced_at IS NULL OR inv_requested_at > inv_synced_at) ORDER BY inv_requested_at LIMIT 3`).all<{ tid: number; steamId: string | null; vanity: string | null }>(),
+      ideasToTrack(d, now),
     ]);
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
     // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
@@ -56,6 +59,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       needSteamAvg: noAvg.results.map((r) => r.n),
       steamAvgAt: Number(avgAt?.value ?? 0) || 0,
       inventorySync: invQ.results,
+      trackNames: track,
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -259,6 +263,34 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         `INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
       ).bind(JSON.stringify(merged), at).run();
       result.stored = merged.length;
+      // Проверка идей суточной давности по свежим ценам.
+      const pending = (await d.prepare('SELECT * FROM idea_log WHERE checked_at IS NULL AND created_at <= ? LIMIT 20').bind(now - 20 * 3600).all<IdeaRow>()).results;
+      const checks = checkStmts(d, pending, merged, fx, now);
+      if (checks.length) await d.batch(checks);
+    } else if (body.kind === 'cases_stats') {
+      // Средние продажи Steam по всем кейсам (из прайса CSGO Trader) — для «индекса кейсов» и вечернего поста.
+      const c = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1e6 ? Math.round(x * 100) : null);
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 200) as Record<string, unknown>[];
+      const list = rows.filter((r) => typeof r?.name === 'string' && (r.name as string).length <= 120 && / Case$/.test(r.name as string))
+        .map((r) => ({ name: r.name as string, d1: c(r.d1), d7: c(r.d7), d30: c(r.d30) }));
+      if (list.length) await setMetaStmt(d, 'cases_stats', JSON.stringify(list)).run();
+      result.stored = list.length;
+    } else if (body.kind === 'news') {
+      // Объявления разработчиков CS2 из Steam. Первый приём — только запоминаем (не публикуем старые новости разом).
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 10) as Record<string, unknown>[];
+      const seeded = (await d.prepare('SELECT COUNT(*) AS n FROM news').first<{ n: number }>())?.n ?? 0;
+      const stmts: D1PreparedStatement[] = [];
+      for (const r of rows) {
+        const gid = typeof r?.gid === 'string' && /^\d{1,25}$/.test(r.gid) ? r.gid : null;
+        const title = typeof r?.title === 'string' ? r.title.slice(0, 200) : null;
+        const url2 = typeof r?.url === 'string' && /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net|www\.counter-strike\.net)\//.test(r.url) ? r.url : null;
+        const date = Number(r?.date);
+        if (!gid || !title || !url2 || !Number.isInteger(date) || date > now + 3600) continue;
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now));
+      }
+      if (stmts.length) await d.batch(stmts);
+      result.stored = stmts.length;
     } else {
       return json({ ok: false, error: 'unknown_kind' }, 400);
     }

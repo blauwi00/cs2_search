@@ -157,6 +157,10 @@ test('прайс Steam (CSGO Trader): сохраняется для предме
   assert.equal(((await r.json()) as { stored: number }).stored, 2);
   const again = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, NOW + 60)).json() as { needSteamAvg: string[] };
   assert.deepEqual(again.needSteamAvg, [], 'до завтра не спрашиваем');
+  assert.equal((again as unknown as { steamAvgAt: number }).steamAvgAt, 0);
+  await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'steam_avg', fetchedAt: NOW, fileAt: NOW - 3600, items: [] }) }), env, NOW);
+  const v = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, NOW)).json() as { steamAvgAt: number };
+  assert.equal(v.steamAvgAt, NOW - 3600, 'Worker помнит версию прайса — новую сборщик разошлёт по всем предметам');
   const w = await api(env, ALICE, 'watch');
   const rev = w.body.items.find((x: { name: string }) => x.name === 'Revolution Case');
   assert.equal(rev.advice.action, 'buy');

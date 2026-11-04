@@ -39,7 +39,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0 } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
@@ -110,25 +110,26 @@ try {
   console.error('Картинки:', e.message);
 }
 
-// 2б-2. Средние продажи Steam на весь рынок: открытый прайс CSGO Trader (обновляется раз в сутки, ~34 тыс. предметов).
-// Steam при этом не опрашивается — лимит Steam не тратится. Цены в USD, Worker переводит по курсу НБУ.
+// 2б-2. Средние продажи Steam на весь рынок: открытый прайс CSGO Trader (~34 тыс. предметов, ~4 МБ).
+// Качаем при каждом запуске (это дёшево), Steam при этом не опрашивается. Новую версию файла (по Last-Modified)
+// сразу рассылаем по всем предметам наблюдения; иначе — только по новым предметам. Цены в USD, Worker переводит по НБУ.
 let steamAvg = new Map();
 try {
-  const file = '.cache/steam.json';
-  let raw;
-  if (existsSync(file)) raw = JSON.parse(readFileSync(file, 'utf8'));
-  else {
-    const res = await fetch('https://prices.csgotrader.app/latest/steam.json', { headers: { 'User-Agent': UA } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    raw = await res.json();
-    mkdirSync('.cache', { recursive: true });
-    writeFileSync(file, JSON.stringify(raw));
-  }
+  const res = await fetch('https://prices.csgotrader.app/latest/steam.json', { headers: { 'User-Agent': UA } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const lm = Date.parse(res.headers.get('last-modified') || '');
+  const fileAt = Number.isFinite(lm) ? Math.floor(lm / 1000) : 0;
+  const raw = await res.json();
   for (const [n, v] of Object.entries(raw ?? {})) if (v && typeof v === 'object') steamAvg.set(n, { d1: v.last_24h ?? null, d7: v.last_7d ?? null, d30: v.last_30d ?? null, d90: v.last_90d ?? null });
-  console.log(`Прайс Steam (CSGO Trader): ${steamAvg.size} предметов`);
-  // Для предметов, которых нет в прайсе, тоже отправляем (пустые) — чтобы Worker не спрашивал их снова до завтра.
-  const send = needSteamAvg.map((n) => ({ name: n, ...(steamAvg.get(n) ?? { d1: null, d7: null, d30: null, d90: null }) }));
-  for (let i = 0; i < send.length; i += 400) console.log('Средние Steam для наблюдения:', await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), items: send.slice(i, i + 400) }));
+  const fresh = fileAt > steamAvgAt;
+  console.log(`Прайс Steam (CSGO Trader): ${steamAvg.size} предметов, версия ${fileAt ? new Date(fileAt * 1000).toISOString() : '?'}${fresh ? ' — новая' : ''}`);
+  const names = fresh ? [...new Set([...items, ...needSteamAvg])] : needSteamAvg;
+  // Предметы, которых нет в прайсе, тоже отправляем (пустыми) — чтобы Worker не спрашивал их снова до завтра.
+  const send = names.map((n) => ({ name: n, ...(steamAvg.get(n) ?? { d1: null, d7: null, d30: null, d90: null }) }));
+  for (let i = 0; i < send.length; i += 400) {
+    console.log('Средние Steam для наблюдения:', await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt: fresh && i + 400 >= send.length ? fileAt : undefined, items: send.slice(i, i + 400) }));
+  }
+  if (fresh && !send.length && fileAt) await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt, items: [] });
 } catch (e) {
   console.error('Прайс Steam:', e.message);
 }

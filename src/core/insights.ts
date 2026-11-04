@@ -5,6 +5,7 @@ import type { FxRate } from '../currency/nbu.ts';
 import type { Currency } from '../types/market.ts';
 import { warsawDate } from '../utils/time.ts';
 import { formatUah, formatSignedUah } from '../utils/money.ts';
+import { header, dealBlock, moveLine, pct, esc } from './postfmt.ts';
 
 export const IDEA_SETTINGS = { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 };
 export const IDEAS_PER_DAY = 4;
@@ -58,36 +59,29 @@ export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry
 
 const fmt = (k: number | null) => formatUah(k);
 const sign = (k: number) => (k > 0 ? formatSignedUah(k) : formatUah(k));
-const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Строка «как сработали вчерашние идеи» для поста «Идеи дня». */
 export function yesterdayLine(rows: IdeaRow[]): string | null {
   const checked = rows.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
   if (!checked.length) return null;
-  const plus = checked.filter((r) => r.outcome === 'plus');
+  const plusN = checked.filter((r) => r.outcome === 'plus').length;
   const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
-  return `📊 <b>Вчерашние идеи через сутки:</b> ${plus.length} из ${checked.length} всё ещё в плюсе. Лучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)}).`;
+  return `📊 <b>Вчерашние идеи через сутки: ${plusN} из ${checked.length} в плюсе</b>\nЛучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)})`;
 }
 
 /** Пост «Идеи дня» из записанных идей. */
 export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): string | null {
   const y = yesterdayLine(yesterday);
   if (!rows.length && !y) return null;
-  const date = warsawDate(now).split('-').reverse().slice(0, 2).join('.');
-  const lines = [`💡 <b>Идеи дня · ${date}</b>`, ''];
-  if (y) lines.push(y, '');
+  const lines = [header('💡', 'Идеи дня', now), ''];
   if (!rows.length) {
-    lines.push(`Сегодня сделок, где после всех комиссий остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%, нет — бот ничего не придумывает, когда выгоды нет.`);
-    return lines.join('\n');
+    lines.push(`Сегодня выгодных сделок нет: нигде после всех комиссий не остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%. Бот ничего не придумывает, когда выгоды нет.`, '');
   }
   rows.forEach((r, i) => {
-    lines.push(`${i + 1}. <b>${esc(r.name)}</b>`);
-    lines.push(`Купи на ${MARKETS[r.buy_at].name} за ${fmt(r.pay_kop)} → продай на ${MARKETS[r.sell_at].name} за ${fmt(r.sell_kop)} → получишь <b>${fmt(r.get_kop)}</b> (${sign(r.profit_kop)}, ${pct(r.roi_bp)})`);
-    lines.push(r.wallet === 'cash' ? '💵 деньгами' : '🎮 на баланс Steam (вывести нельзя)');
-    lines.push('');
+    lines.push(...dealBlock(i + 1, { name: r.name, buyName: MARKETS[r.buy_at].name, sellName: MARKETS[r.sell_at].name, payKop: r.pay_kop, sellKop: r.sell_kop, getKop: r.get_kop, profitKop: r.profit_kop, roiBp: r.roi_bp, cash: r.wallet === 'cash' }), '');
   });
-  lines.push('<i>Цены на момент публикации, комиссии площадок учтены. Это не финансовый совет: проверь цену перед покупкой. Завтра здесь будет честный итог — сработали эти идеи или нет.</i>');
+  if (y) lines.push(`<blockquote>${y}</blockquote>`, '');
+  lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Завтра — честный итог: сработали эти идеи или нет.</i>' : '<i>Завтра — снова проверка рынка.</i>');
   return lines.join('\n');
 }
 
@@ -95,28 +89,27 @@ export interface CaseStat { name: string; d1: number | null; d7: number | null; 
 
 /** Воскресный итог недели: индекс кейсов, лидеры роста и падения, как сработали идеи, сколько нас. */
 export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: number; week: number }, now: number): string | null {
-  const date = warsawDate(now).split('-').reverse().slice(0, 2).join('.');
   const ch = cases.filter((c) => c.d7 && c.d30).map((c) => ({ name: c.name, bp: Math.trunc(((c.d7! - c.d30!) * 10000) / c.d30!) }));
   const checked = week.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
   if (ch.length < 5 && !checked.length) return null;
-  const lines = [`📅 <b>Итог недели · ${date}</b>`, ''];
+  const lines = [header('📅', 'Итоги недели', now), ''];
   if (ch.length >= 5) {
     const avg = Math.round(ch.reduce((s, x) => s + x.bp, 0) / ch.length);
-    lines.push(`📦 <b>Индекс кейсов Steam:</b> ${pct(avg)} — так в среднем изменились ${ch.length} кейсов (средняя цена продаж за неделю против месяца).`, '');
+    lines.push(`📦 Индекс кейсов Steam: <b>${pct(avg)}</b>`, `<i>в среднем по ${ch.length} кейсам, неделя к месяцу</i>`, '');
     const up = [...ch].sort((a, b) => b.bp - a.bp).filter((x) => x.bp > 0).slice(0, 3);
     const down = [...ch].sort((a, b) => a.bp - b.bp).filter((x) => x.bp < 0).slice(0, 3);
-    if (up.length) { lines.push('🔺 <b>Сильнее всех выросли</b>'); for (const x of up) lines.push(`• ${esc(x.name)} — ${pct(x.bp)}`); lines.push(''); }
-    if (down.length) { lines.push('🔻 <b>Сильнее всех упали</b>'); for (const x of down) lines.push(`• ${esc(x.name)} — ${pct(x.bp)}`); lines.push(''); }
+    if (up.length) { lines.push('📈 <b>Выросли сильнее всех</b>', ...up.map((x) => moveLine(x.name, x.bp, null)), ''); }
+    if (down.length) { lines.push('📉 <b>Упали сильнее всех</b>', ...down.map((x) => moveLine(x.name, x.bp, null)), ''); }
   }
   if (checked.length) {
-    const plus = checked.filter((r) => r.outcome === 'plus');
+    const plusN = checked.filter((r) => r.outcome === 'plus').length;
     const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const avgReal = Math.round(checked.reduce((s, r) => s + (r.profit_kop_24 ?? 0), 0) / checked.length);
-    lines.push(`💡 <b>Идеи бота за неделю:</b> ${checked.length} проверено, ${plus.length} через сутки были в плюсе (${Math.round((plus.length / checked.length) * 100)}%). В среднем ${sign(avgReal)} на сделку.`);
-    lines.push(`Лучшая: ${esc(best.name)} — ${sign(best.profit_kop_24 ?? 0)}.`, '');
+    lines.push(`💡 <b>Идеи бота: ${plusN} из ${checked.length} в плюсе</b> (${Math.round((plusN / checked.length) * 100)}%)`,
+      `В среднем ${sign(avgReal)} на сделку · лучшая — ${esc(best.name)} ${sign(best.profit_kop_24 ?? 0)}`, '');
   }
-  if (users.total >= 20) lines.push(`👥 Ботом пользуются ${users.total} человек${users.week ? `, за неделю +${users.week}` : ''}.`, '');
-  lines.push('<i>Это статистика прошлого, а не прогноз. Рост и падение могут развернуться.</i>');
+  if (users.total >= 20) lines.push(`👥 В боте ${users.total} человек${users.week ? ` (+${users.week} за неделю)` : ''}`, '');
+  lines.push('<i>Это статистика прошлого, а не прогноз.</i>');
   return lines.join('\n');
 }
 
@@ -142,11 +135,10 @@ export function cleanSnippet(raw: unknown): string | null {
 }
 
 export function newsPost(n: NewsItem): string {
-  const date = warsawDate(n.published_at).split('-').reverse().join('.');
   return [
-    `🛠 <b>Обновление CS2</b> · ${date}`, '',
+    header('🛠', 'Обновление CS2', n.published_at), '',
     `<b>${esc(n.title)}</b>`,
-    ...(n.snippet ? ['', `<i>${esc(n.snippet)}</i>`] : []),
-    '', 'После обновлений цены кейсов и скинов часто двигаются — как отреагировал рынок, смотри в вечернем посте «Кейсы в Steam».',
+    ...(n.snippet ? [`<blockquote>${esc(n.snippet)}</blockquote>`] : []),
+    '', '<i>После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',
   ].join('\n');
 }

@@ -19,13 +19,13 @@ const kase = (n: string, d1: number, d30: number): ScanEntry => ({ name: n, offe
 
 test('посты: «Идеи дня» с полной цепочкой и дисклеймером; пусто — поста нет', () => {
   const p = renderMoney(buildPost('ideas', [deal], FX, AT10)!, UAH_CUR);
-  assert.match(p, /Идеи дня · 04\.11/);
-  assert.match(p, /Купи на Skinport за 450,00 ₴ → продай на Skinport за 585,00 ₴ → получишь/);
-  assert.match(p, /не финансовый совет/);
+  assert.match(p, /Идеи дня<\/b> · 4 ноября/);
+  assert.match(p, /Купить: Skinport — <b>450,00 ₴<\/b>\n💰 Продать: Skinport — 585,00 ₴\n✅ Чистыми: <b>\+/);
+  assert.match(p, /Не финансовый совет/);
   assert.equal(buildPost('ideas', [], FX, AT10), null);
   const c = buildPost('cases', [kase('Kilowatt Case', 120, 100), kase('Gallery Case', 80, 100), kase('Fever Case', 100, 100)], FX, AT10)!;
-  assert.match(c, /Дорожают[\s\S]*Kilowatt Case — \+20%/);
-  assert.match(c, /Дешевеют[\s\S]*Gallery Case — −20%/);
+  assert.match(c, /Дорожают[\s\S]*Kilowatt Case — <b>\+20%<\/b>/);
+  assert.match(c, /Дешевеют[\s\S]*Gallery Case — <b>−20%<\/b>/);
   assert.ok(!c.includes('Fever Case'), 'без изменений — не показываем');
 });
 
@@ -63,7 +63,7 @@ test('канал: /channel проверяет права бота, публик�
   isAdminInChannel = true;
   await msg('/channel @skinradar_ua');
   const welcome = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234)!;
-  assert.match(welcome.body.text, /Здесь каждый день/);
+  assert.match(welcome.body.text, /Рынок скинов CS2 — каждый день/);
   assert.equal(welcome.body.reply_markup.inline_keyboard[0][0].url, 'https://t.me/cenolow_bot?start=ch');
   // Чужой не может подключить канал.
   const before = sent.length;

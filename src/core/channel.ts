@@ -11,7 +11,8 @@ import type { Currency } from '../types/market.ts';
 import { loadScan } from '../storage/scan.ts';
 import { loadLatestFx } from '../storage/db.ts';
 import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
-import { formatUah, formatSignedUah } from '../utils/money.ts';
+import { formatUah } from '../utils/money.ts';
+import { header, dealBlock, moveLine, FOOT_DEALS } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
@@ -21,7 +22,6 @@ export const SLOTS: { slot: Slot; hour: number; weekday?: number }[] = [
 export const ALL_SLOTS: Slot[] = ['ideas', 'trends', 'cases', 'weekly'];
 
 const fmt = (k: number | null) => formatUah(k);
-const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
 
 export function botButton(botUsername: string | null, text = '🤖 Все идеи и уведомления — в боте'): Keyboard {
   return botUsername ? [[{ text, url: `https://t.me/${botUsername}?start=ch` }]] : [];
@@ -34,28 +34,24 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
 
 /** То же + lead: главный предмет поста (его картинка пойдёт превью над текстом). */
 export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null } | null {
-  const date = warsawDate(now).split('-').reverse().slice(0, 2).join('.');
   if (slot === 'ideas') {
     const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
     const top = deals.slice(0, 4);
     if (!top.length) return null;
-    const lines = [`💡 <b>Идеи дня · ${date}</b>`, ''];
-    top.forEach((d, i) => {
-      lines.push(`${i + 1}. <b>${esc(d.name)}</b>`);
-      lines.push(`Купи на ${MARKETS[d.buyAt].name} за ${fmt(d.payKop)} → продай на ${MARKETS[d.sellAt].name} за ${fmt(d.sellKop)} → получишь <b>${fmt(d.getKop)}</b> (${d.profitKop ? formatSignedUah(d.profitKop) : '—'}, ${pct(d.roiBp ?? 0)})`);
-      lines.push(d.wallet === 'cash' ? '💵 деньгами' : '🎮 на баланс Steam (вывести нельзя)');
-      lines.push('');
-    });
-    lines.push('<i>Цены на момент публикации, комиссии площадок учтены. Это не финансовый совет: проверь цену перед покупкой — объявление могут купить раньше.</i>');
+    const lines = [header('💡', 'Идеи дня', now), ''];
+    top.forEach((d, i) => lines.push(...dealBlock(i + 1, { name: d.name, buyName: MARKETS[d.buyAt].name, sellName: MARKETS[d.sellAt].name, payKop: d.payKop, sellKop: d.sellKop, getKop: d.getKop!, profitKop: d.profitKop!, roiBp: d.roiBp ?? 0, cash: d.wallet === 'cash' }), ''));
+    lines.push(FOOT_DEALS);
     return { text: lines.join('\n'), lead: top[0].name };
   }
   if (slot === 'trends') {
     const { trends } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
     const top = trends.slice(0, 5);
     if (!top.length) return null;
-    const lines = [`📈 <b>Растут в цене · ${date}</b>`, ''];
-    for (const t of top) lines.push(`• <b>${esc(t.name)}</b> — ${pct(t.trendBp ?? 0)} за неделю к месяцу${t.sales7 ? ` (${t.sales7} продаж)` : ''}, сейчас от ${fmt(t.payKop)} на ${MARKETS[t.buyAt].name}`);
-    lines.push('', '<i>Рост уже случился и может развернуться — это не гарантия. Покупай только то, что готов держать.</i>');
+    const lines = [header('📈', 'Растут в цене', now), '<i>неделя к месяцу</i>', ''];
+    for (const t of top) {
+      lines.push(`${moveLine(t.name, t.trendBp ?? 0, null)} · от ${fmt(t.payKop)} на ${MARKETS[t.buyAt].name}`);
+    }
+    lines.push('', '<i>Рост уже случился и может развернуться. Покупай только то, что готов держать.</i>');
     return { text: lines.join('\n'), lead: top[0].name };
   }
   // cases: средние продажи Steam за сутки против месяца (прайс Steam), только кейсы с продажами.
@@ -67,10 +63,10 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
   const up = [...rows].sort((a, b) => b.d - a.d).filter((x) => x.d > 200).slice(0, 3);
   const down = [...rows].sort((a, b) => a.d - b.d).filter((x) => x.d < -200).slice(0, 3);
   if (!up.length && !down.length) return null;
-  const lines = [`📦 <b>Кейсы в Steam · ${date}</b>`, '<i>средняя цена продаж за сутки против средней за месяц</i>', ''];
-  if (up.length) { lines.push('🔺 <b>Дорожают</b>'); for (const x of up) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
-  if (down.length) { lines.push('🔻 <b>Дешевеют</b>'); for (const x of down) lines.push(`• ${esc(x.name)} — ${pct(x.d)}${x.kop ? `, ≈ ${fmt(x.kop)}` : ''}`); lines.push(''); }
-  lines.push('<i>Цены ≈ — средние продажи в Steam за сутки. Дешевеющий кейс — не обязательно выгодная покупка.</i>');
+  const lines = [header('📦', 'Кейсы Steam', now), '<i>цена продаж за сутки к средней за месяц</i>', ''];
+  if (up.length) lines.push('📈 <b>Дорожают</b>', ...up.map((x) => moveLine(x.name, x.d, x.kop)), '');
+  if (down.length) lines.push('📉 <b>Дешевеют</b>', ...down.map((x) => moveLine(x.name, x.d, x.kop)), '');
+  lines.push('<i>Дешевеющий кейс — не обязательно выгодная покупка.</i>');
   return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name };
 }
 

@@ -25,8 +25,8 @@ test('история идей: записываются один раз за д�
   await db.storeFx(D, [EUR, USD], DAY1);
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1);
   const p1 = (await composePost(D, 'ideas', DAY1))!;
-  assert.match(p1, /Идеи дня · 04\.11/);
-  assert.match(p1, /Завтра здесь будет честный итог/);
+  assert.match(p1, /Идеи дня<\/b> · 4 ноября/);
+  assert.match(p1, /Завтра — честный итог/);
   assert.ok(!/Вчерашние идеи/.test(p1));
   await composePost(D, 'ideas', DAY1 + 600);
   assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM idea_log').get() as { n: number }).n, 1, 'одна запись на идею, без повторов');
@@ -39,18 +39,18 @@ test('история идей: записываются один раз за д�
   assert.equal(r.outcome, 'minus');
   assert.equal(r.profit_kop_24, Math.floor(1050 * 0.92) * 45 - 45000);
   const p2 = (await composePost(D, 'ideas', DAY2))!;
-  assert.match(p2, /Вчерашние идеи через сутки:<\/b> 0 из 1 всё ещё в плюсе/);
+  assert.match(p2, /Вчерашние идеи через сутки: 0 из 1 в плюсе/);
 });
 
 test('итог недели: индекс кейсов, лидеры, идеи; без данных — пусто', () => {
   const cases = ['A', 'B', 'C', 'D', 'E'].map((x, i) => ({ name: `${x} Case`, d1: 100, d7: 100 + i * 10 - 20, d30: 100 }));
   const idea = (o: Partial<IdeaRow>): IdeaRow => ({ id: 1, day: '2026-11-01', name: 'Revolution Case', buy_at: 'skinport', sell_at: 'steam', pay_kop: 1000, sell_kop: 1400, get_kop: 1200, profit_kop: 200, roi_bp: 2000, wallet: 'steam_wallet', created_at: 0, checked_at: 1, get_kop_24: 1150, profit_kop_24: 150, outcome: 'plus', ...o });
   const p = weeklyPost(cases, [idea({}), idea({ id: 2, name: 'Kilowatt Case', profit_kop_24: -50, outcome: 'minus' })], { total: 120, week: 15 }, DAY1)!;
-  assert.match(p, /Индекс кейсов Steam:<\/b> \+0% — так в среднем изменились 5 кейсов/);
-  assert.match(p, /Сильнее всех выросли[\s\S]*E Case — \+20%/);
-  assert.match(p, /Сильнее всех упали[\s\S]*A Case — −20%/);
-  assert.match(p, /2 проверено, 1 через сутки были в плюсе \(50%\)/);
-  assert.match(p, /Ботом пользуются 120 человек, за неделю \+15/);
+  assert.match(p, /Индекс кейсов Steam: <b>\+0%<\/b>\n<i>в среднем по 5 кейсам/);
+  assert.match(p, /Выросли сильнее всех[\s\S]*E Case — <b>\+20%<\/b>/);
+  assert.match(p, /Упали сильнее всех[\s\S]*A Case — <b>−20%<\/b>/);
+  assert.match(p, /Идеи бота: 1 из 2 в плюсе<\/b> \(50%\)/);
+  assert.match(p, /В боте 120 человек \(\+15 за неделю\)/);
   assert.equal(weeklyPost([], [], { total: 3, week: 1 }, DAY1), null);
   assert.equal(yesterdayLine([idea({ outcome: 'gone' })]), null, 'нет данных — не выдумываем итог');
 });

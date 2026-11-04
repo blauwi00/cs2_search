@@ -27,6 +27,7 @@ import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency } fr
 import { renderMoney } from '../utils/money.ts';
 import { PRIVACY_POINTS } from '../core/privacy.ts';
 import { steamSellPrice } from '../core/sellprice.ts';
+import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '../core/terms.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -575,6 +576,14 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         costKop: Number.isSafeInteger(cost) && cost > 0 ? cost : null, uniquePriced: parseMarketHashName(item.name).uniquePriced,
       });
       return json({ ok: true, rec, liveAt: live?.fetched_at ?? null, pattern: parseMarketHashName(item.name).uniquePriced });
+    }
+    if (path === 'terms' && method === 'GET') {
+      const s = await db.getSettings(d, tid);
+      return json({ ok: true, accepted: s.terms_ok === TERMS_VERSION, version: TERMS_VERSION, short: TERMS_SHORT, terms: TERMS_SECTIONS, privacy: PRIVACY_SECTIONS });
+    }
+    if (path === 'terms' && method === 'POST') {
+      await db.setSetting(d, tid, 'terms_ok', TERMS_VERSION, now);
+      return json({ ok: true });
     }
     if (path === 'privacy' && method === 'GET') {
       return json({ ok: true, ...PRIVACY_POINTS });

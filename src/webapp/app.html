@@ -913,14 +913,39 @@ function history() {
 }
 
 // ---------- Ещё: настройки и состояние ----------
+// ---------- Условия и конфиденциальность ----------
+function secHtml(list) {
+  return list.map(function (x) { return '<div class="sec">' + esc(x.title) + '</div><div class="card info">' + x.items.map(function (i) { return '<p>' + esc(i) + '</p>'; }).join('') + '</div>'; }).join('');
+}
+function termsGate(t, first) {
+  document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = 'none');
+  $('#title').textContent = 'Добро пожаловать';
+  var h = '<div class="card" style="font-size:15px;line-height:1.45">' + t.short.map(function (x) { return '<p style="margin:0 0 10px">' + x + '</p>'; }).join('') + '</div>';
+  h += '<details class="more"><summary><span class="chev">›</span> Условия использования полностью</summary>' + secHtml(t.terms) + '</details>';
+  h += '<details class="more"><summary><span class="chev">›</span> Политика конфиденциальности</summary>' + secHtml(t.privacy) + '</details>';
+  h += '<button class="btn" id="t-ok">✅ Принимаю и понимаю риски</button>';
+  h += '<div class="note" style="text-align:center">Не согласен — просто не пользуйся ботом. Удалить данные: /deletemydata в чате с ботом.</div>';
+  view.innerHTML = h;
+  $('#t-ok').onclick = function () {
+    api('terms', { method: 'POST' }).then(function () { haptic('ok'); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); }).catch(function (e) { toast(e.message); });
+  };
+}
+function termsSheet() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('terms').then(function (t) {
+    $('#sc').innerHTML = '<h2>📄 Условия и конфиденциальность</h2><div class="sub">Принято: ' + (t.accepted ? 'да' : 'нет') + ' · версия ' + esc(t.version) + '</div>' +
+      secHtml(t.terms) + '<h2 style="margin-top:18px">🛡 Конфиденциальность</h2>' + secHtml(t.privacy);
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
 function more() {
   view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, идеи, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
-  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy;
+  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }
 function settings() {
@@ -981,7 +1006,10 @@ function status() {
 
 if (!INIT) { view.innerHTML = '<div class="empty"><div class="e">🔒</div>Открой приложение из своего бота в Telegram — кнопкой «Приложение» рядом с полем ввода.</div>'; return; }
 var start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-go(['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : 'home');
+var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : 'home';
+// Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
+loading(3);
+api('terms').then(function (t) { if (t.accepted) go(first); else termsGate(t, first); }).catch(function () { go(first); });
 })();
 </script>
 </body>

@@ -19,7 +19,7 @@ import * as INV from './inventory.ts';
 import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
 import { moneyResolver, guessCurrency, isCurrency, loadRates, availableCurrencies } from '../currency/display.ts';
-import { privacyText } from '../core/privacy.ts';
+import { TERMS_VERSION, termsText, privacyPolicyText, termsPrompt, deleteUserStmts } from '../core/terms.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
 export const MAX_UPDATE_BYTES = 64 * 1024;
@@ -83,6 +83,9 @@ async function onText(text: string, h: H): Promise<void> {
   const t = text.trim().slice(0, 200);
   const cmd = t.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, '');
   await db.ensureUser(h.d, h.uid, h.isAdmin, h.now);
+  // Удаление данных и тексты условий доступны всегда; всё остальное — после принятия условий.
+  if (cmd === '/deletemydata') return say(h, '🗑 Удалить всё, что бот знает о тебе? Настройки, список, покупки, привязка Steam и уведомления удалятся без возможности восстановления.', [[{ text: 'Да, удалить всё', callback_data: 'delme:yes' }], [{ text: 'Отмена', callback_data: 'delme:no' }]]);
+  if (cmd !== '/terms' && cmd !== '/privacy' && !(await termsAccepted(h))) return askTerms(h);
   switch (cmd) {
     case '/start': {
       await db.clearState(h.d, h.uid);
@@ -99,7 +102,8 @@ async function onText(text: string, h: H): Promise<void> {
       ]);
     }
     case '/currency': case '/valuta': return currencyView(h);
-    case '/privacy': return say(h, privacyText());
+    case '/privacy': return say(h, privacyPolicyText());
+    case '/terms': return say(h, termsText());
     case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
     case '/stats': return statsCommand(h);
@@ -207,6 +211,19 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   const [a, b, c] = data.split(':');
   const idArg = Number(b);
 
+  if (a === 'terms') {
+    if (b === 'full') return say(h, termsText(), TERMS_KB);
+    if (b === 'ok') {
+      await db.setSetting(h.d, h.uid, 'terms_ok', TERMS_VERSION, h.now);
+      return onText('/start', h);
+    }
+  }
+  if (a === 'delme') {
+    if (b !== 'yes') return say(h, 'Хорошо, ничего не удалено.');
+    await h.d.batch(deleteUserStmts(h.d, h.uid));
+    return say(h, '✅ Всё удалено. Если напишешь боту снова, он начнёт с чистого листа.');
+  }
+  if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
   if (a === 'm') {
@@ -298,7 +315,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
 const HELP = [
   '<b>Команды</b>',
   '/start — открыть приложение', '/menu — текстовое меню',
-  '/currency — валюта цен', '/privacy — что нужно боту и что он знает',
+  '/currency — валюта цен', '/terms — условия и риски', '/privacy — конфиденциальность', '/deletemydata — удалить мои данные',
   '/app — открыть приложение',
   '/add название — добавить предмет в наблюдение',
   '/addlist — добавить несколько предметов списком (точные названия, по одному в строке)',
@@ -327,4 +344,12 @@ async function currencyView(h: H, msgId?: number, saved = false): Promise<void> 
     '<i>Площадки продают в своих валютах, бот пересчитывает по курсу НБУ (для RUB, BRL, ARS — через доллар). Цена в Steam в твоём кошельке может немного отличаться: у Steam свои курсы.</i>',
   ].join('\n');
   return show(h, { text, keyboard: kb }, msgId);
+}
+
+const TERMS_KB: Keyboard = [[{ text: '✅ Принимаю', callback_data: 'terms:ok' }], [{ text: '📄 Полный текст условий', callback_data: 'terms:full' }]];
+async function termsAccepted(h: H): Promise<boolean> {
+  return (await db.getSettings(h.d, h.uid)).terms_ok === TERMS_VERSION;
+}
+function askTerms(h: H): Promise<void> {
+  return say(h, termsPrompt(), TERMS_KB);
 }

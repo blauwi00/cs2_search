@@ -1,3 +1,4 @@
+import { TERMS_VERSION } from '../src/core/terms.ts';
 // Тестовая обвязка: D1 поверх встроенного SQLite Node (тот же диалект SQL, что и у D1),
 // подставной fetch и тестовые секреты.
 
@@ -46,10 +47,15 @@ export class FakeD1 {
   async exec(sql: string) { this.db.exec(sql); return {}; }
 }
 
-export function migratedDb(): FakeD1 {
+/** termsAccepted: в большинстве тестов условия считаются принятыми (их проверяет отдельный тест). */
+export function migratedDb(opts: { termsAccepted?: boolean } = {}): FakeD1 {
   const d = new FakeD1();
   const dir = join(root, 'migrations');
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) d.db.exec(readFileSync(join(dir, f), 'utf8'));
+  if (opts.termsAccepted !== false) {
+    d.db.exec(`CREATE TRIGGER test_terms AFTER INSERT ON users BEGIN
+      INSERT OR IGNORE INTO user_settings (telegram_id, key, value, updated_at) VALUES (NEW.telegram_id, 'terms_ok', '${TERMS_VERSION}', 0); END;`);
+  }
   return d;
 }
 

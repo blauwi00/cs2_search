@@ -69,7 +69,8 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
         { command: 'start', description: 'Открыть приложение' }, { command: 'menu', description: 'Текстовое меню' }, { command: 'add', description: 'Добавить предмет' },
         { command: 'deals', description: 'Выгодные сделки' }, { command: 'watch', description: 'Мониторинг цен' },
         { command: 'currency', description: 'Валюта цен' }, { command: 'settings', description: 'Настройки' },
-        { command: 'privacy', description: 'Что нужно боту и что он знает' },
+        { command: 'privacy', description: 'Конфиденциальность' }, { command: 'terms', description: 'Условия и риски' },
+        { command: 'deletemydata', description: 'Удалить мои данные' },
       ];
       await tg.call('setMyCommands', { commands: common });
       // Владельцу — ещё служебные команды (видны только в его чате).

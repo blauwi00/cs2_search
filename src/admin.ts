@@ -68,7 +68,7 @@ export async function handleAdmin(req: Request, env: Env, now: number, fetcher?:
       const common = [
         { command: 'start', description: 'Открыть приложение' }, { command: 'menu', description: 'Текстовое меню' }, { command: 'add', description: 'Добавить предмет' },
         { command: 'deals', description: 'Выгодные сделки' }, { command: 'watch', description: 'Мониторинг цен' },
-        { command: 'settings', description: 'Настройки' },
+        { command: 'currency', description: 'Валюта цен' }, { command: 'settings', description: 'Настройки' },
       ];
       await tg.call('setMyCommands', { commands: common });
       // Владельцу — ещё служебные команды (видны только в его чате).

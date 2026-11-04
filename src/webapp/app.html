@@ -25,6 +25,8 @@ button{font:inherit;color:inherit}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--hint)}
 .dot.ok{background:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 20%,transparent)}
 .dot.bad{background:var(--red)}
+.dot.warn{background:var(--amber)}
+.dot{cursor:pointer}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -239,16 +241,33 @@ function go(t) {
   ({ home: home, deals: deals, market: market, inv: inventory, more: more })[t]();
 }
 
+// ---------- Состояние: зелёный — всё работает; жёлтый — работает, но Steam/Skinport временно ограничены; красный — бот стоит ----------
+function health(s) {
+  var by = {}; s.sources.forEach(function (x) { by[x.source] = x; });
+  var col = by.collector, now = Date.now() / 1000;
+  var collectorOk = col && col.lastOk && now - col.lastOk < 45 * 60;
+  if (!s.cronAlive || !collectorOk) return { cls: 'bad', icon: '🔴', title: 'Цены не обновляются', note: !s.cronAlive ? 'Планировщик бота не запускался больше 5 минут.' : 'Сборщик цен давно не присылал данные. Владелец бота получит уведомление.' };
+  var steam = by.steam, sp = by.skinport;
+  if (steam && steam.status !== 'ok') return { cls: 'warn', icon: '🟡', title: 'Работает, но Steam ограничил запросы', note: 'Живые цены Steam обновятся, когда Steam пустит (обычно через 10–60 мин). Подсказки пока считаются по суточному прайсу Steam.' };
+  if (sp && sp.status !== 'ok') return { cls: 'warn', icon: '🟡', title: 'Работает, но Skinport отвечает с ошибками', note: 'Остальные площадки обновляются.' };
+  return { cls: 'ok', icon: '🟢', title: 'Всё работает', note: '' };
+}
+$('#dot').onclick = function () {
+  var hs = state.health; if (!hs) return go('home');
+  sheet('<h2>' + hs.icon + ' ' + esc(hs.title) + '</h2>' + (hs.note ? '<div class="card">' + esc(hs.note) + '</div>' : '') +
+    '<div class="note">🟢 — всё работает · 🟡 — работает, но один источник временно ограничен · 🔴 — цены не обновляются.</div>');
+};
+
 // ---------- Главная ----------
 function home() {
   loading(5);
   api('summary').then(function (s) {
-    var priceSrc = s.sources.filter(function (x) { return x.source === 'steam' || x.source === 'skinport'; });
-    var okAll = priceSrc.length && priceSrc.every(function (x) { return x.status === 'ok'; }) && s.cronAlive;
-    $('#dot').className = 'dot ' + (okAll ? 'ok' : 'bad');
+    var hs = health(s);
+    state.health = hs;
+    $('#dot').className = 'dot ' + hs.cls;
     var h = '';
-    h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + (okAll ? '🟢' : '🟠') + '</div><div style="flex:1"><div style="font-weight:600">' +
-      (okAll ? 'Мониторинг работает' : 'Есть проблемы с источниками') + '</div><div class="mut" style="font-size:13px">Цены обновлены ' + ago(s.lastPriceAt) + ' · предметов: ' + s.watched + '<br>Новые цены — примерно каждые 10 минут · <a id="howoft" style="color:var(--link)">как часто пишет бот?</a></div></div></div>';
+    h += '<div class="card" style="display:flex;align-items:center;gap:12px"><div class="ic">' + hs.icon + '</div><div style="flex:1"><div style="font-weight:600">' + hs.title +
+      '</div><div class="mut" style="font-size:13px">' + (hs.note ? esc(hs.note) + '<br>' : '') + 'Цены обновлены ' + ago(s.lastPriceAt) + ' · предметов: ' + s.watched + '<br>Новые цены — примерно каждые 10 минут · <a id="howoft" style="color:var(--link)">как часто пишет бот?</a></div></div></div>';
     h += '<div class="sec">Что делать сейчас</div>';
     h += s.actions && s.actions.length ? s.actions.map(function (x) {
       return '<div class="row" data-item="' + x.itemId + '">' + pic(x.img, ACT_ICON[x.advice.action]) + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d" style="white-space:normal">' + esc(x.advice.reason) + '</div></div><div class="r">' + actPill(x.advice) + '</div></div>';
@@ -440,12 +459,12 @@ function market() {
     });
     h += list.length ? list.map(function (x) {
       var right = state.edit ? '<div class="cb">' + (state.sel[x.watchId] ? '✓' : '') + '</div>'
-        : '<div class="r"><div class="big">' + uahShort(x.steamLowKop) + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div>';
+        : '<div class="r"><div class="big">' + (x.steamLowKop != null ? uahShort(x.steamLowKop) : x.steamAvgKop != null ? '≈ ' + uahShort(x.steamAvgKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div>';
       return '<div class="row' + (state.sel[x.watchId] ? ' sel' : '') + '" data-w="' + x.watchId + '" data-item="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎲') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' +
         (x.advice && x.advice.action !== 'hold' && x.advice.action !== 'nodata' ? esc(x.advice.reason) : (x.skinportKop != null ? 'Skinport ' + uahShort(x.skinportKop) : 'Skinport —') + (x.sales24h != null ? ' · продаж ' + x.sales24h.toLocaleString('ru-RU') : '')) +
         '</div></div>' + right + '</div>';
     }).join('') : '<div class="empty"><div class="e">📭</div>Список пуст. Нажми «＋ Добавить».</div>';
-    h += '<div class="note">Сверху — то, где нужно действие: <b class="pos">Купить</b>, <b style="color:var(--violet)">Продать</b>, <b class="neg">Дорого</b>. Ниже — «Ждать» и «Мало данных» (история цен копится 1–2 дня). Цена справа — самое дешёвое объявление в Steam.</div>';
+    h += '<div class="note">Сверху — то, где нужно действие: <b class="pos">Купить</b>, <b style="color:var(--violet)">Продать</b>, <b class="neg">Дорого</b>. Ниже — «Ждать» и «Мало данных» (у предмета почти нет продаж). Цена справа — самое дешёвое объявление в Steam; «≈» — средняя цена продаж Steam, пока живой цены нет.</div>';
     view.innerHTML = h;
     Array.prototype.forEach.call(document.querySelectorAll('#acts .chip'), function (b) { b.onclick = function () { haptic(); state.mkAct = b.getAttribute('data-a'); market(); }; });
     Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function (el) {

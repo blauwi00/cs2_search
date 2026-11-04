@@ -27,8 +27,8 @@ jobs:
       # Каталог картинок (ByMykel/CSGO-API, ~80 МБ) качаем раз в сутки, дальше берём из кэша GitHub.
       - uses: actions/cache@v4
         with:
-          path: .cache/images.json
-          key: images-${{ steps.day.outputs.d }}
+          path: .cache/catalog2.json
+          key: catalog2-${{ steps.day.outputs.d }}
       - name: Сбор цен
         env:
           WORKER_URL: https://cs2-search.blauwi925.workers.dev

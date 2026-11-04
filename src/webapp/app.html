@@ -665,7 +665,7 @@ function steamBlock(st) {
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
     h += st.items.slice(0, 60).map(function (x) {
-      return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.marketable ? '' : ' · нельзя продать на ТП') + '</div></div>' +
+      return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
         '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
     }).join('');
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
@@ -701,6 +701,7 @@ function bindSteamBlock(st) {
       var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + '</h2><div class="sub">×' + x.qty + ' в инвентаре Steam</div>';
       if (x.advice) h += verdict(x.advice);
       h += '<div class="card">' + kv('Цена в Steam', x.priceKop ? (x.live ? '' : '≈ ') + uah(x.priceKop) : '—') + kv('Придёт на баланс за 1 шт.', x.netKop ? '≈ ' + uah(x.netKop) : '—') + kv('Всего за ×' + x.qty, x.netKop ? '≈ ' + uah(x.netKop * x.qty) : '—') + '</div>';
+      h += assetDetails(x);
       h += '<div class="btns"><button class="btn sec2" id="si-chart">📈 График и цены</button><button class="btn sec2" id="si-steam">Steam Market</button></div>';
       h += '<button class="btn sec2" id="si-buy">✍️ Записать цену покупки</button>';
       sheet(h);
@@ -709,6 +710,28 @@ function bindSteamBlock(st) {
       $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
     };
   });
+}
+
+// Подробности экземпляров: float, паттерн, фаза Doppler, наклейки и брелки (из открытых данных Steam).
+function assetDetails(x) {
+  var ds = x.details || [];
+  var h = '';
+  if (x.pattern) h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ Цена этого скина сильно зависит от паттерна (номер ниже). Для редких паттернов (blue gem, Fade 100%, красивые сетки и т.п.) реальная цена может быть намного выше — бот показывает обычную цену по названию.</div>';
+  if (!ds.length) return h;
+  h += '<div class="sec">' + (ds.length > 1 ? 'Твои экземпляры (' + ds.length + ')' : 'Твой экземпляр') + '</div>';
+  ds.forEach(function (a, i) {
+    var rows = '';
+    if (a.float != null) rows += kv('Float', a.float.toFixed(a.float < 0.01 ? 6 : 4) + (a.floatNote ? '<div style="font-size:12px;font-weight:400;color:var(--amber);white-space:normal">' + esc(a.floatNote) + '</div>' : ''));
+    if (a.seed != null) rows += kv('Паттерн', '#' + a.seed);
+    if (a.phase) rows += kv('Фаза', esc(a.phase) + (a.phaseKop ? '<div style="font-size:12px;font-weight:400" class="mut">на сайтах от ≈ ' + uahShort(a.phaseKop) + '</div>' : ''));
+    a.stickers.forEach(function (st) { rows += kv('🏷️ ' + esc(st.name.replace(/^Sticker \| /, '')), (st.kop ? '≈ ' + uahShort(st.kop) : '—') + (st.wear > 0.05 ? '<div style="font-size:12px;font-weight:400" class="mut">потёрта ' + Math.round(st.wear * 100) + '%</div>' : '')); });
+    a.charms.forEach(function (c) { rows += kv('🔗 ' + esc(c.name.replace(/^Charm \| /, '')), (c.kop ? '≈ ' + uahShort(c.kop) : '—') + (c.pattern != null ? '<div style="font-size:12px;font-weight:400" class="mut">шаблон #' + c.pattern + '</div>' : '')); });
+    if (a.stickersKop) rows += kv('Наклейки и брелки вместе', '≈ ' + uahShort(a.stickersKop));
+    h += '<div class="card">' + (ds.length > 1 ? '<div class="mut" style="font-size:12px;margin-bottom:4px">#' + (i + 1) + '</div>' : '') + (rows || '<span class="mut">Нет данных</span>') + '</div>';
+  });
+  if (ds.some(function (a) { return a.stickers.length || a.charms.length; })) h += '<div class="note">Цена наклеек — отдельно, по их средней цене в Steam. К цене скина они обычно добавляют немного (часто 0–10% своей стоимости); дорогие и редкие — больше. Потёртые наклейки ценятся меньше.</div>';
+  if (ds.some(function (a) { return a.phase; })) h += '<div class="note">Цена фазы — самое дешёвое объявление этой фазы на CSFloat (открытый прайс). В Steam у Doppler одна цена на все фазы, поэтому для Ruby/Sapphire/Black Pearl/Emerald она сильно занижена.</div>';
+  return h;
 }
 
 // ---------- «Купил?» после возврата с сайта ----------

@@ -15,6 +15,7 @@ import { safeEqual } from './telegram/webhook.ts';
 import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
 import { parseScan, mergeScan, safeImg } from './core/recs.ts';
+import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { loadScan } from './storage/scan.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -208,13 +209,14 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
           .bind(now, status, steamId, steamId, tid),
       ];
       if (status === 'ok') {
-        const raw = (Array.isArray(body.items) ? body.items : []) as { name?: unknown; qty?: unknown; marketable?: unknown; tradable?: unknown; img?: unknown }[];
-        const byName = new Map<string, { qty: number; marketable: number; tradable: number; img: string | null }>();
+        const raw = (Array.isArray(body.items) ? body.items : []) as { name?: unknown; qty?: unknown; marketable?: unknown; tradable?: unknown; img?: unknown; assets?: unknown }[];
+        const byName = new Map<string, { qty: number; marketable: number; tradable: number; img: string | null; assets: AssetDetail[] }>();
         for (const r of raw) {
           if (typeof r?.name !== 'string' || r.name.length > 200) continue;
           const q = Math.max(1, Math.min(100000, Math.trunc(Number(r.qty) || 1)));
           const prev = byName.get(r.name);
-          byName.set(r.name, { qty: (prev?.qty ?? 0) + q, marketable: r.marketable ? 1 : prev?.marketable ?? 0, tradable: r.tradable ? 1 : prev?.tradable ?? 0, img: safeImg(r.img) ?? prev?.img ?? null });
+          byName.set(r.name, { qty: (prev?.qty ?? 0) + q, marketable: r.marketable ? 1 : prev?.marketable ?? 0, tradable: r.tradable ? 1 : prev?.tradable ?? 0, img: safeImg(r.img) ?? prev?.img ?? null,
+            assets: [...(prev?.assets ?? []), ...sanitizeAssets(r.assets)].slice(0, 20) });
           if (byName.size >= 500) break;
         }
         const names = [...byName.keys()];
@@ -230,7 +232,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         for (const [n, v] of byName) {
           const id = ids.get(n);
           if (!id) continue;
-          stmts.push(d.prepare('INSERT OR REPLACE INTO steam_inventory (telegram_id, item_id, qty, marketable, tradable) VALUES (?, ?, ?, ?, ?)').bind(tid, id, v.qty, v.marketable, v.tradable));
+          stmts.push(d.prepare('INSERT OR REPLACE INTO steam_inventory (telegram_id, item_id, qty, marketable, tradable, details) VALUES (?, ?, ?, ?, ?, ?)')
+            .bind(tid, id, v.qty, v.marketable, v.tradable, v.assets.length ? JSON.stringify(v.assets) : null));
           if (v.img) stmts.push(d.prepare('INSERT OR IGNORE INTO item_images (name, url) VALUES (?, ?)').bind(n, v.img));
         }
         result.stored = byName.size;

@@ -101,3 +101,53 @@ test('инвентарь: сборщик забирает открытый ин�
   await api(env, U, 'steam/unlink', 'POST');
   assert.equal((await api(env, U, 'steam')).body.linked, false);
 });
+
+test('сертификат предмета Steam: float, паттерн, номер скина — как показывает Steam', async () => {
+  const { decodeCertificate } = await import('../.github/scripts/inspect.mjs') as { decodeCertificate: (h: string) => { defindex: number; paintindex: number; float: number; seed: number; stickers: unknown[] } | null };
+  // Реальный сертификат из открытого инвентаря; Steam показывает для него Wear Rating 0.154219642281532288 и Pattern Template 579.
+  const c = decodeCertificate('F4E45D70574E44F5ECD3D452F3DCF5C4F0CC35230304F7B437F09CE084E33B1CED8C')!;
+  assert.equal(c.defindex, 39);
+  assert.equal(c.paintindex, 934);
+  assert.equal(c.seed, 579);
+  assert.ok(Math.abs(c.float - 0.154219642281532288) < 1e-9);
+  assert.deepEqual(c.stickers, []);
+  assert.equal(decodeCertificate('zz'), null);
+  assert.equal(decodeCertificate('<script>'), null);
+});
+
+test('подробности экземпляров: проверка входных данных, float-пометки, фаза, наклейки в гривнах', async () => {
+  const { sanitizeAssets, floatNote } = await import('../src/core/inspect.ts');
+  const a = sanitizeAssets([
+    { id: '123', float: 0.004, seed: 661, phase: 'Ruby', phaseUsd: 900, stickers: [{ name: 'Sticker | Crown (Foil)', wear: 0, usd: 800 }, { name: '' }], charms: [{ name: 'Charm | Hot Wurst', pattern: 7, usd: 3 }] },
+    { id: 'x', float: 5 }, { id: '5', phase: 'Phase 9', float: 2 },
+  ]);
+  assert.equal(a.length, 2);
+  assert.equal(a[0].phase, 'Ruby');
+  assert.equal(a[0].stickers.length, 1);
+  assert.equal(a[1].phase, null, 'неизвестная фаза отброшена');
+  assert.equal(a[1].float, null, 'float вне 0..1 отброшен');
+  assert.match(floatNote('AK-47 | Redline (Factory New)', 0.004)!, /очень низкий/);
+  assert.match(floatNote('AK-47 | Redline (Field-Tested)', 0.16)!, /низкий float/);
+  assert.match(floatNote('AK-47 | Redline (Field-Tested)', 0.375)!, /границе/);
+  assert.equal(floatNote('AK-47 | Redline (Field-Tested)', 0.25), null);
+
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+  await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+  await api(env, U, 'steam/profile', 'POST', { text: SID });
+  const hdr = { 'X-Ingest-Secret': 'ingest_secret_test_123' };
+  await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'steam_inventory', fetchedAt: NOW, tid: U, steamId: SID, status: 'ok', items: [
+    { name: '★ Karambit | Doppler (Factory New)', qty: 1, marketable: true, tradable: true, assets: [{ id: '1', float: 0.004, seed: 661, phase: 'Ruby', phaseUsd: 900, stickers: [], charms: [] }] },
+    { name: 'AK-47 | Redline (Field-Tested)', qty: 1, marketable: true, tradable: true, assets: [{ id: '2', float: 0.16, seed: 12, phase: null, stickers: [{ name: 'Sticker | Crown (Foil)', wear: 0.3, usd: 800 }], charms: [] }] },
+  ] }) }), env, NOW);
+  const st = await api(env, U, 'steam');
+  const kar = st.body.items.find((x: { name: string }) => x.name.includes('Karambit'));
+  assert.equal(kar.details[0].phase, 'Ruby');
+  assert.equal(kar.details[0].phaseKop, 3600000, '900 $ × 40 = 36 000 грн');
+  assert.ok(kar.flags.includes('фаза Ruby'));
+  assert.equal(kar.pattern, true, 'Doppler — цена зависит от паттерна');
+  const ak = st.body.items.find((x: { name: string }) => x.name.includes('Redline'));
+  assert.equal(ak.details[0].stickersKop, 3200000);
+  assert.ok(ak.flags.includes('есть наклейки/брелки') && ak.flags.includes('низкий float'));
+});

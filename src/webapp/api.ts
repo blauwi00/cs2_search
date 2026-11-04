@@ -22,6 +22,7 @@ import { loadScan } from '../storage/scan.ts';
 import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop } from '../currency/nbu.ts';
 import { steamLoginUrl, newNonce, parseSteamProfile } from '../steam_link.ts';
+import { floatNote, type AssetDetail } from '../core/inspect.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -222,8 +223,8 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
       const u = await d.prepare('SELECT steam_id, steam_vanity, steam_verified, inv_requested_at, inv_synced_at, inv_status FROM users WHERE telegram_id = ?').bind(tid)
         .first<{ steam_id: string | null; steam_vanity: string | null; steam_verified: number; inv_requested_at: number | null; inv_synced_at: number | null; inv_status: string | null }>();
       const linked = !!(u?.steam_id || u?.steam_vanity);
-      const rows = linked ? (await d.prepare(`SELECT v.item_id, v.qty, v.marketable, v.tradable, i.market_hash_name AS name, i.category FROM steam_inventory v JOIN items i ON i.id = v.item_id
-        WHERE v.telegram_id = ? LIMIT 500`).bind(tid).all<{ item_id: number; qty: number; marketable: number; tradable: number; name: string; category: string }>()).results : [];
+      const rows = linked ? (await d.prepare(`SELECT v.item_id, v.qty, v.marketable, v.tradable, v.details, i.market_hash_name AS name, i.category FROM steam_inventory v JOIN items i ON i.id = v.item_id
+        WHERE v.telegram_id = ? LIMIT 500`).bind(tid).all<{ item_id: number; qty: number; marketable: number; tradable: number; details: string | null; name: string; category: string }>()).results : [];
       const ids = rows.map((r) => r.item_id);
       const [avgs, quotes, imgs, fxm] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d)]);
       const usd = fxm.get('USD') ?? null;
@@ -234,7 +235,22 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
         const est = live?.price_kop ?? (sa?.d7 && usd ? toKop(Math.min(sa.d7, sa.d1 ?? sa.d7), 'USD', usd) : null);
         const net = est ? steamSellerProceeds(Math.max(3, est))?.sellerReceives ?? null : null;
         if (est && r.marketable) { total += est * r.qty; totalNet += (net ?? 0) * r.qty; }
+        let assets: AssetDetail[] = [];
+        try { assets = r.details ? JSON.parse(r.details) as AssetDetail[] : []; } catch { assets = []; }
+        const k = (u: number | null) => (u && usd ? toKop(Math.round(u * 100), 'USD', usd) : null);
+        const pattern = parseMarketHashName(r.name).uniquePriced;
+        const details = assets.map((a) => ({
+          float: a.float, floatNote: floatNote(r.name, a.float), seed: a.seed, phase: a.phase, phaseKop: k(a.phaseUsd),
+          stickers: a.stickers.map((s) => ({ name: s.name, wear: s.wear, kop: k(s.usd) })), charms: a.charms.map((s) => ({ name: s.name, pattern: s.pattern, kop: k(s.usd) })),
+          stickersKop: a.stickers.reduce((x, s) => x + (k(s.usd) ?? 0), 0) + a.charms.reduce((x, s) => x + (k(s.usd) ?? 0), 0),
+        }));
+        const flags: string[] = [];
+        if (details.some((x) => x.phase)) flags.push('фаза ' + [...new Set(details.map((x) => x.phase).filter(Boolean))].join(', '));
+        if (details.some((x) => x.stickers.length || x.charms.length)) flags.push('есть наклейки/брелки');
+        if (details.some((x) => x.floatNote && /низкий/.test(x.floatNote))) flags.push('низкий float');
+        if (pattern) flags.push('цена зависит от паттерна');
         return {
+          details, flags, pattern,
           itemId: r.item_id, name: r.name, category: r.category, categoryRu: CATEGORY_RU[r.category as 'case'] ?? r.category, qty: r.qty, marketable: !!r.marketable,
           img: imgs.get(r.name) ?? null, priceKop: est, live: !!live?.price_kop, netKop: net, advice: r.marketable ? ownedAdvice(sa) : null,
         };

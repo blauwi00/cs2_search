@@ -4,6 +4,7 @@
 // с паузами, при 429 — пауза и остановка.
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { decodeCertificate } from './inspect.mjs';
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -89,25 +90,41 @@ for (let i = 0; i < items.length && i / SALES_CHUNK < 4; i += SALES_CHUNK) {
   }
 }
 
-// 2б. Картинки предметов: открытый каталог ByMykel/CSGO-API (картинки лежат на Steam CDN). Раз в сутки, дальше — кэш.
+// 2б. Каталог предметов: открытый ByMykel/CSGO-API (картинки на Steam CDN, номера наклеек/брелков, фазы Doppler).
+// Раз в сутки, дальше — кэш GitHub.
 let images = new Map();
+const stickerNames = new Map(), charmNames = new Map(), phases = new Map();
 try {
-  const file = '.cache/images.json';
-  if (existsSync(file)) {
-    images = new Map(Object.entries(JSON.parse(readFileSync(file, 'utf8'))));
-  } else {
+  const file = '.cache/catalog2.json';
+  let cat;
+  if (existsSync(file)) cat = JSON.parse(readFileSync(file, 'utf8'));
+  else {
     const res = await fetch('https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/all.json', { headers: { 'User-Agent': UA } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const all = await res.json();
-    for (const x of Object.values(all)) if (x && typeof x.market_hash_name === 'string' && typeof x.image === 'string') images.set(x.market_hash_name, x.image);
+    cat = { images: {}, stickers: {}, charms: {}, phases: {} };
+    for (const x of Object.values(all)) {
+      if (!x || typeof x !== 'object') continue;
+      const mhn = typeof x.market_hash_name === 'string' ? x.market_hash_name : null;
+      if (mhn && typeof x.image === 'string') cat.images[mhn] = x.image;
+      const id = typeof x.id === 'string' ? x.id : '';
+      const num = (x.def_index ?? id.match(/^(?:sticker|keychain)-(\d+)$/)?.[1]) ?? null;
+      if (id.startsWith('sticker-') && num != null) cat.stickers[String(num)] = mhn || x.name;
+      if (id.startsWith('keychain-') && num != null) cat.charms[String(num)] = mhn || x.name;
+      if (x.phase && x.paint_index != null && x.weapon?.weapon_id != null) cat.phases[`${x.weapon.weapon_id}_${x.paint_index}`] = x.phase;
+    }
     mkdirSync('.cache', { recursive: true });
-    writeFileSync(file, JSON.stringify(Object.fromEntries(images)));
+    writeFileSync(file, JSON.stringify(cat));
   }
-  console.log(`Картинок в каталоге: ${images.size}`);
+  images = new Map(Object.entries(cat.images));
+  for (const [k, v] of Object.entries(cat.stickers)) stickerNames.set(k, v);
+  for (const [k, v] of Object.entries(cat.charms)) charmNames.set(k, v);
+  for (const [k, v] of Object.entries(cat.phases)) phases.set(k, v);
+  console.log(`Каталог: картинок ${images.size}, наклеек ${stickerNames.size}, брелков ${charmNames.size}, фаз Doppler ${phases.size}`);
   const send = missingImages.filter((n) => images.has(n)).map((n) => ({ name: n, url: images.get(n) }));
   if (send.length) console.log('Картинки для наблюдения:', await toWorker('/ingest', { kind: 'images', fetchedAt: now(), items: send.slice(0, 500) }));
 } catch (e) {
-  console.error('Картинки:', e.message);
+  console.error('Каталог:', e.message);
 }
 
 // 2б-2. Средние продажи Steam на весь рынок: открытый прайс CSGO Trader (~34 тыс. предметов, ~4 МБ).
@@ -136,6 +153,7 @@ try {
 
 // 2б-3. Открытые инвентари Steam тех, кто привязал Steam в приложении (только чтение публичных данных, без входа в аккаунт).
 // До 3 инвентарей за запуск, с паузами. Закрытый инвентарь → просим пользователя открыть его в настройках приватности Steam.
+let dopplerPrices = null;
 for (const s of inventorySync) {
   if (Date.now() - started > 2 * 60_000) break;
   const base = { kind: 'steam_inventory', fetchedAt: now(), tid: s.tid, steamId: s.steamId, vanity: s.vanity };
@@ -161,11 +179,28 @@ for (const s of inventorySync) {
       const j = await r.json().catch(() => null);
       if (!j || j.success === false) { status = 'private'; break; }
       const desc = new Map((j.descriptions ?? []).map((d) => [`${d.classid}_${d.instanceid}`, d]));
+      // Float, паттерн и сертификат каждого предмета (Steam отдаёт их в asset_properties).
+      const props = new Map((j.asset_properties ?? []).map((p) => [String(p.assetid), p.asset_properties ?? []]));
       for (const a of j.assets ?? []) {
         const d = desc.get(`${a.classid}_${a.instanceid}`);
         if (!d?.market_hash_name) continue;
-        const c = counts.get(d.market_hash_name) ?? { name: d.market_hash_name, qty: 0, marketable: !!d.marketable, tradable: !!d.tradable, img: d.icon_url ? `https://community.akamai.steamstatic.com/economy/image/${d.icon_url}` : null };
+        const c = counts.get(d.market_hash_name) ?? { name: d.market_hash_name, qty: 0, marketable: !!d.marketable, tradable: !!d.tradable, img: d.icon_url ? `https://community.akamai.steamstatic.com/economy/image/${d.icon_url}` : null, assets: [] };
         c.qty += Number(a.amount) || 1;
+        const pr = props.get(String(a.assetid));
+        if (pr && c.assets.length < 20) {
+          const g = (id) => pr.find((x) => x.propertyid === id);
+          const cert = decodeCertificate(g(6)?.string_value);
+          const fl = g(2)?.float_value != null ? Number(g(2).float_value) : cert?.float ?? null;
+          const phase = cert?.defindex != null && cert?.paintindex != null ? phases.get(`${cert.defindex}_${cert.paintindex}`) ?? null : null;
+          const named = (list, names) => list.map((x) => ({ name: names.get(String(x.id)) ?? null, wear: x.wear, pattern: x.pattern })).filter((x) => x.name);
+          const st = cert ? named(cert.stickers, stickerNames) : [];
+          const ch = cert ? named(cert.charms, charmNames) : [];
+          const usd = (n) => { const v = steamAvg.get(n); return v ? (v.d7 ?? v.d30 ?? v.d1 ?? null) : null; };
+          c.assets.push({
+            id: String(a.assetid), float: Number.isFinite(fl) ? fl : null, seed: g(1)?.int_value != null ? Number(g(1).int_value) : cert?.seed ?? null,
+            phase, stickers: st.map((x) => ({ name: x.name, wear: x.wear ?? 0, usd: usd(x.name) })), charms: ch.map((x) => ({ name: x.name, pattern: x.pattern ?? null, usd: usd(x.name) })),
+          });
+        }
         counts.set(d.market_hash_name, c);
       }
       start = j.more_items ? String(j.last_assetid || '') : '';
@@ -173,6 +208,18 @@ for (const s of inventorySync) {
       if (start) await sleep(STEAM_GAP_MS);
     } while (start && pages < 3);
     const list = [...counts.values()].slice(0, 500);
+    // Цены Doppler по фазам (Ruby, Sapphire, Phase 2…) — открытый прайс CSFloat от CSGO Trader, только если есть фазы.
+    if (list.some((x) => x.assets?.some((y) => y.phase))) {
+      try {
+        dopplerPrices ??= await (await fetch('https://prices.csgotrader.app/latest/csfloat.json', { headers: { 'User-Agent': UA } })).json();
+        for (const x of list) for (const y of x.assets ?? []) {
+          if (!y.phase) continue;
+          const e = dopplerPrices?.[x.name];
+          const v = e?.starting_at?.doppler?.[y.phase] ?? e?.doppler?.[y.phase] ?? null;
+          y.phaseUsd = typeof v === 'number' && v > 0 ? v : null;
+        }
+      } catch (e) { console.error('Цены фаз Doppler:', e.message); }
+    }
     console.log(`Инвентарь Steam ${s.tid}: ${status}, предметов ${list.length}`);
     console.log('  →', await toWorker('/ingest', { ...base, steamId: id, status, items: status === 'ok' ? list : [] }));
     if (status === 'rate_limited') break;

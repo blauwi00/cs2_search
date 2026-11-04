@@ -3,6 +3,7 @@
 // а результаты отправляются в Worker (POST /ingest). Обхода защит нет: обычные публичные запросы
 // с паузами, при 429 — пауза и остановка.
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -38,7 +39,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [] } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
@@ -88,22 +89,90 @@ for (let i = 0; i < items.length && i / SALES_CHUNK < 4; i += SALES_CHUNK) {
   }
 }
 
-// 2б. Рекомендации по всему рынку: кандидаты из каталога Skinport + их реальные продажи за 7/30 дней.
-// Кандидаты: (а) самое дешёвое объявление заметно ниже рекомендованной цены Skinport, (б) самые продаваемые недорогие предметы.
+// 2б. Картинки предметов: открытый каталог ByMykel/CSGO-API (картинки лежат на Steam CDN). Раз в сутки, дальше — кэш.
+let images = new Map();
+try {
+  const file = '.cache/images.json';
+  if (existsSync(file)) {
+    images = new Map(Object.entries(JSON.parse(readFileSync(file, 'utf8'))));
+  } else {
+    const res = await fetch('https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/all.json', { headers: { 'User-Agent': UA } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const all = await res.json();
+    for (const x of Object.values(all)) if (x && typeof x.market_hash_name === 'string' && typeof x.image === 'string') images.set(x.market_hash_name, x.image);
+    mkdirSync('.cache', { recursive: true });
+    writeFileSync(file, JSON.stringify(Object.fromEntries(images)));
+  }
+  console.log(`Картинок в каталоге: ${images.size}`);
+  const send = missingImages.filter((n) => images.has(n)).map((n) => ({ name: n, url: images.get(n) }));
+  if (send.length) console.log('Картинки для наблюдения:', await toWorker('/ingest', { kind: 'images', fetchedAt: now(), items: send.slice(0, 500) }));
+} catch (e) {
+  console.error('Картинки:', e.message);
+}
+
+// 2в. Другие площадки: полные прайс-листы одним запросом (публичные, без ключа).
+const markets = { csgomarket: new Map(), waxpeer: new Map(), lisskins: new Map() };
+const getJson = async (url) => {
+  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'gzip, br' } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return readJson(res);
+};
+await Promise.all([
+  getJson('https://market.csgo.com/api/v2/prices/USD.json').then((j) => {
+    for (const x of j.items ?? []) if (x.market_hash_name && Number(x.price) > 0) markets.csgomarket.set(x.market_hash_name, { p: Number(x.price), q: Number(x.volume) || 0 });
+  }).catch((e) => console.error('Market.CSGO:', e.message)),
+  getJson('https://api.waxpeer.com/v1/prices?game=csgo&minified=1').then((j) => {
+    for (const x of j.items ?? []) if (x.name && x.min > 0) markets.waxpeer.set(x.name, { p: x.min / 1000, q: x.count || 0 });
+  }).catch((e) => console.error('Waxpeer:', e.message)),
+  getJson('https://lis-skins.com/market_export_json/csgo.json').then((j) => {
+    // unlocked_price — цена предмета без блокировки обмена (можно сразу перепродать).
+    for (const x of Array.isArray(j) ? j : []) { const p = Number(x.unlocked_price ?? x.price); if (x.name && p > 0) markets.lisskins.set(x.name, { p, q: x.count || 0 }); }
+  }).catch((e) => console.error('LIS-SKINS:', e.message)),
+]);
+console.log(`Площадки: Market.CSGO ${markets.csgomarket.size}, Waxpeer ${markets.waxpeer.size}, LIS-SKINS ${markets.lisskins.size}`);
+
+// 2г. Рекомендации по всему рынку. Кандидаты (грубый отбор в гривнах по курсу НБУ, точный расчёт делает Worker):
+// (а) где купить дешевле, чем продать на другой площадке после её комиссии; (б) Skinport ниже своей рекомендованной цены;
+// (в) самые популярные — для тренда и проверки Steam. Потом — реальные продажи Skinport за 7/30 дней.
+const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.05, lisskins: 0.05 };
+const RATE = { skinport: fx.EUR || 0, csgomarket: fx.USD || 0, waxpeer: fx.USD || 0, lisskins: fx.USD || 0 };
 let scan = [];
 try {
-  const base = allItems.filter((x) => x && typeof x.market_hash_name === 'string' && x.min_price >= 0.3 && x.quantity >= 3 && !UNIQUE.test(x.market_hash_name));
-  const cheap = base.filter((x) => x.suggested_price > 0 && x.min_price <= x.suggested_price * 0.88)
-    .sort((a, b) => a.min_price / a.suggested_price - b.min_price / b.suggested_price).slice(0, 40);
-  const picked = new Set(cheap.map((x) => x.market_hash_name));
-  const popular = base.filter((x) => !picked.has(x.market_hash_name) && x.min_price <= 300).sort((a, b) => b.quantity - a.quantity).slice(0, 80 - cheap.length);
-  const cands = [...cheap, ...popular];
-  const byName = new Map(cands.map((x) => [x.market_hash_name, { name: x.market_hash_name, minEur: x.min_price, qty: x.quantity, s7: null, s30: null, steam: null }]));
+  const sp = new Map(allItems.filter((x) => x && typeof x.market_hash_name === 'string' && x.min_price > 0).map((x) => [x.market_hash_name, x]));
+  const names = new Set([...sp.keys(), ...markets.csgomarket.keys(), ...markets.waxpeer.keys(), ...markets.lisskins.keys()]);
+  const offersOf = (n) => {
+    const o = {};
+    const s = sp.get(n);
+    if (s) o.skinport = { p: s.min_price, q: s.quantity };
+    for (const m of ['csgomarket', 'waxpeer', 'lisskins']) { const v = markets[m].get(n); if (v) o[m] = v; }
+    return o;
+  };
+  const scored = [];
+  for (const n of names) {
+    if (UNIQUE.test(n)) continue;
+    const o = offersOf(n);
+    const list = Object.entries(o).filter(([m]) => RATE[m]).map(([m, v]) => ({ m, uah: v.p * RATE[m], q: v.q }));
+    if (list.length < 2) continue;
+    const buy = list.reduce((a, b) => (b.uah < a.uah ? b : a));
+    if (buy.uah < 15) continue; // дешевле 15 грн — комиссии съедают всё
+    const typical = list.map((x) => x.uah).sort((a, b) => a - b)[Math.floor(list.length / 2)];
+    let bestNet = 0;
+    for (const s of list) if (s.m !== buy.m && s.q >= 5 && s.uah <= typical * 1.3) bestNet = Math.max(bestNet, s.uah * 0.99 * (1 - FEE[s.m]));
+    if (bestNet > buy.uah * 1.04) scored.push({ n, r: bestNet / buy.uah });
+  }
+  scored.sort((a, b) => b.r - a.r);
+  const picked = new Set(scored.slice(0, 50).map((x) => x.n));
+  const base = [...sp.values()].filter((x) => x.min_price >= 0.3 && x.quantity >= 3 && !UNIQUE.test(x.market_hash_name));
+  for (const x of base.filter((x) => x.suggested_price > 0 && x.min_price <= x.suggested_price * 0.88)
+    .sort((a, b) => a.min_price / a.suggested_price - b.min_price / b.suggested_price)) { if (picked.size >= 65) break; picked.add(x.market_hash_name); }
+  for (const x of base.filter((x) => x.min_price <= 300).sort((a, b) => b.quantity - a.quantity)) { if (picked.size >= 80) break; picked.add(x.market_hash_name); }
+  const byName = new Map([...picked].map((n) => [n, { name: n, img: images.get(n) ?? null, offers: offersOf(n), s7: null, s30: null, steam: null }]));
+  const cands = [...picked];
   for (let i = 0; i < cands.length && skinportCalls < 7; i += SALES_CHUNK) {
-    const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: cands.slice(i, i + SALES_CHUNK).map((x) => x.market_hash_name).join(',') });
+    const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: cands.slice(i, i + SALES_CHUNK).join(',') });
     const res = await fetch(`https://api.skinport.com/v1/sales/history?${q}`, { headers: { 'Accept-Encoding': 'br', 'User-Agent': UA } });
     skinportCalls++;
-    if (!res.ok) throw new Error(`продажи HTTP ${res.status}`);
+    if (!res.ok) { console.error(`Сканирование: продажи Skinport HTTP ${res.status}`); break; }
     for (const h of await readJson(res)) {
       const e = byName.get(h?.market_hash_name);
       if (!e) continue;
@@ -111,8 +180,8 @@ try {
       e.s30 = h.last_30_days ? { median: h.last_30_days.median, volume: h.last_30_days.volume } : null;
     }
   }
-  scan = [...byName.values()].filter((e) => e.s7);
-  console.log(`Сканирование рынка: кандидатов ${cands.length}, с историей продаж ${scan.length}`);
+  scan = [...byName.values()];
+  console.log(`Сканирование рынка: межплощадочных кандидатов ${scored.length}, отобрано ${scan.length}, с историей Skinport ${scan.filter((e) => e.s7).length}`);
 } catch (e) {
   console.error('Сканирование рынка:', e.message);
 }
@@ -157,7 +226,8 @@ await flush();
 // поэтому за несколько запусков покрываются все кандидаты.
 if (scan.length) {
   const rot = Math.floor(Date.now() / 600_000) % 4; // смещение по запускам
-  const order = scan.filter((e) => (e.s7?.volume ?? 0) >= 7).sort((a, b) => (b.s7.volume ?? 0) - (a.s7.volume ?? 0));
+  const act = (e) => Math.max(e.s7?.volume ?? 0, ...Object.values(e.offers).map((o) => o.q || 0));
+  const order = scan.filter((e) => act(e) >= 7).sort((a, b) => act(b) - act(a));
   const pick = order.slice(rot * SCAN_STEAM, rot * SCAN_STEAM + SCAN_STEAM);
   for (const e of strikes >= 2 ? [] : pick) {
     if (Date.now() - started > TIME_BUDGET_MS + 60_000) break;

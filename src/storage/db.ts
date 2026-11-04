@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS = {
   max_buy_kop: '0',           // 0 = без ограничения
   min_profit_kop: '2000',     // 20 грн
   min_roi_bp: '800',          // 8%
+  deposit_fee_bp: '0',        // комиссия пополнения/оплаты (зависит от способа оплаты) — вводит пользователь
+  withdraw_fee_bp: '0',       // комиссия вывода денег с площадки — вводит пользователь
   min_liquidity: 'medium',    // high | medium | low
   change_threshold_bp: '1500',// 15%
   quiet_start: '23',

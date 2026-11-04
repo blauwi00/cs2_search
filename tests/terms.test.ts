@@ -105,3 +105,35 @@ test('цены на всех площадках: сборщик присылае
   assert.deepEqual(r.sites.map((x) => [x.key, x.kop]), [['buff163', 3800], ['waxpeer', 4400], ['skinport', 4800]], 'по возрастанию, мусор отброшен');
   assert.equal(r.sites[0].group, 'china');
 });
+
+test('рассылка: /broadcast только владельцу, с предпросмотром и подтверждением; уходит через очередь со ссылкой на канал', async () => {
+  const { ADMIN } = await import('./helpers.ts');
+  const { runCycle } = await import('../src/core/runner.ts');
+  const { setMetaStmt } = await import('../src/core/channel.ts');
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  const T = Date.parse('2026-11-04T15:00:00Z') / 1000; // 16:00 по Варшаве — не тихие часы
+  for (const u of [ADMIN, 501, 502]) await db.ensureUser(D, u, u === ADMIN, T);
+  await setMetaStmt(D, 'channel_id', '-1001234').run();
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([{ match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => {
+    const method = u.split('/').pop()!; const body = JSON.parse(String(init?.body ?? '{}')); sent.push({ method, body });
+    if (method === 'getChat') return json({ ok: true, result: { id: -1001234, username: 'cenolow_cs2' } });
+    return json({ ok: true, result: { message_id: sent.length } });
+  } }]);
+  const upd = (b: object) => handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, ...b }) }), env, T, fetcher);
+  const msg = (text: string, from: number) => upd({ message: { message_id: 1, from: { id: from }, chat: { id: from, type: 'private' }, text } });
+  await msg('/broadcast', 501);
+  assert.equal(sent.length, 0, 'чужой не может');
+  await msg('/broadcast', ADMIN);
+  const preview = sent.find((s) => s.method === 'sendMessage' && /появился канал/.test(s.body.text))!;
+  assert.equal(preview.body.reply_markup.inline_keyboard[0][0].url, 'https://t.me/cenolow_cs2');
+  assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM outbox').get() as { n: number }).n, 0, 'без подтверждения ничего не уходит');
+  await upd({ callback_query: { id: 'q', from: { id: ADMIN }, data: 'bc:send', message: { message_id: 5, chat: { id: ADMIN, type: 'private' } } } });
+  assert.equal((d.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind = 'broadcast'").get() as { n: number }).n, 3);
+  sent.length = 0;
+  await runCycle(env, { now: T + 60, fetcher });
+  const got = sent.filter((s) => s.method === 'sendMessage' && /появился канал/.test(s.body.text)).map((s) => s.body.chat_id).sort();
+  assert.deepEqual(got, [501, 502, ADMIN].sort());
+});

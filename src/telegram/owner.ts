@@ -3,6 +3,7 @@ import { SITES, loadRefLinks, checkRefUrl, setRefStmt } from '../core/sites.ts';
 
 import { esc } from './api.ts';
 import { say, type H } from './context.ts';
+import { nextAllowed } from '../core/audience.ts';
 import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
 const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
@@ -134,4 +135,61 @@ export async function refCommand(h: H, arg: string): Promise<void> {
     ...SITES.map((s) => `${links[s.key] ? '✅' : '▫️'} <b>${s.name}</b> (<code>${s.key}</code>): ${links[s.key] ? esc(links[s.key]!) : 'обычная ссылка'}`), '',
     'Задать: <code>/ref waxpeer https://waxpeer.com/?ref=…</code>', 'Убрать: <code>/ref waxpeer off</code>',
   ].join('\n'));
+}
+
+/** Ссылка на подключённый канал: публичный @username или пригласительная ссылка (бот — админ канала). */
+export async function channelLink(h: H): Promise<string | null> {
+  const id = await getMeta(h.d, 'channel_id');
+  if (!id) return null;
+  try {
+    const chat = await h.tg.call<{ username?: string; invite_link?: string }>('getChat', { chat_id: Number(id) });
+    if (chat.username) return `https://t.me/${chat.username}`;
+    if (chat.invite_link) return chat.invite_link;
+    return await h.tg.call<string>('exportChatInviteLink', { chat_id: Number(id) });
+  } catch { return null; }
+}
+
+const BROADCAST_DEFAULT = [
+  '📣 <b>У бота появился канал</b>', '',
+  'Каждый день: рекомендации дня с честным итогом вчерашних, что растёт в цене, кейсы Steam, итоги недели и обновления CS2.', '',
+  'Подписывайся 👇',
+].join('\n');
+
+/** /broadcast [текст] — рассылка всем пользователям бота (только владелец, с подтверждением). Без текста — анонс канала. */
+export async function broadcastCommand(h: H, arg: string): Promise<void> {
+  if (!h.isAdmin) return;
+  const text = arg.trim() ? esc(arg.trim()).slice(0, 3500) : BROADCAST_DEFAULT;
+  const link = await channelLink(h);
+  if (!arg.trim() && !link) return say(h, 'Канал не подключён или бот не может получить на него ссылку. Сначала: /channel @имя_канала');
+  const kb = link ? [[{ text: '📣 Перейти в канал', url: link }]] : [];
+  const n = (await h.d.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())?.n ?? 0;
+  await setMetaStmt(h.d, 'broadcast_draft', JSON.stringify({ text, kb })).run();
+  await say(h, '👀 <b>Так увидят все</b> — проверь текст и кнопку:');
+  await h.tg.sendMessage(h.uid, text, kb);
+  return say(h, `Отправить <b>${n}</b> пользователям? Уйдёт постепенно (~25 сообщений в минуту), ночью — после тихих часов каждого.`, [
+    [{ text: `✅ Отправить всем (${n})`, callback_data: 'bc:send' }], [{ text: 'Отмена', callback_data: 'bc:no' }],
+  ]);
+}
+
+export async function broadcastConfirm(h: H, yes: boolean): Promise<void> {
+  if (!h.isAdmin) return;
+  const raw = await getMeta(h.d, 'broadcast_draft');
+  await h.d.prepare(`DELETE FROM meta WHERE key = 'broadcast_draft'`).run();
+  if (!yes || !raw) return say(h, yes ? 'Черновик не найден — начни заново: /broadcast' : 'Рассылка отменена.');
+  const { text, kb } = JSON.parse(raw) as { text: string; kb: unknown };
+  const users = (await h.d.prepare('SELECT telegram_id FROM users').all<{ telegram_id: number }>()).results.map((r) => r.telegram_id);
+  const quiet = new Map<number, { s: number; e: number }>();
+  for (const r of (await h.d.prepare(`SELECT telegram_id, key, value FROM user_settings WHERE key IN ('quiet_start', 'quiet_end')`).all<{ telegram_id: number; key: string; value: string }>()).results) {
+    const q = quiet.get(r.telegram_id) ?? { s: 23, e: 8 };
+    if (r.key === 'quiet_start') q.s = Number(r.value); else q.e = Number(r.value);
+    quiet.set(r.telegram_id, q);
+  }
+  const ref = `bc:${h.now}`;
+  const stmts = users.map((tid) => {
+    const q = quiet.get(tid) ?? { s: 23, e: 8 };
+    return h.d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at) VALUES (?, 'broadcast', ?, NULL, ?, ?, NULL, ?, ?)`)
+      .bind(tid, ref, text, JSON.stringify(kb), nextAllowed(h.now, q.s, q.e), h.now);
+  });
+  for (let i = 0; i < stmts.length; i += 90) await h.d.batch(stmts.slice(i, i + 90));
+  return say(h, `✅ Рассылка поставлена в очередь: <b>${users.length}</b> человек. Кто заблокировал бота — тому не придёт.`);
 }

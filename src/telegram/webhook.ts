@@ -2,7 +2,7 @@ import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
 import { WATCH_LIMIT } from '../core/audience.ts';
-import { channelCommand, postPreview, publishNow, refStmt, statsCommand, refCommand } from './owner.ts';
+import { channelCommand, postPreview, publishNow, refStmt, statsCommand, refCommand, broadcastCommand, broadcastConfirm } from './owner.ts';
 import { budgetedDb, newBudget } from '../storage/budget.ts';
 import { setJobEnabled, listJobs } from '../core/scheduler.ts';
 import { TelegramClient, esc, type Keyboard } from './api.ts';
@@ -108,6 +108,7 @@ async function onText(text: string, h: H): Promise<void> {
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
     case '/stats': return statsCommand(h);
     case '/ref': return refCommand(h, t.replace(/^\/ref(@\w+)?/i, ''));
+    case '/broadcast': return broadcastCommand(h, text.trim().replace(/^\/broadcast(@\w+)?/i, ''));
     case '/menu': {
       await db.clearState(h.d, h.uid);
       return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`));
@@ -226,6 +227,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   }
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
+  if (a === 'bc') return broadcastConfirm(h, b === 'send');
   if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
   if (a === 'm') {
     switch (b) {

@@ -14,6 +14,8 @@ import { toKop } from './currency/nbu.ts';
 import { safeEqual } from './telegram/webhook.ts';
 import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
+import { parseScan, mergeScan } from './core/recs.ts';
+import { loadScan } from './storage/scan.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
@@ -141,6 +143,15 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       if (names.length < 10) return json({ ok: false, error: 'catalog_too_small' }, 400); // защита от пустого/битого ответа
       await d.batch(catalogPartStmts(d, part, parts, names, now));
       result.stored = names.length;
+    } else if (body.kind === 'scan') {
+      const fresh = parseScan(body.items, at);
+      if (fresh.length === 0) return json({ ok: false, error: 'empty_scan' }, 400);
+      const old = await loadScan(d);
+      const merged = mergeScan(fresh, old?.entries ?? [], now);
+      await d.prepare(
+        `INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
+      ).bind(JSON.stringify(merged), at).run();
+      result.stored = merged.length;
     } else {
       return json({ ok: false, error: 'unknown_kind' }, 400);
     }

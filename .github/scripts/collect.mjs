@@ -40,13 +40,18 @@ async function toWorker(path, body) {
 
 const { items, needCatalog } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
-if (items.length === 0 && !needCatalog) process.exit(0);
+let allItems = [];
+let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
+const SCAN_STEAM = 12;              // сколько кандидатов рекомендаций проверить в Steam за запуск
+const UNIQUE = /Doppler|Case Hardened|Fade|Crimson Web|Slaughter|Marble|Lore|Autotronic|Gamma/i;
 
 // 1. Skinport: весь каталог одним запросом (лимит 8 запросов / 5 мин), отправляем только нужные предметы.
 try {
   const res = await fetch('https://api.skinport.com/v1/items?app_id=730&currency=EUR&tradable=0', { headers: { 'Accept-Encoding': 'br', 'User-Agent': UA } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  skinportCalls++;
   const all = await readJson(res);
+  allItems = Array.isArray(all) ? all : [];
   if (needCatalog) {
     // Раз в сутки: все названия CS2 для поиска в боте и приложении.
     const names = [...new Set(all.map((x) => x.market_hash_name).filter(Boolean))].sort();
@@ -67,12 +72,13 @@ try {
 }
 
 // 2. Skinport: история продаж (ликвидность) — порциями.
-for (let i = 0; i < items.length && i / SALES_CHUNK < 6; i += SALES_CHUNK) {
+for (let i = 0; i < items.length && i / SALES_CHUNK < 4; i += SALES_CHUNK) {
   const chunk = items.slice(i, i + SALES_CHUNK);
   try {
     const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: chunk.join(',') });
     const res = await fetch(`https://api.skinport.com/v1/sales/history?${q}`, { headers: { 'Accept-Encoding': 'br', 'User-Agent': UA } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    skinportCalls++;
     const r = await toWorker('/ingest', { kind: 'skinport_sales', fetchedAt: now(), items: await readJson(res) });
     console.log(`Skinport продажи ${i + 1}–${i + chunk.length}:`, r);
   } catch (e) {
@@ -80,6 +86,35 @@ for (let i = 0; i < items.length && i / SALES_CHUNK < 6; i += SALES_CHUNK) {
     await toWorker('/ingest', { kind: 'skinport_sales', fetchedAt: now(), error: e.message }).catch(() => {});
     break;
   }
+}
+
+// 2б. Рекомендации по всему рынку: кандидаты из каталога Skinport + их реальные продажи за 7/30 дней.
+// Кандидаты: (а) самое дешёвое объявление заметно ниже рекомендованной цены Skinport, (б) самые продаваемые недорогие предметы.
+let scan = [];
+try {
+  const base = allItems.filter((x) => x && typeof x.market_hash_name === 'string' && x.min_price >= 0.3 && x.quantity >= 3 && !UNIQUE.test(x.market_hash_name));
+  const cheap = base.filter((x) => x.suggested_price > 0 && x.min_price <= x.suggested_price * 0.88)
+    .sort((a, b) => a.min_price / a.suggested_price - b.min_price / b.suggested_price).slice(0, 40);
+  const picked = new Set(cheap.map((x) => x.market_hash_name));
+  const popular = base.filter((x) => !picked.has(x.market_hash_name) && x.min_price <= 300).sort((a, b) => b.quantity - a.quantity).slice(0, 80 - cheap.length);
+  const cands = [...cheap, ...popular];
+  const byName = new Map(cands.map((x) => [x.market_hash_name, { name: x.market_hash_name, minEur: x.min_price, qty: x.quantity, s7: null, s30: null, steam: null }]));
+  for (let i = 0; i < cands.length && skinportCalls < 7; i += SALES_CHUNK) {
+    const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: cands.slice(i, i + SALES_CHUNK).map((x) => x.market_hash_name).join(',') });
+    const res = await fetch(`https://api.skinport.com/v1/sales/history?${q}`, { headers: { 'Accept-Encoding': 'br', 'User-Agent': UA } });
+    skinportCalls++;
+    if (!res.ok) throw new Error(`продажи HTTP ${res.status}`);
+    for (const h of await readJson(res)) {
+      const e = byName.get(h?.market_hash_name);
+      if (!e) continue;
+      e.s7 = h.last_7_days ? { median: h.last_7_days.median, volume: h.last_7_days.volume } : null;
+      e.s30 = h.last_30_days ? { median: h.last_30_days.median, volume: h.last_30_days.volume } : null;
+    }
+  }
+  scan = [...byName.values()].filter((e) => e.s7);
+  console.log(`Сканирование рынка: кандидатов ${cands.length}, с историей продаж ${scan.length}`);
+} catch (e) {
+  console.error('Сканирование рынка:', e.message);
 }
 
 // 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.
@@ -117,4 +152,25 @@ for (const name of items) {
   await sleep(STEAM_GAP_MS);
 }
 await flush();
+
+// 4. Steam для лучших кандидатов рекомендаций (если Steam не ограничил нас выше). Проверенные раньше Worker помнит 3 часа,
+// поэтому за несколько запусков покрываются все кандидаты.
+if (scan.length) {
+  const rot = Math.floor(Date.now() / 600_000) % 4; // смещение по запускам
+  const order = scan.filter((e) => (e.s7?.volume ?? 0) >= 7).sort((a, b) => (b.s7.volume ?? 0) - (a.s7.volume ?? 0));
+  const pick = order.slice(rot * SCAN_STEAM, rot * SCAN_STEAM + SCAN_STEAM);
+  for (const e of strikes >= 2 ? [] : pick) {
+    if (Date.now() - started > TIME_BUDGET_MS + 60_000) break;
+    try {
+      const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: e.name });
+      const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
+      if (res.status === 429) { console.log('Steam 429 при проверке рекомендаций — стоп'); break; }
+      if (res.ok) { const b = await readJson(res); if (b?.success) e.steam = { lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }; }
+    } catch { /* пропускаем предмет */ }
+    await sleep(STEAM_GAP_MS);
+  }
+  try {
+    console.log('Рекомендации:', await toWorker('/ingest', { kind: 'scan', fetchedAt: now(), items: scan }));
+  } catch (e) { console.error('Рекомендации:', e.message); }
+}
 console.log(`Готово за ${Math.round((Date.now() - started) / 1000)} с`);

@@ -39,7 +39,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0 } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [] } = await toWorker('/ingest/items');
 console.log(`Предметов в наблюдении: ${items.length}`);
 let allItems = [];
 let skinportCalls = 0;              // лимит Skinport: 8 запросов за 5 минут — держим не больше 7 за запуск
@@ -132,6 +132,60 @@ try {
   if (fresh && !send.length && fileAt) await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt, items: [] });
 } catch (e) {
   console.error('Прайс Steam:', e.message);
+}
+
+// 2б-3. Открытые инвентари Steam тех, кто привязал Steam в приложении (только чтение публичных данных, без входа в аккаунт).
+// До 3 инвентарей за запуск, с паузами. Закрытый инвентарь → просим пользователя открыть его в настройках приватности Steam.
+for (const s of inventorySync) {
+  if (Date.now() - started > 2 * 60_000) break;
+  const base = { kind: 'steam_inventory', fetchedAt: now(), tid: s.tid, steamId: s.steamId, vanity: s.vanity };
+  try {
+    let id = s.steamId;
+    if (!id && s.vanity) {
+      const r = await fetch(`https://steamcommunity.com/id/${encodeURIComponent(s.vanity)}/?xml=1`, { headers: { 'User-Agent': UA } });
+      if (r.status === 429) { await toWorker('/ingest', { ...base, status: 'rate_limited' }); break; }
+      const m = (await r.text()).match(/<steamID64>(7656119\d{10})<\/steamID64>/);
+      if (!m) { console.log('Инвентарь: профиль не найден', s.vanity); await toWorker('/ingest', { ...base, status: 'not_found' }); continue; }
+      id = m[1];
+      await sleep(STEAM_GAP_MS);
+    }
+    const counts = new Map();
+    let start = '', pages = 0, status = 'ok';
+    do {
+      const q = new URLSearchParams({ l: 'english', count: '2000' });
+      if (start) q.set('start_assetid', start);
+      const r = await fetch(`https://steamcommunity.com/inventory/${id}/730/2?${q}`, { headers: { 'User-Agent': UA } });
+      if (r.status === 429) { status = 'rate_limited'; break; }
+      if (r.status === 403 || r.status === 401) { status = 'private'; break; }
+      if (!r.ok) { status = r.status === 404 ? 'not_found' : 'error'; break; }
+      const j = await r.json().catch(() => null);
+      if (!j || j.success === false) { status = 'private'; break; }
+      const desc = new Map((j.descriptions ?? []).map((d) => [`${d.classid}_${d.instanceid}`, d]));
+      for (const a of j.assets ?? []) {
+        const d = desc.get(`${a.classid}_${a.instanceid}`);
+        if (!d?.market_hash_name) continue;
+        const c = counts.get(d.market_hash_name) ?? { name: d.market_hash_name, qty: 0, marketable: !!d.marketable, tradable: !!d.tradable, img: d.icon_url ? `https://community.akamai.steamstatic.com/economy/image/${d.icon_url}` : null };
+        c.qty += Number(a.amount) || 1;
+        counts.set(d.market_hash_name, c);
+      }
+      start = j.more_items ? String(j.last_assetid || '') : '';
+      pages++;
+      if (start) await sleep(STEAM_GAP_MS);
+    } while (start && pages < 3);
+    const list = [...counts.values()].slice(0, 500);
+    console.log(`Инвентарь Steam ${s.tid}: ${status}, предметов ${list.length}`);
+    console.log('  →', await toWorker('/ingest', { ...base, steamId: id, status, items: status === 'ok' ? list : [] }));
+    if (status === 'rate_limited') break;
+    // Средние цены Steam для предметов инвентаря — сразу, из уже скачанного прайса.
+    if (status === 'ok' && steamAvg.size) {
+      const send = list.map((x) => ({ name: x.name, ...(steamAvg.get(x.name) ?? { d1: null, d7: null, d30: null, d90: null }) }));
+      for (let i = 0; i < send.length; i += 400) await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), items: send.slice(i, i + 400) });
+    }
+  } catch (e) {
+    console.error('Инвентарь Steam:', e.message);
+    await toWorker('/ingest', { ...base, status: 'error' }).catch(() => {});
+  }
+  await sleep(STEAM_GAP_MS);
 }
 
 // 2в. Другие площадки: полные прайс-листы одним запросом (публичные, без ключа).

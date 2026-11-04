@@ -1,6 +1,7 @@
 import type { Env } from './env.ts';
 import { handleWebhook } from './telegram/webhook.ts';
 import { handleAdmin } from './admin.ts';
+import { handleSteamCallback } from './steam_link.ts';
 import { runCycle } from './core/runner.ts';
 import { nowSec } from './utils/time.ts';
 import { handleChart } from './chart.ts';
@@ -18,6 +19,7 @@ export default {
       return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex' } });
     }
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
+    if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());
     if (url.pathname === '/chart' && req.method === 'GET') return handleChart(req, env, nowSec());
     // Публичный адрес ничего не раскрывает.
     if (url.pathname === '/') return new Response('CS2 Market Bot: OK', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });

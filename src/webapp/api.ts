@@ -31,7 +31,7 @@ import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '..
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
-import { submitFeedback, donateInvoiceLink, DONATE_AMOUNTS } from '../core/support.ts';
+import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 async function recsFor(d: D1Database, tid: number, now: number) {
@@ -231,6 +231,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         ok: true, now, watched, actions,
         recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 6), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
         sites: sitesFor(await loadRefLinks(d)),
+        donors: await topDonors(d, 10),
         cronAlive: lastRun > 0 && now - lastRun < 300,
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),

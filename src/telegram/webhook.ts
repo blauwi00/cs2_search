@@ -20,7 +20,7 @@ import { parseMarketHashName } from '../core/normalization.ts';
 import { chartUrl } from '../chart.ts';
 import { moneyResolver, guessCurrency, isCurrency, loadRates, availableCurrencies } from '../currency/display.ts';
 import { TERMS_VERSION, termsText, privacyPolicyText, termsPrompt, deleteUserStmts } from '../core/terms.ts';
-import { submitFeedback, donateInvoiceLink, parseDonatePayload, DONATE_AMOUNTS } from '../core/support.ts';
+import { submitFeedback, donateInvoiceLink, parseDonatePayload, donorName, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Максимальный размер тела webhook, который мы готовы разбирать. */
 export const MAX_UPDATE_BYTES = 64 * 1024;
@@ -36,7 +36,7 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
   return diff === 0;
 }
 
-interface TgUser { is_bot?: boolean; id: number; language_code?: string }
+interface TgUser { is_bot?: boolean; id: number; language_code?: string; first_name?: string }
 interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string; successful_payment?: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }
 interface TgCallback { id: string; from: TgUser; data?: string; message?: TgMessage }
 interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback; pre_checkout_query?: { id: string; from: TgUser; currency: string; total_amount: number; invoice_payload: string } }
@@ -77,7 +77,7 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   try {
     await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
-    else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
+    else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, update.message.from?.first_name, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
   } catch (e) {
     await db.log(d, 'error', 'telegram', 'handler', (e as Error).message, now);
@@ -246,6 +246,11 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
+  if (a === 'dt') {
+    const on = b === 'on';
+    await db.setSetting(h.d, h.uid, 'donor_top', on ? '1' : '0', h.now);
+    return say(h, on ? '👀 Ты снова в «Топе поддержки» (если поддерживал звёздами).' : '🙈 Готово: в «Топе поддержки» тебя не видно.', [[donorTopButton(on)]]);
+  }
   if (a === 'don' && b) {
     const stars = Number(b);
     if (!DONATE_AMOUNTS.includes(stars)) return;
@@ -389,14 +394,20 @@ async function donateView(h: H): Promise<void> {
   return say(h, [
     '💛 <b>Поддержать Ценолова</b>', '',
     'Бот бесплатный и работает 24/7. Если он тебе помог — можно поддержать звёздами Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.',
-  ].join('\n'), [DONATE_AMOUNTS.slice(0, 3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` })), DONATE_AMOUNTS.slice(3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` }))]);
+    '', 'Поддержавшие попадают в бегущую строку «Топ поддержки» в приложении — с именем из Telegram. Скрыть себя можно кнопкой после оплаты или командой /donate → «Скрыть меня».',
+  ].join('\n'), [DONATE_AMOUNTS.slice(0, 3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` })), DONATE_AMOUNTS.slice(3).map((n) => ({ text: `⭐ ${n}`, callback_data: `don:${n}` })), [donorTopButton((await db.getSettings(h.d, h.uid)).donor_top !== '0')]]);
 }
 
-async function onPaid(p: NonNullable<TgMessage['successful_payment']>, h: H): Promise<void> {
+async function onPaid(p: NonNullable<TgMessage['successful_payment']>, first: string | undefined, h: H): Promise<void> {
   const stars = parseDonatePayload(p.invoice_payload);
   if (p.currency !== 'XTR' || !stars) return;
-  const r = await h.d.prepare('INSERT OR IGNORE INTO donations (telegram_id, stars, charge_id, created_at) VALUES (?, ?, ?, ?)').bind(h.uid, p.total_amount, p.telegram_payment_charge_id, h.now).run();
+  const r = await h.d.prepare('INSERT OR IGNORE INTO donations (telegram_id, stars, charge_id, created_at, name) VALUES (?, ?, ?, ?, ?)').bind(h.uid, p.total_amount, p.telegram_payment_charge_id, h.now, donorName(first)).run();
   if (!(r.meta?.changes ?? 0)) return;
-  await say(h, `💛 Спасибо за поддержку — <b>${p.total_amount} ⭐</b>! Это правда помогает развивать бота.`);
+  const shown = (await db.getSettings(h.d, h.uid)).donor_top !== '0';
+  await say(h, `💛 Спасибо за поддержку — <b>${p.total_amount} ⭐</b>! Это правда помогает развивать бота.\n\n${shown ? 'Твоё имя из Telegram появится в бегущей строке «Топ поддержки» в приложении.' : 'В «Топе поддержки» ты скрыт.'}`, [[donorTopButton(shown)]]);
   await h.tg.sendMessage(Number(h.env.ADMIN_TELEGRAM_ID), `💛 Пожертвование: <b>${p.total_amount} ⭐</b> от <code>${h.uid}</code>`).catch(() => undefined);
+}
+
+function donorTopButton(shown: boolean) {
+  return shown ? { text: '🙈 Скрыть меня в топе', callback_data: 'dt:off' } : { text: '👀 Показывать меня в топе', callback_data: 'dt:on' };
 }

@@ -28,6 +28,7 @@ button{font:inherit;color:inherit}
 .ticker{flex:0 0 calc(100% + 32px);margin:2px -16px 0;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--hint);cursor:pointer;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
 .ticker:empty{display:none}
+.ticker.t2{font-size:11px;margin-top:3px;opacity:.85}.ticker.t2 b{color:#f6c445}
 .tk-in{display:inline-block;padding-left:16px;animation:tk var(--tk-dur,40s) linear infinite}
 .tk-in span{margin-right:28px}
 .ic.site{background:#fff;overflow:hidden;padding:7px;position:relative}.ic.site img{width:100%;height:100%;object-fit:contain;border-radius:6px;position:relative}.ic.site b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#1c7ed6;font-size:18px}.ic.site.sm{width:28px;height:28px;border-radius:8px;padding:3px;flex:none}.ic.site.sm b{font-size:13px}.ic.site.noimg{background:var(--card2,#2a3442)}.ic.site.noimg b{color:var(--link)}
@@ -141,7 +142,7 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 </style>
 </head>
 <body>
-<div class="top"><h1 id="title">CS2 Market</h1><div class="ticker" id="ticker"></div></div>
+<div class="top"><h1 id="title">CS2 Market</h1><div class="ticker" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
@@ -283,9 +284,19 @@ function renderTicker(s) {
   state.health = health(s); state.tickerData = s; if (s.recs && s.recs.fetchedAt) state.cache.recsAt = s.recs.fetchedAt;
   var items = tickerItems(s), el = $('#ticker');
   el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
+  renderDonors(s);
   // Скорость постоянная, независимо от длины: ~45 px/с.
   var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(15, Math.round(w / 45)) + 's');
 }
+// Вторая строка: топ поддержки звёздами. Нажатие — «Поддержать проект».
+function renderDonors(s) {
+  var el = $('#ticker2'), ds = s.donors || [];
+  var items = ds.length ? '<span>💛 Топ поддержки:</span>' + ds.map(function (x, i) { return '<span>' + (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + ' ' + esc(x.name) + ' — <b>' + x.stars + ' ⭐</b></span>'; }).join('')
+    : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Поддержать проект»</span>';
+  el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
+  var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(20, Math.round(w / 35)) + 's');
+}
+$('#ticker2').onclick = function () { haptic(); donateSheet(); };
 function refreshTicker() { api('summary').then(renderTicker).catch(function () {}); }
 setInterval(function () { if (!document.hidden && state.tickerData) refreshTicker(); }, 180000);
 // Нажатие на предложение — подробности сделки; на пустое место — все идеи.
@@ -1017,7 +1028,7 @@ function reportSheet(name, context) {
   };
 }
 function donateSheet() {
-  var h = '<h2>💛 Поддержать Ценолова</h2><div class="sub">Бот бесплатный и работает круглосуточно. Если он помог — можно отправить звёзды Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.</div>';
+  var h = '<h2>💛 Поддержать Ценолова</h2><div class="sub">Бот бесплатный и работает круглосуточно. Если он помог — можно отправить звёзды Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.<br><br>Поддержавшие попадают во вторую бегущую строку «💛 Топ поддержки» — с именем из Telegram. Скрыть себя: /donate в боте → «Скрыть меня».</div>';
   h += '<div class="grid2" id="dons">' + [25, 50, 100, 250, 500].map(function (n) { return '<button class="btn sec2" data-n="' + n + '" style="margin:0">⭐ ' + n + '</button>'; }).join('') + '</div>';
   h += '<div class="note">Оплата проходит внутри Telegram. Вопросы по оплате — команда /paysupport в боте.</div>';
   sheet(h);
@@ -1025,7 +1036,7 @@ function donateSheet() {
     b.onclick = function () {
       var n = +b.getAttribute('data-n');
       api('donate', { method: 'POST', body: { stars: n } }).then(function (r) {
-        if (tg && tg.openInvoice) tg.openInvoice(r.link, function (st) { if (st === 'paid') { haptic('ok'); closeSheet(); toast('Спасибо за поддержку! 💛'); } });
+        if (tg && tg.openInvoice) tg.openInvoice(r.link, function (st) { if (st === 'paid') { haptic('ok'); closeSheet(); toast('Спасибо за поддержку! 💛'); setTimeout(refreshTicker, 4000); } });
         else openLink(r.link);
       }).catch(function (e) { toast(e.message); });
     };

@@ -76,3 +76,21 @@ test('ошибка в цене: из приложения уходит влад�
   assert.match(sent.at(-1)!.body.text, /Спасибо/);
   assert.equal((await D.prepare('SELECT COUNT(*) AS n FROM feedback').first<{ n: number }>())!.n, 6);
 });
+
+test('топ поддержки: имя из Telegram, сумма по человеку, скрытие кнопкой, /deletemydata убирает имя', async () => {
+  const { D, env, sent, upd } = setup();
+  const pay = (u: number, first: string, stars: number, ch: string) => upd({ message: { message_id: 2, from: { id: u, first_name: first }, chat: { id: u, type: 'private' }, successful_payment: { currency: 'XTR', total_amount: stars, invoice_payload: `donate:${stars}`, telegram_payment_charge_id: ch } } });
+  await pay(11, 'Оля <b>', 50, 'a'); await pay(11, 'Оля', 100, 'b'); await pay(22, 'Max https://spam.io', 250, 'c'); await pay(33, 'Тихий', 25, 'd');
+  const { topDonors } = await import('../src/core/support.ts');
+  assert.deepEqual(await topDonors(D), [{ name: 'Max', stars: 250 }, { name: 'Оля b', stars: 150 }, { name: 'Тихий', stars: 25 }]);
+  assert.ok(JSON.stringify(sent.find((x) => x.body.chat_id === 33)!.body.reply_markup).includes('dt:off'));
+  await upd({ callback_query: { id: 'c', from: { id: 33 }, data: 'dt:off', message: { message_id: 1, chat: { id: 33, type: 'private' } } } });
+  assert.equal((await topDonors(D)).length, 2);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 11, first_name: 'Оля' }) }, 'TEST_TOKEN');
+  const s = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': init } }), env, NOW)).json() as any;
+  assert.equal(s.donors[0].name, 'Max');
+  await upd({ message: { message_id: 1, from: { id: 22 }, chat: { id: 22, type: 'private' }, text: '/deletemydata' } });
+  const btn = JSON.stringify(sent.at(-1)!.body.reply_markup ?? {}).match(/"(delme:[^"]+)"/);
+  if (btn) await upd({ callback_query: { id: 'c2', from: { id: 22 }, data: btn[1], message: { message_id: 1, chat: { id: 22, type: 'private' } } } });
+  assert.equal((await topDonors(D))[0].name, 'Аноним');
+});

@@ -28,6 +28,20 @@ export async function submitFeedback(d: D1Database, tg: TelegramClient, adminId:
   return null;
 }
 
+/** Имя для топа: только имя из Telegram, без ссылок и служебных символов, коротко. */
+export function donorName(first?: unknown): string | null {
+  const s = typeof first === 'string' ? first.replace(/[\u0000-\u001f\u200b-\u200f\u202a-\u202e<>@]/g, '').replace(/https?:\/\/\S+|t\.me\/\S+/gi, '').replace(/\s+/g, ' ').trim() : '';
+  return s ? Array.from(s).slice(0, 18).join('') : null;
+}
+
+/** Топ поддержки за всё время: сумма звёзд на человека; скрывшие себя — не показываются. */
+export async function topDonors(d: D1Database, limit = 10): Promise<{ name: string; stars: number }[]> {
+  const r = await d.prepare(`SELECT MAX(name) AS name, SUM(stars) AS stars FROM donations
+    WHERE telegram_id NOT IN (SELECT telegram_id FROM user_settings WHERE key = 'donor_top' AND value = '0')
+    GROUP BY telegram_id ORDER BY stars DESC, MIN(created_at) LIMIT ?`).bind(limit).all<{ name: string | null; stars: number }>();
+  return r.results.map((x) => ({ name: x.name || 'Аноним', stars: x.stars }));
+}
+
 export const DONATE_AMOUNTS = [25, 50, 100, 250, 500];
 export const donatePayload = (stars: number) => `donate:${stars}`;
 export const parseDonatePayload = (p: unknown) => {

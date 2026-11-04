@@ -55,7 +55,7 @@ export const PRIVACY_SECTIONS: { title: string; items: string[] }[] = [
     'Когда ты переходишь на сайт-площадку (в том числе по партнёрской ссылке), этот сайт видит переход по своим правилам. Бот твои данные площадкам не передаёт.',
   ] },
   { title: 'Как удалить', items: [
-    'Команда /deletemydata в боте удаляет всё о тебе: настройки, список, покупки, привязку Steam, очередь уведомлений и твои сообщения об ошибках. Записи о пожертвованиях звёздами (сумма и номер платежа) остаются — они нужны Telegram для возврата. Отключить только Steam — в приложении: Инвентарь → «Отключить Steam».',
+    'Команда /deletemydata в боте удаляет всё о тебе: настройки, список, покупки, привязку Steam, очередь уведомлений и твои сообщения об ошибках. Записи о пожертвованиях звёздами (сумма и номер платежа) остаются без имени — они нужны Telegram для возврата. Отключить только Steam — в приложении: Инвентарь → «Отключить Steam».',
   ] },
 ];
 
@@ -84,6 +84,7 @@ export function deleteUserStmts(d: D1Database, tid: number): D1PreparedStatement
     q('DELETE FROM steam_login WHERE telegram_id = ?'),
     q('DELETE FROM outbox WHERE telegram_id = ?'),
     q('DELETE FROM feedback WHERE telegram_id = ?'),
+    q('UPDATE donations SET name = NULL WHERE telegram_id = ?'),
     q('DELETE FROM hidden_signals WHERE telegram_id = ?'),
     q('DELETE FROM notification_log WHERE telegram_id = ?'),
     q('DELETE FROM user_state WHERE telegram_id = ?'),

@@ -25,6 +25,21 @@ test('подсказка: купить / продать / дорого / жда�
   assert.equal(advise({ ...base, lot: { openQty: 1, costPerUnitKop: 950, targetKop: 1000 } }).action, 'sell', 'цель достигнута');
 });
 
+test('подсказка без своей истории: по реальным продажам Skinport/Steam, а не «мало данных»', () => {
+  const fresh = { ...base, historyDays: 0, avg7Kop: null };
+  assert.equal(advise(fresh).action, 'nodata', 'совсем нет данных — честно «мало данных»');
+  const sp = (cur: number) => advise({ ...fresh, alt: { curKop: cur, refKop: 1000, where: 'на Skinport', basis: 'средней цены продаж за месяц там (120 шт.)' } });
+  const cheap = sp(880);
+  assert.equal(cheap.action, 'buy');
+  assert.match(cheap.reason, /на Skinport ниже средней цены продаж за месяц там \(120 шт\.\) на 12%/);
+  assert.equal(sp(1100).action, 'avoid');
+  const ok = sp(1020);
+  assert.equal(ok.action, 'hold');
+  assert.match(ok.reason, /обычная: \+2% относительно средней цены продаж/);
+  // Своя история есть — она главнее запасного ориентира.
+  assert.equal(advise({ ...base, steamLowKop: 1000, avg7Kop: 1000, alt: { curKop: 500, refKop: 1000, where: 'на Skinport', basis: 'x' } }).action, 'hold');
+});
+
 const EUR = { base: 'EUR' as const, rateMicro: 45_000_000, rateDate: '2026-11-04', source: 'nbu' };
 const USD = { base: 'USD' as const, rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' };
 const FX = new Map([['EUR', EUR], ['USD', USD]] as const);

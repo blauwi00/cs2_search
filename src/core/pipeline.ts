@@ -41,7 +41,7 @@ export interface Ctx {
 
 export const STEAM_PER_RUN = 6;
 export const CSFLOAT_PER_RUN = 3;
-export const EVAL_PER_RUN = 10;
+export const EVAL_PER_RUN = 20;
 export const SKINPORT_SALES_CHUNK = 40;
 /** Примерная стоимость обработки одного предмета в запросах D1. */
 const D1_PER_ITEM = 6;
@@ -254,14 +254,16 @@ export async function jobSkinportSales(ctx: Ctx, cursor: string | null): Promise
 
 /** Пересчёт сигналов для предметов, у которых обновились котировки массовых источников. */
 export async function jobEvaluate(ctx: Ctx): Promise<void> {
-  const ids = await db.itemsNeedingEval(ctx.db, EVAL_PER_RUN);
-  if (ids.length === 0) return;
+  const due = await db.itemsNeedingEval(ctx.db, EVAL_PER_RUN);
+  if (due.length === 0) return;
+  const ids = due.map((x) => x.id);
+  const flags = new Map(due.map((x) => [x.id, x.flag]));
   const items = await db.itemsWithTarget(ctx.db, ids);
   const quotes = await db.quotesForItems(ctx.db, ids);
   const signals = await db.signalsForItems(ctx.db, ids);
   for (const item of items) {
-    if (!canD1(ctx, 3)) break;
-    await evaluateLoaded(ctx, item, quotes.get(item.id) ?? [], false, [db.markEvalStmt(ctx.db, item.id, 0)], signals.get(item.id) ?? new Map());
+    if (!canD1(ctx, flags.get(item.id) === 2 ? 6 : 3)) break;
+    await evaluateLoaded(ctx, item, quotes.get(item.id) ?? [], flags.get(item.id) === 2, [db.markEvalStmt(ctx.db, item.id, 0)], signals.get(item.id) ?? new Map());
   }
 }
 
@@ -549,7 +551,22 @@ export async function jobCleanup(ctx: Ctx): Promise<void> {
 export async function jobHealth(ctx: Ctx): Promise<void> {
   const rows = await db.listSourceStatus(ctx.db);
   const pending: D1PreparedStatement[] = [];
+  // Внешний сборщик молчит дольше 45 минут — одно предупреждение на эпизод.
+  if (ctx.env.COLLECTOR === 'github') {
+    const c = rows.find((r) => r.source === 'collector');
+    const last = c?.last_ok_at ?? null;
+    if ((!last || ctx.now - last > 45 * 60) && !(c?.alerted_at && (!last || c.alerted_at > last))) {
+      const sent = await send(ctx, 'tech', 'collector',
+        `⚠️ <b>Сборщик цен (GitHub Actions) не присылает данные</b> ${last ? `уже ${Math.floor((ctx.now - last) / 60)} мин` : 'ни разу'}.\nПроверь вкладку Actions в репозитории: включены ли workflows и нет ли ошибок. Цены Steam и Skinport сейчас не обновляются.`,
+        [], null, pending);
+      if (sent) pending.push(ctx.db.prepare(
+        `INSERT INTO source_status (source, status, alerted_at) VALUES ('collector', 'down', ?)
+         ON CONFLICT(source) DO UPDATE SET status = 'down', alerted_at = excluded.alerted_at`,
+      ).bind(ctx.now));
+    }
+  }
   for (const r of rows) {
+    if (r.source === 'collector') continue;
     if (!r.down_since || r.status === 'disabled' || r.status === 'ok') continue;
     if (ctx.now - r.down_since < 1800) continue;
     if (r.alerted_at && r.alerted_at >= r.down_since) continue;

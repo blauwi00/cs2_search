@@ -10,4 +10,8 @@ export interface Env {
   ADMIN_KEY: string;
   /** Необязательно: API-ключ CSFloat (Secret). Без него адаптер CSFloat выключен. */
   CSFLOAT_API_KEY?: string;
+  /** Общий секрет сборщика цен (GitHub Actions → POST /ingest). Тот же в GitHub Secrets (Secret). */
+  INGEST_SECRET?: string;
+  /** 'github' — цены Steam/Skinport собирает GitHub Actions; Worker их не запрашивает (обычная переменная в wrangler.jsonc). */
+  COLLECTOR?: string;
 }

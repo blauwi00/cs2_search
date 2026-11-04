@@ -8,7 +8,7 @@ import { PRIORITY_RU, CATEGORY_SIGNAL_RU } from '../core/scoring.ts';
 import { LIQUIDITY_RU, type LiquidityResult } from '../core/liquidity.ts';
 import type { ChangeEvent } from '../core/analyzer.ts';
 
-export const SOURCE_RU: Record<string, string> = { steam: 'Steam Market', skinport: 'Skinport', csfloat: 'CSFloat', nbu: 'НБУ (курсы)' };
+export const SOURCE_RU: Record<string, string> = { steam: 'Steam Market', skinport: 'Skinport', csfloat: 'CSFloat', nbu: 'НБУ (курсы)', collector: 'Сборщик цен (GitHub Actions)' };
 
 export interface ArbitrageView {
   signalId: number;

@@ -76,7 +76,7 @@ async function onText(text: string, h: H): Promise<void> {
   await db.ensureUser(h.d, h.adminId, true, h.now);
   switch (cmd) {
     case '/start': case '/menu': await db.clearState(h.d, h.adminId); return show(h, await M.mainMenu(h.d, h.now));
-    case '/status': return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY));
+    case '/status': return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY, h.env.COLLECTOR === 'github'));
     case '/deals': return show(h, await M.dealsView(h.d, h.now, 'spread', h.adminId));
     case '/cases': return show(h, await M.casesView(h.d, h.adminId, h.now, 'name'));
     case '/watch': return show(h, await M.watchView(h.d, h.adminId));
@@ -173,7 +173,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
       case 'watch': await db.clearState(h.d, h.adminId); return show(h, await M.watchView(h.d, h.adminId), msgId);
       case 'cases': return show(h, await M.casesView(h.d, h.adminId, h.now, c === 'up' || c === 'down' ? c : 'name'), msgId);
       case 'set': return show(h, await M.settingsView(h.d, h.adminId), msgId);
-      case 'status': return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY), msgId);
+      case 'status': return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY, h.env.COLLECTOR === 'github'), msgId);
       case 'an': return show(h, await M.analyticsView(h.d, h.now), msgId);
       case 'inv': await db.clearState(h.d, h.adminId); return show(h, await INV.inventoryView(h), msgId);
       case 'trades': return show(h, await INV.tradesView(h), msgId);
@@ -236,7 +236,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   }
   if (data === 'jobs:enable') {
     for (const j of await listJobs(h.d)) if (j.enabled !== 1) await setJobEnabled(h.d, j.name, true, h.now);
-    return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY), msgId);
+    return show(h, await M.statusView(h.d, h.now, !!h.env.CSFLOAT_API_KEY, h.env.COLLECTOR === 'github'), msgId);
   }
 }
 

@@ -120,6 +120,17 @@ export async function diagnostics(env: Env, now: number, fetcher?: Fetcher): Pro
     await db.storeFx(env.DB, r, now);
     return r.map((x) => `${x.base} ${(x.rateMicro / 1e6).toFixed(4)} (${x.rateDate})`).join(', ');
   }));
+  if (env.COLLECTOR === 'github') {
+    // Steam и Skinport блокируют сеть Cloudflare — их опрашивает GitHub Actions, проверяем, приходят ли данные.
+    const rows = await db.listSourceStatus(env.DB).catch(() => []);
+    const ago = (t: number | null | undefined) => (t ? `${Math.round((now - t) / 60)} мин назад` : 'ни разу');
+    const c = rows.find((r) => r.source === 'collector');
+    out.push(`Сборщик (GitHub Actions): ${c?.last_ok_at && now - c.last_ok_at < 45 * 60 ? '✅' : '❌'} последние данные ${ago(c?.last_ok_at)}${env.INGEST_SECRET ? '' : ' — не задан секрет INGEST_SECRET'}`);
+    for (const s of ['steam', 'skinport']) {
+      const r = rows.find((x) => x.source === s);
+      out.push(`${s === 'steam' ? 'Steam Market' : 'Skinport'} (через сборщик): ${r?.status === 'ok' ? '✅' : '❌'} успех ${ago(r?.last_ok_at)}${r?.status !== 'ok' && r?.last_error ? ` — ${r.last_error}` : ''}`);
+    }
+  } else {
   out.push(await check('Steam Market (ограниченный режим, неофициальный endpoint)', async () => {
     const q = await fetchSteamPriceOverview('Revolution Case', now, fetcher);
     return `ответ получен: самое дешёвое объявление ${q[0].priceMinor !== null ? (q[0].priceMinor / 100).toFixed(2) + ' грн' : 'нет данных'}`;
@@ -129,6 +140,7 @@ export async function diagnostics(env: Env, now: number, fetcher?: Fetcher): Pro
     try { await res.body?.cancel(); } catch { /* ignore */ }
     return `доступен (HTTP ${res.status}); каталог разбирается потоково`;
   }));
+  }
   if (!env.CSFLOAT_API_KEY) out.push('CSFloat: ⏸ требуется API-ключ (секрет CSFLOAT_API_KEY) — интеграция выключена');
   else out.push(await check('CSFloat', async () => {
     const res = await fetchChecked(listingsUrl('Revolution Case'), { fetcher, headers: { Authorization: env.CSFLOAT_API_KEY! } });

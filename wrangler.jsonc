@@ -7,6 +7,8 @@
   "workers_dev": true,
   // Не удалять переменные, добавленные в панели Cloudflare, при деплое из GitHub.
   "keep_vars": true,
+  // Steam и Skinport опрашивает GitHub Actions (.github/workflows/collect.yml), а не Worker.
+  "vars": { "COLLECTOR": "github" },
   "observability": { "enabled": true },
   // Cron: каждую минуту вызывается планировщик; он сам решает, какие источники пора опрашивать.
   "triggers": { "crons": ["* * * * *"] },

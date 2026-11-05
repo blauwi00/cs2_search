@@ -88,3 +88,24 @@ export const FEE_REGISTRY: Record<string, MarketFeeInfo> = {
     verifiedAt: '2026-11-04', docUrl: 'https://docs.csfloat.com/',
   },
 };
+
+/**
+ * Выплата Steam в валюте кошелька (аудит, приоритет 2): минимальные комиссии — по 1 минимальной единице ИМЕННО этой валюты
+ * (0,01 $ для USD, 1 коп. для UAH), округление — как в Steam. Суммы на входе/выходе — в копейках гривны (внутренняя единица бота);
+ * per — сколько гривен стоит 1 единица валюты кошелька. Для UAH пересчёта нет.
+ * Ниже минимальной цены выставления (3 мин. единицы) — null.
+ */
+export function steamNetKop(buyerKop: number, wallet: { per: number } = { per: 1 }): number | null {
+  if (!(buyerKop > 0)) return null;
+  if (wallet.per === 1) return steamSellerProceeds(Math.round(buyerKop))?.sellerReceives ?? null;
+  const units = Math.round(buyerKop / wallet.per);            // в сотых долях валюты кошелька
+  const p = steamSellerProceeds(units);
+  return p ? Math.floor(p.sellerReceives * wallet.per) : null;
+}
+
+/** Сколько должен заплатить покупатель, чтобы на баланс пришло netKop (та же валюта кошелька). */
+export function steamListForNetKop(netKop: number, wallet: { per: number } = { per: 1 }): number {
+  if (wallet.per === 1) return steamBuyerPriceForReceived(Math.max(1, Math.round(netKop))).buyerPays;
+  const units = Math.max(1, Math.ceil(netKop / wallet.per));
+  return Math.ceil(steamBuyerPriceForReceived(units).buyerPays * wallet.per);
+}

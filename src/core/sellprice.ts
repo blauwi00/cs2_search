@@ -3,7 +3,7 @@
 // Падает или стоит — на 1 копейку ниже самого дешёвого лота, чтобы купили первым.
 // Данные: живое самое дешёвое объявление Steam (если свежее) и средние продажи Steam за 1/7/30 дней.
 
-import { steamSellerProceeds, steamBuyerPriceForReceived } from './fees.ts';
+import { steamNetKop, steamListForNetKop } from './fees.ts';
 
 export interface SellPriceInput {
   liveLowKop: number | null;     // самое дешёвое объявление Steam сейчас (свежее, ≤ 6 ч)
@@ -12,6 +12,7 @@ export interface SellPriceInput {
   d30Kop: number | null;
   costKop?: number | null;       // за сколько купил (если записано) — чтобы предупредить об убытке
   uniquePriced?: boolean;        // цена зависит от паттерна/фазы — общей цене верить нельзя
+  wallet?: { per: number };      // валюта кошелька Steam (для минимальных комиссий)
 }
 
 export interface SellPrice {
@@ -58,8 +59,8 @@ export function steamSellPrice(i: SellPriceInput): SellPrice | null {
     title = 'Цена падает — ставь чуть ниже';
     why = `За сутки продают на ${pct(trendBp)} дешевле, чем в среднем за неделю. Если решил продавать — ставь на 1 копейку ниже самого дешёвого лота, чтобы не ждать.`;
   }
-  const net = (k: number) => steamSellerProceeds(k)?.sellerReceives ?? 0;
-  const breakEven = i.costKop && i.costKop > 0 ? steamBuyerPriceForReceived(i.costKop).buyerPays : null;
+  const net = (k: number) => steamNetKop(k, i.wallet) ?? 0;
+  const breakEven = i.costKop && i.costKop > 0 ? steamListForNetKop(i.costKop, i.wallet) : null;
   return {
     mode, priceKop: price, receiveKop: net(price), quickKop: quick, quickReceiveKop: net(quick), trendBp, basis, title, why,
     belowCost: breakEven !== null && price < breakEven, breakEvenKop: breakEven,

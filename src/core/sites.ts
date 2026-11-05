@@ -65,17 +65,25 @@ export const PRICE_SITES: { key: string; name: string; group: 'cash' | 'china' |
   { key: 'c5game', name: 'C5GAME', group: 'china', home: 'https://www.c5game.com/', url: () => 'https://www.c5game.com/' },
 ];
 
-export interface SitePrice { key: string; name: string; group: string; kop: number; url: string; icon: string; ref: boolean }
+/** kind: listing — самое дешёвое активное объявление; reference — ориентир площадки (не объявление, купить по нему нельзя гарантированно). */
+export interface SitePrice { key: string; name: string; group: string; kop: number; url: string; icon: string; ref: boolean; kind: 'listing' | 'reference'; at: number | null; cur: string }
+/** Что именно отдаёт источник (аудит, приоритет 3). У CS.MONEY в открытом файле — цена бота/обмена, а не объявление. */
+export const SITE_PRICE_KIND: Record<string, 'listing' | 'reference'> = { csmoney: 'reference' };
+export const SITE_ORIG_CUR: Record<string, string> = { skinport: 'EUR', buff163: 'CNY→USD', youpin898: 'CNY→USD', c5game: 'CNY→USD' };
+export const SITE_MAX_AGE_SEC = 48 * 3600;
 
 /** Цены предмета на всех площадках (самое дешёвое объявление), в копейках. Партнёрская ссылка — на главную площадки. */
-export function sitePriceList(name: string, usdCents: Record<string, number>, toKopUsd: (c: number) => number | null, links: RefLinks, pages?: ItemPages | null): SitePrice[] {
+export function sitePriceList(name: string, usdCents: Record<string, number>, toKopUsd: (c: number) => number | null, links: RefLinks, pages?: ItemPages | null,
+  srcAt: Record<string, number> = {}, now: number | null = null): SitePrice[] {
   const out: SitePrice[] = [];
   for (const s of PRICE_SITES) {
     const c = usdCents[s.key];
+    const at = srcAt[s.key] ?? null;
+    if (now !== null && at !== null && now - at > SITE_MAX_AGE_SEC) continue; // устаревшие данные площадки не показываем как текущие
     const kop = c ? toKopUsd(c) : null;
     if (!kop) continue;
     const ref = links[s.key as SiteKey];
-    out.push({ key: s.key, name: s.name, group: s.group, kop, url: ref ?? (s.key === 'skinport' || s.key === 'lisskins' ? itemUrl(s.key, name, pages) : s.url(name)), icon: siteIcon(s.home), ref: !!ref });
+    out.push({ key: s.key, name: s.name, group: s.group, kop, url: ref ?? (s.key === 'skinport' || s.key === 'lisskins' ? itemUrl(s.key, name, pages) : s.url(name)), icon: siteIcon(s.home), ref: !!ref, kind: SITE_PRICE_KIND[s.key] ?? 'listing', at, cur: SITE_ORIG_CUR[s.key] ?? 'USD' });
   }
-  return out.sort((a, b) => a.kop - b.kop);
+  return out.sort((a, b) => (a.kind === b.kind ? a.kop - b.kop : a.kind === 'listing' ? -1 : 1));
 }

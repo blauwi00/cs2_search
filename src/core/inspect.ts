@@ -40,8 +40,8 @@ export function floatNote(name: string, f: number | null): string | null {
   const w = WEAR.find(([re]) => re.test(name));
   if (!w) return null;
   const pos = (f - w[1]) / (w[2] - w[1]);
-  if (name.includes('(Factory New)') && f < 0.01) return 'очень низкий float — за такие часто доплачивают';
-  if (pos <= 0.1) return 'низкий float для своего износа — может стоить дороже обычного';
-  if (pos >= 0.9 && !name.includes('(Battle-Scarred)')) return 'float почти на границе следующего износа — обычно чуть дешевле';
+  if (name.includes('(Factory New)') && f < 0.01) return 'очень низкий float — некоторые покупатели за такое доплачивают, но подтверждённых продаж для оценки нет: цена считается как обычная';
+  if (pos <= 0.1) return 'низкий float для своего износа — наценка возможна, но без подтверждённых продаж бот её не добавляет';
+  if (pos >= 0.9 && !name.includes('(Battle-Scarred)')) return 'float почти на границе следующего износа — такие иногда продаются дешевле; цена считается как обычная';
   return null;
 }

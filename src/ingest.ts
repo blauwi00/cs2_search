@@ -318,6 +318,13 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         for (const [k, v] of Object.entries(r.p as Record<string, unknown>)) if (SITE_PRICE_KEYS.has(k) && typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v < 1e8) p[k] = v;
         if (Object.keys(p).length) stmts.push(d.prepare('INSERT INTO site_prices (name, json, updated_at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at').bind(r.name, JSON.stringify(p), now));
       }
+      // Время версии данных каждой площадки (для честной подписи «обновлено …»).
+      const src = (body as { srcAt?: unknown }).srcAt;
+      if (src && typeof src === 'object') {
+        const clean: Record<string, number> = {};
+        for (const [k, v] of Object.entries(src as Record<string, unknown>)) if (SITE_PRICE_KEYS.has(k) && typeof v === 'number' && v > 1.6e9 && v <= now + 300) clean[k] = Math.floor(v);
+        stmts.push(setMetaStmt(d, 'site_src_at', JSON.stringify(clean)));
+      }
       if (body.done === true) stmts.push(setMetaStmt(d, 'site_prices_at', String(now)), d.prepare('DELETE FROM site_prices WHERE updated_at < ?').bind(now - 3 * 86400));
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
       result.stored = stmts.length;

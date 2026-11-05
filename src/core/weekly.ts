@@ -63,7 +63,7 @@ export async function jobWeekly(ctx: Ctx): Promise<{ queued: number }> {
   const ph = users.map(() => '?').join(',');
   const rows = users.length ? (await d.prepare(`SELECT v.telegram_id AS tid, v.item_id AS id, i.market_hash_name AS name, v.qty, COALESCE(a.d1, a.d7) AS unit
     FROM steam_inventory v JOIN items i ON i.id = v.item_id JOIN steam_avg a ON a.item_id = v.item_id
-    WHERE v.marketable = 1 AND v.telegram_id IN (${ph}) AND COALESCE(a.d1, a.d7) > 0`).bind(...users).all<{ tid: number; id: number; name: string; qty: number; unit: number }>()).results : [];
+    WHERE v.marketable = 1 AND v.telegram_id IN (${ph}) AND COALESCE(a.d1, a.d7) > 0 AND a.updated_at >= ?`).bind(...users, ctx.now - 48 * 3600).all<{ tid: number; id: number; name: string; qty: number; unit: number }>()).results : [];
   const origin = (await d.prepare(`SELECT value FROM meta WHERE key = 'public_origin'`).first<{ value: string }>())?.value ?? null;
   const writes: D1PreparedStatement[] = [];
   const mark = (tid: number, snap: Snap) => d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'inv_week', ?, ?)

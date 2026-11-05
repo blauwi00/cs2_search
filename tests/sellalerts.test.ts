@@ -17,7 +17,7 @@ test('цель продажи: ставится только на свой пр�
   d.db.exec(`UPDATE users SET steam_id = '76561198000000001' WHERE telegram_id = 5`);
   d.db.exec(`INSERT INTO items (id, market_hash_name, category, created_at) VALUES (1, 'Revolution Case', 'case', 0), (2, 'Fever Case', 'case', 0)`);
   d.db.exec(`INSERT INTO steam_inventory (telegram_id, item_id, qty) VALUES (5, 1, 3)`);
-  d.db.exec(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (1, 100, 100, 100, 100, 0)`); // $1 = 40 грн
+  d.db.exec(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (1, 100, 100, 100, 100, ${NOW})`); // $1 = 40 грн
   const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 5, first_name: 'E' }) }, 'TEST_TOKEN');
   const call = async (path: string, body?: object) => (await handleAppApi(new Request('https://w/app/api/' + path, { method: body ? 'POST' : 'GET', headers: { 'X-Init-Data': init, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as Promise<Record<string, any>>;
   assert.equal((await call('sellalert', { itemId: 2, kop: 5000 })).ok, false, 'не свой предмет');
@@ -33,4 +33,10 @@ test('цель продажи: ставится только на свой пр�
   assert.equal((await jobSellAlerts({ db: D, now: NOW + 3600 })).sent, 0, 'второй раз — нет');
   assert.equal((await call('steam')).items[0].targetKop, null, 'выполненная цель снята');
   assert.equal((await call('sellalert', { itemId: 1, kop: null })).ok, true);
+  // Устаревшие средние (старше 48 ч) — не повод для уведомления.
+  assert.equal((await call('sellalert', { itemId: 1, kop: 4400 })).targetKop, 4400);
+  d.db.exec(`UPDATE steam_avg SET updated_at = ${NOW - 3 * 86400}`);
+  assert.equal((await jobSellAlerts({ db: D, now: NOW + 7200 })).sent, 0);
+  const st2 = await call('steam');
+  assert.equal(st2.items[0].status, 'no_data'); assert.equal(st2.items[0].priceKop, null, 'нет актуальных данных — нет цены');
 });

@@ -16,7 +16,7 @@ test('воскресная сводка: первый раз — оценка, �
   await db.setSetting(D, 2, 'weekly_report', '0', WED);
   d.db.exec(`INSERT INTO items (id, market_hash_name, category, created_at) VALUES (1, 'Revolution Case', 'case', 0), (2, 'AK-47 | Redline (Field-Tested)', 'weapon', 0)`);
   d.db.exec(`INSERT INTO steam_inventory (telegram_id, item_id, qty) VALUES (1, 1, 10), (1, 2, 1), (2, 1, 5)`);
-  d.db.exec(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (1, 100, 100, 100, 100, 0), (2, 2000, 2000, 2000, 2000, 0)`);
+  d.db.exec(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (1, 100, 100, 100, 100, ${SUN}), (2, 2000, 2000, 2000, 2000, ${SUN})`);
 
   assert.equal((await jobWeekly({ db: D, now: WED })).queued, 0, 'не воскресенье');
   assert.equal((await jobWeekly({ db: D, now: SUN })).queued, 1);
@@ -25,7 +25,8 @@ test('воскресная сводка: первый раз — оценка, �
   assert.equal((await jobWeekly({ db: D, now: SUN + 600 })).queued, 0, 'второй раз в то же воскресенье — нет');
   assert.equal((d.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE telegram_id=2").get() as { n: number }).n, 0, 'выключил — не шлём');
 
-  d.db.exec(`UPDATE steam_avg SET d1 = 150 WHERE item_id = 1`);  // кейс подорожал на 50%
+  d.db.exec(`UPDATE steam_avg SET d1 = 150, updated_at = ${SUN + 7 * 86400} WHERE item_id = 1`);
+  d.db.exec(`UPDATE steam_avg SET updated_at = ${SUN + 7 * 86400} WHERE item_id = 2`);  // кейс подорожал на 50%
   assert.equal((await jobWeekly({ db: D, now: SUN + 7 * 86400 })).queued, 1);
   row = d.db.prepare("SELECT text, keyboard FROM outbox WHERE kind='weekly' AND telegram_id=1 ORDER BY id DESC").get() as { text: string; keyboard: string };
   assert.match(row.text, /за неделю: ⟦\+20000⟧<\/b> \(\+16,7%\)/);    // +$5 = +200 грн, 30 → 35 $

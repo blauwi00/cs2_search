@@ -33,6 +33,8 @@ import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta } from '../core/channel.ts';
 import { recStats } from '../core/insights.ts';
+import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
+import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
@@ -105,13 +107,14 @@ function altReference(g: (src: string, t: string) => db.QuoteRow | undefined, sa
 }
 
 /** Подсказка для предмета, который уже лежит в инвентаре (цена покупки неизвестна): продать сейчас или подержать. */
-function ownedAdvice(sa: SteamAvg | undefined): Advice | null {
+function ownedAdvice(sa: SteamAvg | undefined, now?: number): Advice | null {
   if (!sa?.d1 || !sa.d30) return null;
+  if (now !== undefined && now - sa.updated_at > AVG_MAX_AGE_SEC) return null; // устаревшие средние — без совета
   const diff = Math.trunc(((sa.d1 - sa.d30) * 10000) / sa.d30);
   const p = `${Math.abs(Math.round(diff / 100))}%`;
-  if (diff >= 800) return { action: 'sell', title: 'Хороший момент продать', reason: `Сейчас в Steam продаётся на ${p} дороже, чем в среднем за месяц.`, diffBp: diff };
-  if (diff <= -800) return { action: 'hold', title: 'Держать', reason: `Сейчас в Steam на ${p} дешевле, чем в среднем за месяц — продавать невыгодно.`, diffBp: diff };
-  return { action: 'hold', title: 'Обычная цена', reason: `Цена в Steam обычная (${diff >= 0 ? '+' : '−'}${p} к средней за месяц). Продавать можно, но без выгоды.`, diffBp: diff };
+  if (diff >= 800) return { action: 'sell', title: 'Хороший момент продать', reason: `За последние сутки в Steam продавали на ${p} дороже, чем в среднем за месяц.`, diffBp: diff };
+  if (diff <= -800) return { action: 'hold', title: 'Держать', reason: `За последние сутки в Steam продавали на ${p} дешевле, чем в среднем за месяц — продавать невыгодно.`, diffBp: diff };
+  return { action: 'hold', title: 'Обычная цена', reason: `Продажи за сутки — по обычной цене (${diff >= 0 ? '+' : '−'}${p} к средней за месяц). Продавать можно, но без выгоды.`, diffBp: diff };
 }
 
 export interface SteamAvg { item_id: number; d1: number | null; d7: number | null; d30: number | null; d90: number | null; updated_at: number }
@@ -135,7 +138,8 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
   ]);
   const aggBy = new Map(aggRows.map((r) => [r.item_id, r]));
   for (const it of items) {
-    const q = quotes.get(it.id) ?? [];
+    // Аудит: совет «купить/продать» — только по свежим котировкам (Steam ≤ 6 ч, остальные ≤ 48 ч); старые не используем.
+    const q = (quotes.get(it.id) ?? []).filter((x) => now - x.fetched_at <= (x.source === 'steam' ? LIVE_MAX_AGE_SEC : AVG_MAX_AGE_SEC));
     const g = (src: string, t: string) => q.find((x) => x.source === src && x.price_type === t);
     const a = aggBy.get(it.id);
     const deal = deals.find((x) => x.item_id === it.id && (x.state === 'confirmed' || x.state === 'notified'));
@@ -153,7 +157,7 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
         ? { spreadKop: deal.spread_kop, buyKop: deal.buy_kop, buySource: deal.buy_source ?? '', proceedsKop: deal.proceeds_kop, priority: deal.priority } : null,
       lot: openQ > 0 ? { openQty: openQ, costPerUnitKop: Math.round(cost / openQ), targetKop: myLots.find((l) => l.target_sell_kop)?.target_sell_kop ?? null } : null,
       minRoiBp: db.num(s.min_roi_bp), minProfitKop: db.num(s.min_profit_kop),
-      alt: altReference(g, avgs.get(it.id)),
+      alt: altReference(g, (() => { const a = avgs.get(it.id); return a && now - a.updated_at <= AVG_MAX_AGE_SEC ? a : undefined; })()),
     }));
   }
   return out;
@@ -187,6 +191,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     return db.activeSignals(d, order, limit, now - 2 * 3600, { tid, minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp) });
   };
   const d = budgetedDb(rawDb ?? env.DB, newBudget());
+  // Валюта кошелька Steam = валюта, выбранная в боте (минимальные комиссии Steam считаются в ней).
+  let walletP: Promise<{ per: number; code: string }> | null = null;
+  const walletCur = () => (walletP ??= loadRates(d).then((r) => userCur(d, tid, r)));
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/app\/api\//, '');
   const seg = path.split('/');
@@ -259,17 +266,25 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const rows = linked ? (await d.prepare(`SELECT v.item_id, v.qty, v.marketable, v.tradable, v.details, i.market_hash_name AS name, i.category FROM steam_inventory v JOIN items i ON i.id = v.item_id
         WHERE v.telegram_id = ? LIMIT 500`).bind(tid).all<{ item_id: number; qty: number; marketable: number; tradable: number; details: string | null; name: string; category: string }>()).results : [];
       const ids = rows.map((r) => r.item_id);
-      const [avgs, quotes, imgs, fxm, alerts] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d),
-        d.prepare('SELECT item_id, target_kop FROM sell_alerts WHERE telegram_id = ? AND notified_at IS NULL').bind(tid).all<{ item_id: number; target_kop: number }>()]);
+      const [avgs, quotes, imgs, fxm, alerts, wallet, costs] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d),
+        d.prepare('SELECT item_id, target_kop FROM sell_alerts WHERE telegram_id = ? AND notified_at IS NULL').bind(tid).all<{ item_id: number; target_kop: number }>(),
+        walletCur(),
+        // Стоимость приобретения (приоритет 5): из записанных покупок, средняя за 1 шт. по открытым позициям.
+        d.prepare(`SELECT item_id, SUM((quantity - sold_quantity) * buy_price_kop + buy_fee_kop * (quantity - sold_quantity) / quantity) AS cost, SUM(quantity - sold_quantity) AS q
+          FROM trades WHERE telegram_id = ? AND quantity > sold_quantity GROUP BY item_id`).bind(tid).all<{ item_id: number; cost: number; q: number }>()]);
       const targets = new Map(alerts.results.map((a) => [a.item_id, a.target_kop]));
+      const unitCost = new Map(costs.results.map((c) => [c.item_id, c.q > 0 ? Math.round(c.cost / c.q) : null]));
       const usd = fxm.get('USD') ?? null;
-      let total = 0, totalNet = 0;
+      let total = 0, totalNet = 0, noData = 0;
       const items = rows.map((r) => {
-        const live = (quotes.get(r.item_id) ?? []).find((q) => q.source === 'steam' && q.price_type === 'lowest_listing' && now - q.fetched_at < 6 * 3600);
+        const ev = steamEvidence(quotes.get(r.item_id) ?? [], avgs.get(r.item_id), usd, now);
+        const val = marketValue(ev);
+        const est = val?.kop ?? null;
+        const live = ev.listing;
         const sa = avgs.get(r.item_id);
-        const est = live?.price_kop ?? (sa?.d7 && usd ? toKop(Math.min(sa.d7, sa.d1 ?? sa.d7), 'USD', usd) : null);
-        const net = est ? steamSellerProceeds(Math.max(3, est))?.sellerReceives ?? null : null;
-        if (est && r.marketable) { total += est * r.qty; totalNet += (net ?? 0) * r.qty; }
+        const net = est ? steamNetKop(Math.max(3, est), wallet) : null;
+        if (est && r.marketable) { total += est * r.qty; totalNet += (net ?? 0) * r.qty; } else if (r.marketable) noData++;
+        const cost = unitCost.get(r.item_id) ?? null;
         let assets: AssetDetail[] = [];
         try { assets = r.details ? JSON.parse(r.details) as AssetDetail[] : []; } catch { assets = []; }
         const k = (u: number | null) => (u && usd ? toKop(Math.round(u * 100), 'USD', usd) : null);
@@ -287,14 +302,18 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         return {
           details, flags, pattern,
           itemId: r.item_id, name: r.name, category: r.category, categoryRu: CATEGORY_RU[r.category as 'case'] ?? r.category, qty: r.qty, marketable: !!r.marketable,
-          img: imgs.get(r.name) ?? null, priceKop: est, live: !!live?.price_kop, targetKop: targets.get(r.item_id) ?? null, netKop: net, advice: r.marketable ? ownedAdvice(sa) : null,
+          img: imgs.get(r.name) ?? null, priceKop: est, live: !!live, basis: val?.basis ?? null, status: ev.status, targetKop: targets.get(r.item_id) ?? null, netKop: net,
+          advice: r.marketable ? ownedAdvice(sa, now) : null,
+          prices: { listing: ev.listing, buyOrder: ev.buyOrder, median24h: ev.median24h, avg: ev.avg },
+          // Приоритет 5: рыночная стоимость / после комиссии / себестоимость / потенциальная (не фактическая) прибыль.
+          costKop: cost, potentialKop: cost != null && net != null ? net - cost : null,
         };
       }).sort((a, b) => (b.priceKop ?? 0) * b.qty - (a.priceKop ?? 0) * a.qty);
       return json({
         ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
         status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
-        totalKop: total, totalNetKop: totalNet, items, bot: await getMeta(d, 'bot_username'),
+        totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
       });
     }
     if (path === 'steam/login' && method === 'POST') {
@@ -468,23 +487,32 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     // ---------- Инвентарь и сделки ----------
     if (path === 'inventory' && method === 'GET') {
       const lots = await T.openTrades(d, tid);
-      const [quotes, adv, imgs] = await Promise.all([
-        quotesChunked(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 360)),
+      const lotIds = [...new Set(lots.map((l) => l.item_id))].slice(0, 360);
+      const [quotes, adv, imgs, avgs, fxm, wallet] = await Promise.all([
+        quotesChunked(d, lotIds),
         adviceFor(d, tid, now, [...new Map(lots.map((l) => [l.item_id, { id: l.item_id, name: l.market_hash_name }])).values()]),
         imagesFor(d, lots.map((l) => l.market_hash_name)),
+        steamAvgFor(d, lotIds), db.loadLatestFx(d), walletCur(),
       ]);
+      const usd = fxm.get('USD') ?? null;
+      // Фактическая (реализованная) прибыль — только по записанным продажам: получено − себестоимость проданного.
+      const real = await d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.received_kop - s.quantity * t.buy_price_kop - t.buy_fee_kop * s.quantity / t.quantity), 0) AS p
+        FROM trade_sales s JOIN trades t ON t.id = s.trade_id WHERE t.telegram_id = ?`).bind(tid).first<{ n: number; p: number }>();
       return json({
-        ok: true,
+        ok: true, realizedKop: real?.p ?? 0, salesCount: real?.n ?? 0,
         platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
         lots: lots.map((l) => {
           const q = quotes.get(l.item_id) ?? [];
-          const g = (s: string, t: string) => q.find((x) => x.source === s && x.price_type === t)?.price_kop ?? null;
-          const val = valuation(g('steam', 'lowest_listing'), g('steam', 'median_24h'), g('skinport', 'lowest_listing'));
+          // Только свежие котировки (аудит): старые цены больше не выдаются за текущие.
+          const ev = steamEvidence(q, avgs.get(l.item_id), usd, now);
+          const mv = marketValue(ev);
+          const sp = q.find((x) => x.source === 'skinport' && x.price_type === 'lowest_listing' && now - x.fetched_at < LIVE_MAX_AGE_SEC)?.price_kop ?? null;
+          const val = { steamProceedsPerUnit: mv ? steamNetKop(Math.max(3, mv.kop), wallet) : null, steamBasis: mv?.basis ?? null, externalPricePerUnit: sp };
           const v = viewLot(l, val);
           return {
             id: l.id, itemId: l.item_id, name: l.market_hash_name, img: imgs.get(l.market_hash_name) ?? null, qty: l.quantity, openQty: v.openQty, buyKop: l.buy_price_kop, feeKop: l.buy_fee_kop,
             platform: l.buy_platform, platformRu: PLATFORM_RU[l.buy_platform] ?? l.buy_platform, date: l.buy_date, targetKop: l.target_sell_kop,
-            costKop: v.openCostKop, steamUnitKop: val.steamProceedsPerUnit, externalUnitKop: val.externalPricePerUnit, valueKop: v.steamValueKop,
+            costKop: v.openCostKop, steamUnitKop: val.steamProceedsPerUnit, basis: val.steamBasis, marketUnitKop: mv?.kop ?? null, status: ev.status, externalUnitKop: val.externalPricePerUnit, valueKop: v.steamValueKop,
             unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity, advice: adv.get(l.item_id) ?? null,
           };
         }),
@@ -581,17 +609,17 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const id = Number(seg[1]);
       const item = await d.prepare('SELECT market_hash_name AS name FROM items WHERE id = ?').bind(id).first<{ name: string }>();
       if (!item) return bad('not_found', 404);
-      const [quotes, avgs, fxm] = await Promise.all([quotesChunked(d, [id]), steamAvgFor(d, [id]), db.loadLatestFx(d)]);
+      const [quotes, avgs, fxm, wallet] = await Promise.all([quotesChunked(d, [id]), steamAvgFor(d, [id]), db.loadLatestFx(d), walletCur()]);
       const usd = fxm.get('USD') ?? null;
-      const live = (quotes.get(id) ?? []).find((q) => q.source === 'steam' && q.price_type === 'lowest_listing' && now - q.fetched_at < 6 * 3600);
-      const sa = avgs.get(id);
-      const k = (c: number | null | undefined) => (c && usd ? toKop(c, 'USD', usd) : null);
+      // Только свежие данные: живое объявление (≤ 6 ч) и средние продаж (≤ 48 ч). Нет ни того ни другого — «Нет актуальных данных».
+      const ev = steamEvidence(quotes.get(id) ?? [], avgs.get(id), usd, now);
       const cost = Number(url.searchParams.get('cost'));
-      const rec = steamSellPrice({
-        liveLowKop: live?.price_kop ?? null, d1Kop: k(sa?.d1), d7Kop: k(sa?.d7), d30Kop: k(sa?.d30),
-        costKop: Number.isSafeInteger(cost) && cost > 0 ? cost : null, uniquePriced: parseMarketHashName(item.name).uniquePriced,
+      const rec = ev.status === 'no_data' ? null : steamSellPrice({
+        liveLowKop: ev.listing?.kop ?? null, d1Kop: ev.avg?.d1 ?? null, d7Kop: ev.avg?.d7 ?? null, d30Kop: ev.avg?.d30 ?? null,
+        costKop: Number.isSafeInteger(cost) && cost > 0 ? cost : null, uniquePriced: parseMarketHashName(item.name).uniquePriced, wallet,
       });
-      return json({ ok: true, rec, liveAt: live?.fetched_at ?? null, pattern: parseMarketHashName(item.name).uniquePriced });
+      return json({ ok: true, rec, status: ev.status, stale: ev.stale, liveAt: ev.listing?.at ?? null, avgAt: ev.avg?.at ?? null,
+        prices: { listing: ev.listing, buyOrder: ev.buyOrder, median24h: ev.median24h, avg: ev.avg }, pattern: parseMarketHashName(item.name).uniquePriced });
     }
     if (path === 'terms' && method === 'GET') {
       const s = await db.getSettings(d, tid);
@@ -628,16 +656,19 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           }
         }
       }
-      const list = sitePriceList(name, cents, toK, links, await loadSkinportPages(d, [name]));
-      let steam: { kop: number; live: boolean } | null = null;
+      let srcAt: Record<string, number> = {};
+      try { srcAt = row ? JSON.parse((await getMeta(d, 'site_src_at')) ?? '{}') : Object.fromEntries(Object.keys(cents).map((k) => [k, at ?? now])); } catch { srcAt = {}; }
+      const list = sitePriceList(name, cents, toK, links, await loadSkinportPages(d, [name]), srcAt, now);
+      let steam: { kop: number; live: boolean; basis: string; prices: unknown; status: string } | null = null;
+      let steamStatus = 'no_data';
       if (item) {
         const [q, sa] = await Promise.all([quotesChunked(d, [item.id]), steamAvgFor(d, [item.id])]);
-        const live = (q.get(item.id) ?? []).find((x) => x.source === 'steam' && x.price_type === 'lowest_listing' && now - x.fetched_at < 6 * 3600);
-        const a = sa.get(item.id);
-        const avgK = a?.d1 ? toK(a.d1) : a?.d7 ? toK(a.d7) : null;
-        if (live?.price_kop) steam = { kop: live.price_kop, live: true }; else if (avgK) steam = { kop: avgK, live: false };
+        const ev = steamEvidence(q.get(item.id) ?? [], sa.get(item.id), usd, now);
+        const mv = marketValue(ev);
+        steamStatus = ev.status;
+        if (mv) steam = { kop: mv.kop, live: mv.basis !== 'avg', basis: mv.basis, status: ev.status, prices: { listing: ev.listing, buyOrder: ev.buyOrder, median24h: ev.median24h, avg: ev.avg } };
       }
-      return json({ ok: true, at, sites: list, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
+      return json({ ok: true, at, sites: list, steamStatus, pattern: parseMarketHashName(name).uniquePriced, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
     }
     // #2: картинка «Мой инвентарь стоит X» — рисует приложение, сервер только хранит (одна на человека, 30 дней).
     if (path === 'sharecard' && method === 'POST') {

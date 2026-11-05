@@ -351,8 +351,15 @@ if (sitePriceNames.length) {
   try {
     const extra = { buff163: 'starting_at', youpin898: 'starting_at', c5game: 'starting_at', csfloat: 'starting_at', csmoney: null };
     const files = {};
+    const srcAt = { skinport: now(), csgomarket: now(), waxpeer: now(), lisskins: now() }; // прямые прайсы — загружены в этом запуске
     for (const [prov] of Object.entries(extra)) {
-      try { files[prov] = await getJson(`https://prices.csgotrader.app/latest/${prov}.json`); } catch (e) { console.error(`CSGO Trader ${prov}:`, e.message); }
+      try {
+        const res = await fetch(`https://prices.csgotrader.app/latest/${prov}.json`, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'gzip, br' } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const lm = Date.parse(res.headers.get('last-modified') || '');
+        if (Number.isFinite(lm)) srcAt[prov] = Math.floor(lm / 1000); // время версии файла, а не время скачивания
+        files[prov] = await readJson(res);
+      } catch (e) { console.error(`CSGO Trader ${prov}:`, e.message); }
     }
     const sp = new Map(allItems.filter((x) => x && x.min_price > 0).map((x) => [x.market_hash_name, x.min_price]));
     const eurUsd = fx.EUR && fx.USD ? fx.EUR / fx.USD : null;
@@ -371,7 +378,7 @@ if (sitePriceNames.length) {
       if (Object.keys(p).length) out.push({ name: n, p });
     }
     for (let i = 0; i < out.length; i += 400) {
-      const r = await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: out.slice(i, i + 400), done: i + 400 >= out.length });
+      const r = await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), srcAt, items: out.slice(i, i + 400), done: i + 400 >= out.length });
       console.log(`Цены всех площадок: ${Math.min(i + 400, out.length)}/${out.length}`, r);
     }
     if (!out.length) await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: [], done: true });

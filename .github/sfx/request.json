@@ -1,0 +1,16 @@
+{
+  "note": "Что искать в Openverse (только CC0 — без обязательной подписи автора). n — сколько вариантов скачать, maxDur — макс. длина в секундах.",
+  "maxDur": 4,
+  "queries": [
+    { "tag": "whoosh", "q": "whoosh", "n": 5 },
+    { "tag": "swoosh", "q": "swoosh transition", "n": 4 },
+    { "tag": "pop", "q": "pop", "n": 4 },
+    { "tag": "click", "q": "ui click", "n": 4 },
+    { "tag": "ding", "q": "ding bell", "n": 4 },
+    { "tag": "coin", "q": "coins cash register", "n": 4 },
+    { "tag": "notify", "q": "notification", "n": 4 },
+    { "tag": "riser", "q": "riser", "n": 3 },
+    { "tag": "impact", "q": "impact hit", "n": 3 },
+    { "tag": "typing", "q": "keyboard typing", "n": 2 }
+  ]
+}

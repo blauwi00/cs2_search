@@ -1,0 +1,39 @@
+name: sfx-library
+# Библиотека звуков для роликов: Openverse (поиск, только CC0) + PANNs («уши»: проверка, что в файле нужный звук).
+# Запуск: изменить .github/sfx/request.json и отправить в main. Результат — ветка sfx-library (wav + index.json + LICENSES.md).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/sfx/**']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/sfx
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: ffmpeg
+        run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
+      - name: PANNs и зависимости
+        run: |
+          pip install -q --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+          pip install -q panns-inference librosa requests
+          mkdir -p ~/panns_data
+          wget -q -O ~/panns_data/class_labels_indices.csv http://storage.googleapis.com/us_audioset/youtube_corpus/v1/csv/class_labels_indices.csv
+          wget -q -O ~/panns_data/Cnn14_mAP=0.431.pth "https://zenodo.org/record/3987831/files/Cnn14_mAP%3D0.431.pth?download=1"
+          ls -la ~/panns_data
+      - run: python .github/sfx/sfx.py .github/sfx/request.json out
+      - name: В ветку sfx-library
+        run: |
+          cd out && ls -la
+          git init -q -b sfx-library
+          git config user.name "video-bot"; git config user.email "video-bot@users.noreply.github.com"
+          git add -A && git commit -qm "Звуки: $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" sfx-library

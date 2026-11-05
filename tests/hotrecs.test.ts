@@ -19,6 +19,7 @@ test('горячие рекомендации: новая сделка уход�
   await db.setSetting(D, 3, 'min_profit_kop', '99999900', NOW);    // порог слишком высокий
   await db.setSetting(D, 4, 'recs_per_day', '1', NOW);
   const scan = (items: object[], at: number) => handleIngest(new Request('https://w.example.dev/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'scan', fetchedAt: at, items }) }), env, at);
+  await scan([item('Revolution Case', 10, 13)], NOW - 600);
   await scan([item('Revolution Case', 10, 13)], NOW);
   assert.equal((await jobHotRecs({ db: D, now: NOW + 60 })).queued, 2);
   const rows = d.db.prepare("SELECT telegram_id, text, keyboard FROM outbox WHERE kind = 'recs' ORDER BY telegram_id").all() as { telegram_id: number; text: string; keyboard: string }[];
@@ -29,7 +30,9 @@ test('горячие рекомендации: новая сделка уход�
   await scan([item('Revolution Case', 10, 13)], NOW + 600);
   assert.equal((await jobHotRecs({ db: D, now: NOW + 660 })).queued, 0, 'та же сделка — не повторяем');
   await scan([item('Revolution Case', 10, 13), item('Fever Case', 20, 26)], NOW + 1200);
-  const r = await jobHotRecs({ db: D, now: NOW + 1260 });
+  assert.equal((await jobHotRecs({ db: D, now: NOW + 1260 })).queued, 0, 'новое объявление — ждём подтверждения следующей проверкой');
+  await scan([item('Revolution Case', 10, 13), item('Fever Case', 20, 26)], NOW + 1800);
+  const r = await jobHotRecs({ db: D, now: NOW + 1860 });
   assert.equal(r.queued, 1, 'новая сделка — только тому, у кого не исчерпан лимит в сутки');
   assert.equal((d.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind = 'recs' AND telegram_id = 4").get() as { n: number }).n, 1);
 });

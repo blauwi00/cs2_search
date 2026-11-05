@@ -58,10 +58,12 @@ export async function loadSkinportPages(d: D1Database, names: string[]): Promise
 export const SKINPORT_SELL_FEE_HIGH_BP = 600;      // Skinport: 6% для продаж дороже 1000 €
 export const SKINPORT_HIGH_EUR_CENTS = 100_000;
 
-export interface ScanOffer { m: Exclude<Market, 'steam'>; cur: Currency; minor: number; qty: number | null }
+/** since — с какого сканирования это объявление держится примерно по той же цене (±3%); нужно для проверки «не мимолётное ли». */
+export interface ScanOffer { m: Exclude<Market, 'steam'>; cur: Currency; minor: number; qty: number | null; since?: number }
 export interface ScanPeriod { median: number | null; volume: number | null }
 export interface ScanEntry {
   name: string;
+  at?: number;                      // время сканирования, к которому относятся объявления
   img?: string | null;
   offers: ScanOffer[];
   s7: ScanPeriod | null;            // продажи Skinport за 7 дней (EUR, центы)
@@ -114,17 +116,25 @@ export function parseScan(items: unknown, now: number): ScanEntry[] {
 }
 
 /** Новый скан + то, чего в нём нет, из прошлого: цены Steam (если свежее 3 часов) и картинка. */
-export function mergeScan(fresh: ScanEntry[], old: ScanEntry[], now: number): ScanEntry[] {
+export function mergeScan(fresh: ScanEntry[], old: ScanEntry[], now: number, at: number = now, oldAt: number | null = null): ScanEntry[] {
   const prev = new Map(old.map((e) => [e.name, e]));
   return fresh.map((e) => {
     const p = prev.get(e.name);
-    if (!p) return e;
+    // #5: объявление «держится», если в прошлом сканировании на той же площадке была цена в пределах ±3%.
+    const offers = e.offers.map((o) => {
+      const q = p?.offers.find((x) => x.m === o.m);
+      const held = q && Math.abs(o.minor - q.minor) <= q.minor * 0.03;
+      return { ...o, since: held ? (q.since ?? p?.at ?? oldAt ?? at) : at };
+    });
+    if (!p) return { ...e, at, offers };
     const steam = e.steam ?? (p.steam && now - p.steam.at < 3 * 3600 ? p.steam : null);
-    return { ...e, steam, img: e.img ?? p.img ?? null };
+    return { ...e, at, offers, steam, img: e.img ?? p.img ?? null };
   });
 }
 
-export interface RecSettings { minProfitKop: number; minRoiBp: number; depositFeeBp: number; withdrawFeeBp: number }
+/** minHeldSec — брать объявление для покупки, только если оно держится по цене не меньше стольких секунд (для рассылок и канала). */
+export interface RecSettings { minProfitKop: number; minRoiBp: number; depositFeeBp: number; withdrawFeeBp: number; minHeldSec?: number }
+export const HELD_SEC = 5 * 60;
 
 export type RecKind = 'flip' | 'trend';
 export interface Rec {
@@ -139,6 +149,8 @@ export interface Rec {
   fees: string[];          // расшифровка комиссий простыми словами
   sellBasis: string;
   title: string; reason: string; risk: string;
+  /** Сколько секунд объявление для покупки держится по этой цене (null — неизвестно: Steam или старый снимок). */
+  heldSec: number | null;
 }
 
 const fmt = (k: number) => formatUah(k);
@@ -167,12 +179,13 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
   // Реальная цена продаж — без неё сделки не предлагаем.
   const refKop = e.s7?.median && sales7 !== null && sales7 >= MIN_SALES_7D ? kop(e.s7.median, 'EUR') : null;
   // ---- Где купить: цена объявления + комиссия оплаты.
-  const buys: { m: Market; listKop: number; payKop: number; qty: number | null }[] = [];
+  const buys: { m: Market; listKop: number; payKop: number; qty: number | null; heldSec: number | null }[] = [];
   for (const o of e.offers ?? []) {
     const k = kop(o.minor, o.cur);
-    if (k) buys.push({ m: o.m, listKop: k, payKop: Math.ceil((k * (10000 + s.depositFeeBp)) / 10000), qty: o.qty });
+    const heldSec = o.since != null && e.at != null ? Math.max(0, e.at - o.since) : null;
+    if (k) buys.push({ m: o.m, listKop: k, payKop: Math.ceil((k * (10000 + s.depositFeeBp)) / 10000), qty: o.qty, heldSec });
   }
-  if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null });
+  if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null, heldSec: null });
   // ---- Где продать: реалистичная цена − комиссия площадки − комиссия вывода.
   const sells: SellSide[] = [];
   const wFee = s.withdrawFeeBp ? [`вывод ${pct(s.withdrawFeeBp)}`] : [];
@@ -217,6 +230,7 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
     let best: Rec | null = null;
     for (const b of buys) {
       if (!refKop || b.listKop < refKop * MIN_BUY_OF_REF) continue;
+      if (s.minHeldSec && b.heldSec !== null && b.heldSec < s.minHeldSec) continue; // только что появилось — ждём следующей проверки
       for (const sl of sells) {
         if (sl.m === b.m && b.m !== 'skinport') continue; // перепродажа на той же площадке — только по истории продаж Skinport
         if (b.m === 'skinport' && sl.m === 'skinport' && b.listKop > sl.listKop * 0.9) continue;
@@ -228,7 +242,7 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
         const wallet = MARKETS[sl.m].wallet;
         best = {
           kind: 'flip', name: e.name, img: e.img ?? null, buyAt: b.m, sellAt: sl.m, buyKop: b.listKop, payKop: b.payKop,
-          sellKop: sl.listKop, getKop: sl.netKop, profitKop: profit, roiBp: roi, trendBp: null, sales7, wallet, fees, sellBasis: sl.basis,
+          sellKop: sl.listKop, getKop: sl.netKop, profitKop: profit, roiBp: roi, trendBp: null, sales7, wallet, fees, sellBasis: sl.basis, heldSec: b.heldSec,
           title: `${MARKETS[b.m].name} → ${MARKETS[sl.m].name}`,
           reason: `Купи на ${MARKETS[b.m].name} за ${fmt(b.payKop)} → продай на ${MARKETS[sl.m].name} за ${fmt(sl.listKop)} → получишь ${fmt(sl.netKop)} (+${fmt(profit)}).`,
           risk: [
@@ -249,7 +263,7 @@ export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: Re
       const t = Math.trunc(((trendPair[0] - trendPair[1]) * 10000) / trendPair[1]);
       if (t >= 1000) trends.push({
         kind: 'trend', name: e.name, img: e.img ?? null, buyAt: cheapest.m, sellAt: cheapest.m, buyKop: cheapest.listKop, payKop: cheapest.payKop,
-        sellKop: null, getKop: null, profitKop: null, roiBp: null, trendBp: t, sales7, wallet: null, fees: [], sellBasis: '',
+        sellKop: null, getKop: null, profitKop: null, roiBp: null, trendBp: t, sales7, wallet: null, fees: [], sellBasis: '', heldSec: cheapest.heldSec,
         title: `Растёт: +${Math.round(t / 100)}%`,
         reason: `Средняя цена продаж за неделю на ${Math.round(t / 100)}% выше, чем за месяц (${sales7} продаж за 7 дней). Дешевле всего сейчас на ${MARKETS[cheapest.m].name}: ${fmt(cheapest.payKop)}.`,
         risk: 'Это не гарантия: рост уже случился и может развернуться. Покупай только то, что готов держать.',

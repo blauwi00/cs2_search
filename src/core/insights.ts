@@ -1,6 +1,6 @@
 // Контент, которого нет на сайтах с ценами: честная история идей бота, итог недели и обновления CS2.
 
-import { buildRecs, marketSides, MARKETS, type Market, type ScanEntry } from './recs.ts';
+import { buildRecs, HELD_SEC, marketSides, MARKETS, type Market, type ScanEntry } from './recs.ts';
 import type { FxRate } from '../currency/nbu.ts';
 import type { Currency } from '../types/market.ts';
 import { warsawDate } from '../utils/time.ts';
@@ -21,7 +21,7 @@ export async function ensureTodayIdeas(d: D1Database, entries: ScanEntry[] | nul
   const day = warsawDate(now);
   const have = (await d.prepare('SELECT * FROM idea_log WHERE day = ? ORDER BY profit_kop DESC').bind(day).all<IdeaRow>()).results;
   if (have.length || !entries?.length) return have;
-  const top = buildRecs(entries, fx, IDEA_SETTINGS).deals.slice(0, IDEAS_PER_DAY);
+  const top = buildRecs(entries, fx, { ...IDEA_SETTINGS, minHeldSec: HELD_SEC }).deals.slice(0, IDEAS_PER_DAY);
   if (!top.length) return [];
   await d.batch(top.map((r) => d.prepare(
     `INSERT INTO idea_log (day, name, buy_at, sell_at, pay_kop, sell_kop, get_kop, profit_kop, roi_bp, wallet, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -55,6 +55,22 @@ export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry
       .bind(now, sell.netKop, p24, p24 > 0 ? 'plus' : 'minus', r.id));
   }
   return out;
+}
+
+/** #6: честная статистика «Рекомендаций дня» — сколько через сутки остались в плюсе. */
+export interface RecStats { days: number; total: number; plus: number; minus: number; gone: number; pending: number; avgPromisedKop: number | null; avgActualKop: number | null;
+  recent: { day: string; name: string; buyAt: string; sellAt: string; profitKop: number; profit24Kop: number | null; outcome: string | null }[] }
+export async function recStats(d: D1Database, now: number, days = 30): Promise<RecStats> {
+  const rows = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ? ORDER BY created_at DESC LIMIT 400').bind(now - days * 86400).all<IdeaRow>()).results;
+  const checked = rows.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
+  const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+  return {
+    days, total: rows.length, plus: checked.filter((r) => r.outcome === 'plus').length, minus: checked.filter((r) => r.outcome === 'minus').length,
+    gone: rows.filter((r) => r.outcome === 'gone').length, pending: rows.filter((r) => !r.checked_at).length,
+    avgPromisedKop: avg(checked.map((r) => r.profit_kop)), avgActualKop: avg(checked.map((r) => r.profit_kop_24 ?? 0)),
+    recent: rows.slice(0, 30).map((r) => ({ day: r.day, name: r.name, buyAt: MARKETS[r.buy_at as Market]?.name ?? r.buy_at, sellAt: MARKETS[r.sell_at as Market]?.name ?? r.sell_at,
+      profitKop: r.profit_kop, profit24Kop: r.profit_kop_24, outcome: r.outcome })),
+  };
 }
 
 const fmt = (k: number | null) => formatUah(k);

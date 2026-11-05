@@ -3,7 +3,7 @@
 // Данные — то же сканирование рынка, что и во вкладке «Идеи». Нет содержательных данных — пост пропускается.
 // В каждом посте кнопка на бота с меткой ?start=ch — так видно, сколько людей пришло из канала.
 
-import { buildRecs, MARKETS, safeImg, type ScanEntry } from './recs.ts';
+import { buildRecs, HELD_SEC, MARKETS, safeImg, type ScanEntry } from './recs.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
 import { esc, type Keyboard, type TelegramClient } from '../telegram/api.ts';
 import { warsawDate, warsawHour } from '../utils/time.ts';
@@ -38,7 +38,7 @@ export function buildPost(slot: Slot, entries: ScanEntry[], fx: Map<Currency, Fx
 export interface CardRow { name: string; bp: number; kop: number | null }
 export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null; up?: CardRow[]; down?: CardRow[] } | null {
   if (slot === 'ideas') {
-    const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
+    const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0, minHeldSec: HELD_SEC });
     const top = deals.slice(0, 4);
     if (!top.length) return null;
     const lines = [header('💡', 'Рекомендации дня', now), ''];

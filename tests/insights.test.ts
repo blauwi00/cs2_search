@@ -23,6 +23,7 @@ test('история идей: записываются один раз за д�
   const D = d as unknown as D1Database;
   const env = testEnv(d, { INGEST_SECRET: SECRET });
   await db.storeFx(D, [EUR, USD], DAY1);
+  await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1 - 600);
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1);
   const p1 = (await composePost(D, 'ideas', DAY1))!;
   assert.match(p1, /Рекомендации дня<\/b> · 4 ноября/);
@@ -99,6 +100,7 @@ test('картинки в канале: обложка новости из Steam
   const env = testEnv(d, { INGEST_SECRET: SECRET });
   await db.storeFx(D, [EUR, USD], DAY1);
   const img = 'https://community.akamai.steamstatic.com/economy/image/abc';
+  await ingest(env, { kind: 'scan', items: [{ ...scanItem(13), img }] }, DAY1 - 600);
   await ingest(env, { kind: 'scan', items: [{ ...scanItem(13), img }] }, DAY1);
   const p = (await composeChannelPost(D, 'ideas', DAY1))!;
   assert.equal(p.image, img);

@@ -32,6 +32,7 @@ import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta } from '../core/channel.ts';
+import { recStats } from '../core/insights.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
@@ -652,6 +653,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const bot = await botUsername(d, new TelegramClient(env.TELEGRAM_BOT_TOKEN));
       return json({ ok: true, url: `${new URL(req.url).origin}/card/${id}.jpg`, bot: bot ? `https://t.me/${bot}?start=story` : null });
     }
+    if (path === 'recstats' && method === 'GET') return json({ ok: true, ...(await recStats(d, now, 30)) });
     if (path === 'feedback' && method === 'POST') {
       const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
       const err = await submitFeedback(d, tg, Number(env.ADMIN_TELEGRAM_ID), tid, body, now);

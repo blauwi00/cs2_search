@@ -439,6 +439,7 @@ function bindRecs(list) {
     el.onclick = function () { haptic(); var k = el.getAttribute('data-rec'); recSheet(list.filter(function (x) { return x.kind + '|' + x.name === k; })[0]); };
   });
 }
+function heldText(sec) { var m = Math.round(sec / 60); return m < 60 ? m + ' мин' : m < 1440 ? Math.round(m / 60) + ' ч' : Math.round(m / 1440) + ' дн'; }
 function recSheet(r) {
   if (!r) return;
   var h = (r.img ? '<img class="hero-img" src="' + esc(r.img) + '" alt="">' : '') + '<h2>' + esc(r.name) + '</h2><div class="sub">' + esc(r.category || '') + (r.sales7 != null ? ' · ' + r.sales7 + ' продаж на Skinport за 7 дней' : '') + '</div>';
@@ -446,6 +447,9 @@ function recSheet(r) {
     h += verdict({ action: 'buy', title: 'Растёт в цене', reason: r.reason });
   } else {
     h += '<div class="rc" style="cursor:default">' + flowHtml(r) + '</div>';
+    if (r.heldSec != null) h += r.heldSec < 300
+      ? '<div class="note" style="color:var(--amber)">🆕 Объявление появилось при последней проверке — цена ещё не подтверждена. Проверь на сайте перед покупкой.</div>'
+      : '<div class="note" style="color:var(--green)">✔ Цена держится не меньше ' + heldText(r.heldSec) + ' — подтверждена несколькими проверками.</div>';
     h += '<div class="card">' +
       kv('1. Купи на ' + esc(r.buyName), uah(r.buyKop)) +
       (r.payKop !== r.buyKop ? kv('&nbsp;&nbsp;с комиссией оплаты', uah(r.payKop)) : '') +
@@ -482,6 +486,7 @@ function deals() {
     } else {
       state.cache.recsAt = r.fetchedAt;
       h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale ? ' ⚠️ данные устарели' : '') + '</div>';
+      h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
       h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
       if (mine.length) {
@@ -497,7 +502,30 @@ function deals() {
     };
     bindRecs(r.deals.concat(r.trends));
     bindDeals(mine);
+    if ($('#r-stats')) {
+      $('#r-stats').onclick = function () { haptic(); recStatsSheet(); };
+      api('recstats').then(function (s) { var n = s.plus + s.minus; if (n && $('#r-stats-d')) $('#r-stats-d').innerHTML = '<b class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + s.plus + ' из ' + n + '</b> в плюсе через сутки · за ' + s.days + ' дней'; }).catch(function () {});
+    }
   }).catch(fail);
+}
+function recStatsSheet() {
+  sheet('<div class="skel"></div><div class="skel" style="height:200px"></div>');
+  api('recstats').then(function (s) {
+    var n = s.plus + s.minus;
+    var h = '<h2>📊 Честная статистика</h2><div class="sub">«Рекомендации дня» за ' + s.days + ' дней: что стало с каждой через сутки</div>';
+    if (!s.total) h += '<div class="card mut">Пока нечего считать: бот записывает рекомендации дня и проверяет их через сутки. Загляни через пару дней.</div>';
+    else {
+      h += '<div class="grid2">' + stat('В плюсе через сутки', n ? '<span class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + Math.round(s.plus * 100 / n) + '%</span>' : '—', n ? s.plus + ' из ' + n + ' проверенных' : 'ещё проверяется') +
+        stat('Средняя прибыль', s.avgActualKop != null ? '<span class="' + cls(s.avgActualKop) + '">' + uah(s.avgActualKop, true) + '</span>' : '—', s.avgPromisedKop != null ? 'обещали ' + uah(s.avgPromisedKop, true) : 'через сутки') + '</div>';
+      if (s.gone || s.pending) h += '<div class="note">' + (s.pending ? 'Ещё проверяются: ' + s.pending + '. ' : '') + (s.gone ? 'Не удалось проверить (цены пропали): ' + s.gone + ' — в процент не входят.' : '') + '</div>';
+      h += '<div class="sec">Последние</div>' + s.recent.map(function (x) {
+        var o = x.outcome === 'plus' ? '<span class="pos">✅ ' + uah(x.profit24Kop, true) + '</span>' : x.outcome === 'minus' ? '<span class="neg">❌ ' + uah(x.profit24Kop, true) + '</span>' : x.outcome === 'gone' ? '<span class="mut">нет данных</span>' : '<span class="mut">⏳ проверяется</span>';
+        return '<div class="row" style="cursor:default"><div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' + esc(x.day) + ' · ' + esc(x.buyAt) + ' → ' + esc(x.sellAt) + ' · обещали ' + uah(x.profitKop, true) + '</div></div><div class="r" style="font-weight:700;font-size:14px">' + o + '</div></div>';
+      }).join('');
+    }
+    h += '<div class="note"><b>Как считаем:</b> каждый день бот записывает лучшие рекомендации. Через сутки смотрит: если бы ты купил по той цене и продал там же, где советовал бот, по сегодняшней цене и после всех комиссий — остался бы в плюсе? Ничего не подкручиваем: неудачные тоже здесь.</div>';
+    $('#sc').innerHTML = h;
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
 function dealSheet(d) {
   if (!d) return;

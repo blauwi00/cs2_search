@@ -71,9 +71,10 @@ test('канал: /channel проверяет права бота, публик�
   assert.equal(sent.slice(before).filter((s) => s.method === 'getChat').length, 0);
   // Данные для поста и запуск по расписанию.
   await db.storeFx(D, [EUR, USD], AT10);
-  await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'scan', fetchedAt: AT10, items: [
+  // Два сканирования подряд: рекомендация попадает в канал, только если цена держится (#5).
+  for (const t of [AT10 - 600, AT10]) await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'scan', fetchedAt: t, items: [
     { name: 'Revolution Case', offers: { skinport: { p: 10, q: 50 } }, s7: { median: 13, volume: 300 }, s30: { median: 12.5, volume: 1200 } },
-  ] }) }), env, AT10);
+  ] }) }), env, t);
   sent.length = 0;
   await runCycle(env, { now: AT10, fetcher });
   await runCycle(env, { now: AT10 + 400, fetcher });
@@ -123,7 +124,7 @@ test('картинка поста: Worker заказывает её у сбор�
   await db.storeFx(D, [EUR, USD], AT10);
   const hdr = { 'X-Ingest-Secret': SECRET };
   const scan = { name: 'Revolution Case', offers: { skinport: { p: 10, q: 50 } }, s7: { median: 13, volume: 300 }, s30: { median: 12.5, volume: 1200 } };
-  await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'scan', fetchedAt: AT10, items: [scan] }) }), env, AT10);
+  for (const t of [AT10 - 600, AT10]) await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ kind: 'scan', fetchedAt: t, items: [scan] }) }), env, t);
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([

@@ -265,7 +265,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const fresh = parseScan(body.items, at);
       if (fresh.length === 0) return json({ ok: false, error: 'empty_scan' }, 400);
       const old = await loadScan(d);
-      const merged = mergeScan(fresh, old?.entries ?? [], now);
+      const merged = mergeScan(fresh, old?.entries ?? [], now, at, old?.fetchedAt ?? null);
       await d.prepare(
         `INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
       ).bind(JSON.stringify(merged), at).run();

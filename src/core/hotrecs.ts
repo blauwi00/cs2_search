@@ -2,7 +2,7 @@
 // новая выгодная сделка «купи → продай» приходит тем, у кого это включено, по ЕГО порогам прибыли и комиссиям,
 // не больше recs_per_day в сутки, с учётом тихих часов. Одна и та же сделка повторно — не раньше чем через сутки
 // (или если прибыль выросла на 25%+).
-import { buildRecs, MARKETS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from './recs.ts';
+import { buildRecs, HELD_SEC, MARKETS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from './recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import * as db from '../storage/db.ts';
 import { getMeta, setMetaStmt } from './channel.ts';
@@ -67,7 +67,7 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
   const comboOf = (s: db.Settings) => {
     const rs = {
       minProfitKop: Math.max(db.num(s.min_profit_kop), IDEA_SETTINGS.minProfitKop), minRoiBp: Math.max(db.num(s.min_roi_bp), IDEA_SETTINGS.minRoiBp),
-      depositFeeBp: db.num(s.deposit_fee_bp), withdrawFeeBp: db.num(s.withdraw_fee_bp),
+      depositFeeBp: db.num(s.deposit_fee_bp), withdrawFeeBp: db.num(s.withdraw_fee_bp), minHeldSec: HELD_SEC,
     };
     const key = `${rs.minProfitKop}|${rs.minRoiBp}|${rs.depositFeeBp}|${rs.withdrawFeeBp}`;
     if (!combos.has(key)) combos.set(key, combos.size < 12 ? buildRecs(scan.entries, fx, rs).deals : []);

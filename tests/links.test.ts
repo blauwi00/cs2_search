@@ -20,3 +20,32 @@ test('Skinport: адрес из API, если он есть; иначе поис
   assert.match(itemUrl('skinport', 'Revolution Case'), /^https:\/\/skinport\.com\/market\?search=/);
   assert.match(itemUrl('steam', 'Revolution Case'), /^https:\/\/steamcommunity\.com\/market\/listings\/730\/Revolution%20Case$/);
 });
+
+test('#5: объявление «держится», только если цена в прошлом сканировании была та же (±3%)', async () => {
+  const { mergeScan, parseScan } = await import('../src/core/recs.ts');
+  const T = 1_000_000;
+  const s1 = mergeScan(parseScan([{ name: 'A', offers: { skinport: { p: 10 }, waxpeer: { p: 5 } } }], T), [], T, T, null);
+  assert.equal(s1[0].offers[0].since, T);
+  const s2 = mergeScan(parseScan([{ name: 'A', offers: { skinport: { p: 10.2 }, waxpeer: { p: 4 } } }], T + 600), s1, T + 600, T + 600, T);
+  assert.equal(s2[0].offers.find((o) => o.m === 'skinport')!.since, T, '+2% — та же цена держится');
+  assert.equal(s2[0].offers.find((o) => o.m === 'waxpeer')!.since, T + 600, '−20% — новое объявление');
+  const s3 = mergeScan(parseScan([{ name: 'A', offers: { skinport: { p: 10.2 } } }], T + 1200), s2, T + 1200, T + 1200, T + 600);
+  assert.equal(s3[0].offers[0].since, T);
+  assert.equal(s3[0].at, T + 1200);
+});
+
+test('#6: честная статистика — плюс/минус через сутки, «нет данных» не входит в процент', async () => {
+  const { migratedDb } = await import('./helpers.ts');
+  const { recStats } = await import('../src/core/insights.ts');
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  const T = Date.parse('2026-11-04T12:00:00Z') / 1000;
+  const ins = (name: string, profit: number, p24: number | null, outcome: string | null, at: number) => d.db.prepare(
+    `INSERT INTO idea_log (day, name, buy_at, sell_at, pay_kop, sell_kop, get_kop, profit_kop, roi_bp, wallet, created_at, checked_at, profit_kop_24, outcome)
+     VALUES ('2026-11-03', ?, 'skinport', 'csgomarket', 1000, 1300, 1200, ?, 2000, 'cash', ?, ?, ?, ?)`).run(name, profit, at, outcome ? at + 86400 : null, p24, outcome);
+  ins('A', 200, 150, 'plus', T - 3 * 86400); ins('B', 300, -50, 'minus', T - 2 * 86400); ins('C', 100, 20, 'plus', T - 2 * 86400);
+  ins('D', 100, null, 'gone', T - 2 * 86400); ins('E', 100, null, null, T - 3600); ins('Old', 100, 100, 'plus', T - 40 * 86400);
+  const s = await recStats(D, T, 30);
+  assert.deepEqual([s.total, s.plus, s.minus, s.gone, s.pending], [5, 2, 1, 1, 1]);
+  assert.equal(s.avgPromisedKop, 200); assert.equal(s.avgActualKop, 40);
+  assert.equal(s.recent[0].name, 'E'); assert.equal(s.recent[0].sellAt, 'Market.CSGO');
+});

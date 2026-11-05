@@ -2,7 +2,7 @@ import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
 import { WATCH_LIMIT } from '../core/audience.ts';
-import { channelCommand, postPreview, publishNow, refStmt, statsCommand, refCommand, broadcastCommand, broadcastConfirm } from './owner.ts';
+import { channelCommand, postPreview, publishNow, refStmt, statsCommand, refCommand, broadcastCommand, broadcastConfirm, fixNewsPost } from './owner.ts';
 import { budgetedDb, newBudget } from '../storage/budget.ts';
 import { setJobEnabled, listJobs } from '../core/scheduler.ts';
 import { TelegramClient, esc, type Keyboard } from './api.ts';
@@ -78,7 +78,10 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
     await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, update.message.from?.first_name, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
-    else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
+    else if (isAdmin && (update.message as { forward_origin?: { type?: string } } | undefined)?.forward_origin?.type === 'channel') {
+      const fo = (update.message as unknown as { forward_origin: { chat: { id: number }; message_id: number } }).forward_origin;
+      await fixNewsPost({ env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin }, fo.chat.id, fo.message_id);
+    } else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
   } catch (e) {
     await db.log(d, 'error', 'telegram', 'handler', (e as Error).message, now);
     try { await tg.sendMessage(uid, `⚠️ Ошибка обработки команды: ${esc((e as Error).message).slice(0, 300)}`); } catch { /* ignore */ }

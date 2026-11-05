@@ -780,17 +780,20 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
 /** Сколько ждать картинку поста от сборщика (он запускается раз в ~10 минут, иногда с опозданием). */
 export const CARD_WAIT_SEC = 25 * 60;
 
+/** Кнопки под постом об обновлении CS2. */
+export const newsKb = (n: NewsItem, user: string | null): Keyboard => [[{ text: newsRuLines(n) ? '📰 Полный список в Steam' : '📰 Читать в Steam', url: n.url }], ...botButton(user)];
+
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
   const writes: D1PreparedStatement[] = [];
   const user = await botUsername(ctx.db, ctx.tg);
-  const post = async (text: string, kb: Keyboard, image: string | null): Promise<boolean> => {
+  const post = async (text: string, kb: Keyboard, image: string | null): Promise<number | false> => {
     if (!spendExternal(ctx)) return false;
     try {
-      await ctx.tg.sendMessage(Number(chat), text, kb, image);
+      const m = await ctx.tg.sendMessage(Number(chat), text, kb, image);
       bump(ctx, 'channel_posts');
-      return true;
+      return m?.message_id ?? 0;
     } catch (e) {
       const msg = (e as Error).message;
       await db.log(ctx.db, 'warn', 'channel', 'post', msg.slice(0, 300), ctx.now);
@@ -819,16 +822,21 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   // Ждём краткое содержание на русском до 45 минут после выхода обновления; дольше — публикуем как есть.
   const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1')
     .bind(ctx.now - 3 * 86400, ctx.now - 45 * 60).first<NewsItem>();
-  // Обновление уже вышло без перевода (по-английски), а перевод пришёл позже — отдельным постом «кратко на русском», один раз.
-  const late = n ? null : await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NOT NULL AND posted_at >= ? AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1')
-    .bind(ctx.now - 2 * 86400, ctx.now - 2 * 86400).first<NewsItem & { posted_at: number }>();
+  // Обновление уже вышло без перевода (по-английски), а перевод пришёл позже — исправляем тот же пост на русский (один раз).
+  const late = n ? null : await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NOT NULL AND posted_at >= ? AND msg_id IS NOT NULL AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1')
+    .bind(ctx.now - 2 * 86400, ctx.now - 2 * 86400).first<NewsItem & { posted_at: number; msg_id: number }>();
   if (late && newsRuLines(late)) {
     writes.push(ctx.db.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(ctx.now, late.gid));
-    await post(newsPost(late).replace('Обновление CS2', 'Обновление CS2 — кратко на русском'), [[{ text: '📰 Полный список в Steam', url: late.url }], ...botButton(user)], late.image ?? null);
+    try {
+      await ctx.tg.editMessage(Number(chat), late.msg_id, newsPost(late), newsKb(late, user), late.image ?? null);
+    } catch (e) {
+      await db.log(ctx.db, 'warn', 'channel', 'news_edit', (e as Error).message.slice(0, 300), ctx.now);
+    }
   } else if (n) {
     if (newsRuLines(n)) writes.push(ctx.db.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
     writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
-    await post(newsPost(n), [[{ text: newsRuLines(n) ? '📰 Полный список в Steam' : '📰 Читать в Steam', url: n.url }], ...botButton(user)], n.image ?? null);
+    const id = await post(newsPost(n), newsKb(n, user), n.image ?? null);
+    if (id) writes.push(ctx.db.prepare('UPDATE news SET msg_id = ? WHERE gid = ?').bind(id, n.gid));
   } else {
     // 2. Посты по расписанию.
     const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;

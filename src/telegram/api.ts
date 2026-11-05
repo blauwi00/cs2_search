@@ -49,10 +49,11 @@ export class TelegramClient {
     });
   }
 
-  async editMessage(chatId: number, messageId: number, text: string, keyboard?: Keyboard): Promise<void> {
+  async editMessage(chatId: number, messageId: number, text: string, keyboard?: Keyboard, image?: string | null): Promise<void> {
     try {
       await this.call('editMessageText', {
-        chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML', disable_web_page_preview: true,
+        chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML',
+        ...(image ? { link_preview_options: { url: image, prefer_large_media: true, show_above_text: true } } : { disable_web_page_preview: true }),
         ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
       });
     } catch (e) {

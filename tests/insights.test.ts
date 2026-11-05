@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { migratedDb, testEnv, mockFetch, json, fixtureJson, ADMIN } from './helpers.ts';
 import { handleIngest } from '../src/ingest.ts';
 import { runCycle } from '../src/core/runner.ts';
+import { handleWebhook } from '../src/telegram/webhook.ts';
 import { composePost, dueSlot, setMetaStmt } from '../src/core/channel.ts';
 import { cleanSnippet, weeklyPost, yesterdayLine, type IdeaRow } from '../src/core/insights.ts';
 import * as db from '../src/storage/db.ts';
@@ -131,7 +132,7 @@ test('картинки в канале: обложка новости из Steam
 });
 
 
-test('обновление CS2 вышло по-английски (перевода не было 45 мин) — потом отдельный пост «кратко на русском», один раз', async () => {
+test('обновление CS2 вышло по-английски (перевода не было 45 мин) — когда перевод пришёл, тот же пост исправляется на русский, один раз', async () => {
   const d = migratedDb();
   const D = d as unknown as D1Database;
   const env = testEnv(d, { INGEST_SECRET: SECRET });
@@ -153,6 +154,40 @@ test('обновление CS2 вышло по-английски (перево�
   await ingest(env, { kind: 'news_ru', gid: '5', titleRu: 'Обновление Counter-Strike 2', summary: { market: [], sections: [{ name: 'Геймплей', items: ['Исправлена ошибка с гранатами'] }], more: 0 } }, DAY1 + 600);
   for (const t of [DAY1 + 700, DAY1 + 1100, DAY1 + 1500]) { await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`); await runCycle(env, { now: t, fetcher }); }
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234 && /Обновление CS2/.test(s.body.text));
-  assert.equal(posts.length, 2, 'английский + один русский');
-  assert.match(posts[1].body.text, /кратко на русском[\s\S]*Геймплей[\s\S]*гранатами/);
+  assert.equal(posts.length, 1, 'новый пост не пишется');
+  assert.doesNotMatch(posts[0].body.text, /Геймплей/);
+  const edits = sent.filter((s) => s.method === 'editMessageText' && s.body.chat_id === -1001234);
+  assert.equal(edits.length, 1, 'исправлен один раз');
+  assert.equal(edits[0].body.message_id, 1);
+  assert.match(edits[0].body.text, /Обновление CS2[\s\S]*Геймплей[\s\S]*гранатами/);
+  assert.match(JSON.stringify(edits[0].body.reply_markup), /Полный список в Steam/);
+});
+
+test('владелец пересылает боту старый пост из канала — бот запоминает его и исправляет на русский', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  const news = (gid: string, date: number) => ({ gid, title: 'Counter-Strike 2 Update', url: `https://store.steampowered.com/news/app/730/view/${gid}`, date, contents: '[p]Fixed things[/p]' });
+  await ingest(env, { kind: 'news', items: [news('1', DAY1 - 86400)] }, DAY1);
+  // пост уже был опубликован раньше (до того, как бот начал запоминать id сообщений)
+  await d.db.exec(`UPDATE news SET posted_at = ${DAY1}, ru_posted_at = NULL WHERE gid = '1'`);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
+  ]);
+  const fwd = { update_id: 1, message: { message_id: 50, date: DAY1, from: { id: ADMIN, is_bot: false, first_name: 'A' }, chat: { id: ADMIN, type: 'private' }, text: 'Counter-Strike 2 Update', forward_origin: { type: 'channel', chat: { id: -1001234, type: 'channel' }, message_id: 77, date: DAY1 } } };
+  await handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify(fwd) }), env, DAY1 + 100, fetcher);
+  assert.match(sent.at(-1)!.body.text, /Запомнил/);
+  assert.equal(sent.filter((s) => s.method === 'editMessageText').length, 0);
+  await ingest(env, { kind: 'news_ru', gid: '1', titleRu: 'Обновление Counter-Strike 2', summary: { market: [], sections: [{ name: 'Карты', items: ['Исправлен Mirage'] }], more: 0 } }, DAY1 + 600);
+  await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`);
+  await runCycle(env, { now: DAY1 + 700, fetcher });
+  await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`);
+  await runCycle(env, { now: DAY1 + 1000, fetcher });
+  const edits = sent.filter((s) => s.method === 'editMessageText');
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].body.message_id, 77);
+  assert.match(edits[0].body.text, /Mirage/);
+  assert.equal(sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234).length, 0, 'нового поста нет');
 });

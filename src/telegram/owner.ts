@@ -3,6 +3,8 @@ import { SITES, loadRefLinks, checkRefUrl, setRefStmt } from '../core/sites.ts';
 // Команды владельца бота: подключение канала для автопостинга, предпросмотр постов, статистика пользователей.
 
 import { esc } from './api.ts';
+import { newsPost, newsRuLines, type NewsItem } from '../core/insights.ts';
+import { newsKb } from '../core/pipeline.ts';
 import { say, type H } from './context.ts';
 import { nextAllowed } from '../core/audience.ts';
 import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
@@ -207,4 +209,26 @@ export async function broadcastConfirm(h: H, yes: boolean): Promise<void> {
   });
   for (let i = 0; i < stmts.length; i += 90) await h.d.batch(stmts.slice(i, i + 90));
   return say(h, `✅ Рассылка поставлена в очередь: <b>${users.length}</b> человек. Кто заблокировал бота — тому не придёт.`);
+}
+
+/**
+ * Владелец переслал боту пост из канала об обновлении CS2 — запоминаем, что это за сообщение,
+ * и переделываем его на русский (сразу, если перевод уже есть, иначе — как только сборщик переведёт).
+ */
+export async function fixNewsPost(h: H, chatId: number, msgId: number): Promise<void> {
+  const chat = await getMeta(h.d, 'channel_id');
+  if (!chat || Number(chat) !== chatId) return say(h, 'Это пост не из канала, к которому подключён бот.');
+  const n = await h.d.prepare('SELECT * FROM news WHERE posted_at IS NOT NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1')
+    .bind(h.now - 3 * 86400).first<NewsItem>();
+  if (!n) return say(h, 'Не нашёл свежего обновления CS2 (за 3 дня), которое бот публиковал.');
+  await h.d.prepare('UPDATE news SET msg_id = ?, ru_posted_at = NULL WHERE gid = ?').bind(msgId, n.gid).run();
+  if (!newsRuLines(n)) return say(h, `📝 Запомнил пост «${esc(n.title)}». Перевода ещё нет — как только сборщик переведёт (обычно 10–20 минут), бот сам заменит текст поста на русский.`);
+  const user = await botUsername(h.d, h.tg);
+  try {
+    await h.tg.editMessage(chatId, msgId, newsPost(n), newsKb(n, user), n.image ?? null);
+  } catch (e) {
+    return say(h, `⚠️ Не получилось изменить пост: ${esc((e as Error).message.slice(0, 200))}`);
+  }
+  await h.d.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(h.now, n.gid).run();
+  return say(h, '✅ Пост в канале исправлен: теперь там краткое содержание на русском.');
 }

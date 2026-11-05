@@ -9,6 +9,7 @@ import { handleIngest } from './ingest.ts';
 import { handleAppApi } from './webapp/api.ts';
 import APP_HTML from './webapp/app.html';
 import { handleCard } from './card.ts';
+import { handleImgProxy } from './imgproxy.ts';
 import { FINGERPRINT, OFFICIAL_HOST, recordCopy, rememberSelfHost } from './core/origin.ts';
 import { TelegramClient } from './telegram/api.ts';
 
@@ -36,6 +37,7 @@ export default {
     if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());
     if (url.pathname === '/chart' && req.method === 'GET') return handleChart(req, env, nowSec());
     if (url.pathname.startsWith('/card/') && req.method === 'GET') return handleCard(url, env);
+    if (url.pathname === '/img' && req.method === 'GET') return handleImgProxy(url, ctx);
     // Публичный адрес ничего не раскрывает.
     if (url.pathname === '/') return new Response('CS2 Market Bot: OK', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     return new Response('Not Found', { status: 404 });

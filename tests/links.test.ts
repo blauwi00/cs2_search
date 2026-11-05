@@ -49,3 +49,16 @@ test('#6: честная статистика — плюс/минус через
   assert.equal(s.avgPromisedKop, 200); assert.equal(s.avgActualKop, 40);
   assert.equal(s.recent[0].name, 'E'); assert.equal(s.recent[0].sellAt, 'Market.CSGO');
 });
+
+test('картинки для «Поделиться»: только CDN Steam, с заголовком CORS', async () => {
+  const { handleImgProxy } = await import('../src/imgproxy.ts');
+  const ctx = { waitUntil() {} } as unknown as ExecutionContext;
+  const ok = 'https://community.akamai.steamstatic.com/economy/image/abcDEF-12_x/360fx360f';
+  let asked = '';
+  const f = (async (u: string) => { asked = u; return new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'image/png' } }); }) as unknown as typeof fetch;
+  const r = await handleImgProxy(new URL('https://w/img?u=' + encodeURIComponent(ok)), ctx, f);
+  assert.equal(r.status, 200); assert.equal(r.headers.get('Access-Control-Allow-Origin'), '*'); assert.equal(asked, ok);
+  for (const bad of ['https://evil.example/x.png', 'https://raw.githubusercontent.com/a/b.png', 'https://community.akamai.steamstatic.com/../x']) {
+    assert.equal((await handleImgProxy(new URL('https://w/img?u=' + encodeURIComponent(bad)), ctx, f)).status, 400, bad);
+  }
+});

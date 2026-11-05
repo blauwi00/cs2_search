@@ -1098,7 +1098,8 @@ function loadImg(src) {
     var im = new Image(); im.crossOrigin = 'anonymous';
     var t = setTimeout(function () { ok(null); }, 4000);
     im.onload = function () { clearTimeout(t); ok(im); }; im.onerror = function () { clearTimeout(t); ok(null); };
-    im.src = src;
+    // CDN Steam не разрешает рисовать свои картинки на canvas — берём их через свой адрес /img (тот же файл).
+    im.src = /steamstatic\.com|akamaihd\.net/.test(src) ? '/img?u=' + encodeURIComponent(src) : src;
   });
 }
 function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
@@ -1132,7 +1133,7 @@ function drawInvCard(st, withImgs) {
     c.fillStyle = 'rgba(255,255,255,.055)'; rrect(c, 60, y0, W - 120, 220, 36); c.fill();
     var im = withImgs[i];
     if (im) { var s = 180, r = Math.min(s / im.width, s / im.height); c.drawImage(im, 90 + (s - im.width * r) / 2, y0 + 20 + (s - im.height * r) / 2, im.width * r, im.height * r); }
-    else { c.font = '110px sans-serif'; c.fillText(ICON[x.category] || '🎒', 115, y0 + 150); }
+    else { c.fillStyle = 'rgba(255,255,255,.06)'; rrect(c, 90, y0 + 20, 180, 180, 28); c.fill(); c.fillStyle = '#5c636e'; F('800', 84); c.textAlign = 'center'; c.fillText((x.name.replace(/^(StatTrak™ |Souvenir |★ )+/, '')[0] || '?').toUpperCase(), 180, y0 + 140); c.textAlign = 'left'; }
     var parts = x.name.split(' | '), n1 = parts[0], n2 = parts.slice(1).join(' | ');
     c.fillStyle = '#f1f3f5'; c.fillText(fitText(c, n2 ? n2 : n1, W - 470, 46, '700'), 300, y0 + (n2 ? 95 : 120));
     if (n2) { c.fillStyle = '#868e96'; c.fillText(fitText(c, n1 + (x.qty > 1 ? ' · ×' + x.qty : ''), W - 470, 34, '500'), 300, y0 + 145); }

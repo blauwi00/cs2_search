@@ -1498,6 +1498,20 @@ function reportSheet(name, context) {
       .catch(function (e) { $('#rsend').disabled = false; toast(e.message); });
   };
 }
+function suggestSheet() {
+  var h = '<h2>💡 Предложка канала</h2><div class="sub">Что стоит опубликовать: новость, находку на рынке, идею, полезный совет. Владелец посмотрит и решит. Публикуется без имени — «от подписчика».</div>';
+  h += '<label class="f"><span>Текст</span><textarea id="sgt" rows="5" maxlength="900" placeholder="например: на Skinport сейчас скидки на кейсы Kilowatt" style="width:100%;resize:vertical"></textarea></label>';
+  h += '<button class="btn" id="sgs">Отправить</button><div class="note">Картинку можно прислать в чате с ботом: команда /suggest. Ссылки на сторонние сайты и реклама не публикуются. До 3 предложений в сутки.</div>';
+  sheet(h);
+  $('#sgs').onclick = function () {
+    var t = $('#sgt').value.trim();
+    if (t.length < 10) return toast('Слишком коротко — опиши хотя бы парой предложений');
+    $('#sgs').disabled = true;
+    api('suggest', { method: 'POST', body: { text: t } })
+      .then(function () { haptic('ok'); closeSheet(); toast('Спасибо! Если опубликуем — бот напишет'); })
+      .catch(function (e) { $('#sgs').disabled = false; toast(e.message); });
+  };
+}
 function donateSheet() {
   var h = '<h2>💛 Поддержать Ценолова</h2><div class="sub">Бот бесплатный и работает круглосуточно. Если он помог — можно отправить звёзды Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.<br><br>Поддержавшие попадают во вторую бегущую строку «💛 Топ поддержки» — с именем из Telegram. Скрыть себя: /donate в боте → «Скрыть меня».</div>';
   h += '<div class="grid2" id="dons">' + [25, 50, 100, 250, 500].map(function (n) { return '<button class="btn sec2" data-n="' + n + '" style="margin:0">⭐ ' + n + '</button>'; }).join('') + '</div>';
@@ -1522,11 +1536,12 @@ function more() {
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-calc"><div class="ic">🧮</div><div class="m"><div class="n">Калькулятор комиссий</div><div class="d">Сколько придёт после продажи на каждой площадке — и за сколько выставить</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-don"><div class="ic">💛</div><div class="m"><div class="n">Поддержать проект</div><div class="d">Звёздами Telegram — добровольно, бот остаётся бесплатным</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-sug"><div class="ic">💡</div><div class="m"><div class="n">Предложить пост в канал</div><div class="d">Новость, находка на рынке, идея — владелец решит, публиковать ли</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); ownerPanel(); };
-  $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
+  $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); }; $('#m-sug').onclick = suggestSheet;
   $('#m-set').onclick = settings; if ($('#m-st')) $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }

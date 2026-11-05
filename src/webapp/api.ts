@@ -32,6 +32,7 @@ import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
+import { submitSuggestion } from '../telegram/suggest.ts';
 import { recStats } from '../core/insights.ts';
 import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
 import { steamNetKop } from '../core/fees.ts';
@@ -831,6 +832,10 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'feedback' && method === 'POST') {
       const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
       const err = await submitFeedback(d, tg, Number(env.ADMIN_TELEGRAM_ID), tid, body, now);
+      return err ? bad(err) : json({ ok: true });
+    }
+    if (path === 'suggest' && method === 'POST') {
+      const err = await submitSuggestion(d, new TelegramClient(env.TELEGRAM_BOT_TOKEN), Number(env.ADMIN_TELEGRAM_ID), tid, body.text, null, now, tid === Number(env.ADMIN_TELEGRAM_ID));
       return err ? bad(err) : json({ ok: true });
     }
     if (path === 'donate' && method === 'POST') {

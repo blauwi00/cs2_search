@@ -45,6 +45,7 @@ export async function mainMenu(d: D1Database, now: number, appUrl?: string, isAd
     [{ text: '💰 Выгодные сделки', callback_data: 'm:deals' }, { text: '👁 Мониторинг цен', callback_data: 'm:watch' }],
     [{ text: '📦 Кейсы', callback_data: 'm:cases' }, { text: '🎒 Мой инвентарь', callback_data: 'm:inv' }],
     [{ text: '📈 Аналитика', callback_data: 'm:an' }, { text: '🧾 История сделок', callback_data: 'm:trades' }],
+    [{ text: '💡 Предложить пост в канал', callback_data: 'sg:go' }],
     [{ text: '⚙️ Настройки', callback_data: 'm:set' }, ...(isAdmin ? [{ text: '🩺 Состояние системы', callback_data: 'm:status' }] : [])],
   ];
   return { text, keyboard };

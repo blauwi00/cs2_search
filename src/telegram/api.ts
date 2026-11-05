@@ -49,6 +49,11 @@ export class TelegramClient {
     });
   }
 
+  /** Фото по file_id (уже лежит в Telegram) с подписью до 1024 символов. */
+  sendPhoto(chatId: number, photo: string, caption: string, keyboard?: Keyboard): Promise<{ message_id: number }> {
+    return this.call('sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'HTML', ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) });
+  }
+
   async editMessage(chatId: number, messageId: number, text: string, keyboard?: Keyboard, image?: string | null): Promise<void> {
     try {
       await this.call('editMessageText', {

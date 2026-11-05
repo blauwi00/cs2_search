@@ -1,4 +1,5 @@
 import { getMeta } from '../core/channel.ts';
+import { suggestStart, suggestReceive, suggestDecide } from './suggest.ts';
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
@@ -38,7 +39,7 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
 }
 
 interface TgUser { is_bot?: boolean; id: number; language_code?: string; first_name?: string }
-interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string; successful_payment?: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }
+interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string; caption?: string; photo?: { file_id: string; width: number }[]; successful_payment?: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }
 interface TgCallback { id: string; from: TgUser; data?: string; message?: TgMessage }
 interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback; pre_checkout_query?: { id: string; from: TgUser; currency: string; total_amount: number; invoice_payload: string } }
 
@@ -82,6 +83,11 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
     else if (isAdmin && (update.message as { forward_origin?: { type?: string } } | undefined)?.forward_origin?.type === 'channel') {
       const fo = (update.message as unknown as { forward_origin: { chat: { id: number }; message_id: number } }).forward_origin;
       await fixNewsPost({ env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin }, fo.chat.id, fo.message_id);
+    } else if (update.message?.photo?.length) {
+      // Картинка — только для предложки (подпись — в том же сообщении).
+      const h = { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin };
+      const big = update.message.photo[update.message.photo.length - 1].file_id;
+      if (!(await suggestReceive(h, update.message.caption, big))) await say(h, 'Картинки бот принимает только в предложке: /suggest');
     } else if (update.message?.text) await onText(update.message.text, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
   } catch (e) {
     await db.log(d, 'error', 'telegram', 'handler', (e as Error).message, now);
@@ -110,6 +116,7 @@ async function onText(text: string, h: H): Promise<void> {
     case '/start': {
       await db.clearState(h.d, h.uid);
       // Метка источника (t.me/бот?start=tt) — чтобы видеть, откуда приходят люди.
+      if ((t.split(/\s+/)[1] ?? '') === 'suggest') return suggestStart(h);
       const ref = refStmt(h.d, h.uid, t.split(/\s+/)[1] ?? '', h.now);
       if (ref) await ref.run();
       // Кнопка приложения у поля ввода; повторная установка безопасна.
@@ -131,6 +138,7 @@ async function onText(text: string, h: H): Promise<void> {
       const err = await submitFeedback(h.d, h.tg, Number(h.env.ADMIN_TELEGRAM_ID), h.uid, { reason: 'other', comment: msg, context: 'из чата бота' }, h.now);
       return say(h, err ? `❌ ${err}` : '✅ Спасибо! Передал владельцу бота.');
     }
+    case '/suggest': return suggestStart(h);
     case '/terms': return say(h, termsText());
     case '/channel': return channelCommand(h, t.replace(/^\/channel(@\w+)?/i, ''));
     case '/post': return postPreview(h, t.replace(/^\/post(@\w+)?/i, ''));
@@ -161,6 +169,7 @@ async function onText(text: string, h: H): Promise<void> {
   }
   const st = await db.getState(h.d, h.uid, h.now);
   if (!st) return say(h, 'Не понял. Открой меню: /start', [[{ text: 'Меню', callback_data: 'm' }]]);
+  if (st.awaiting === 'suggest') { await suggestReceive(h, text, null); return; }
   if (await INV.onText(h, st, t)) return;
   if (st.awaiting === 'search') return doSearch(h, t);
   if (st.awaiting === 'addlist') return addList(h, text);
@@ -256,6 +265,8 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
+  if (a === 'sg' && b === 'go') return suggestStart(h);
+  if (a === 'sg' && Number.isInteger(Number(c))) return suggestDecide(h, b, Number(c));
   if (a === 'wk' && b === 'off') {
     await db.setSetting(h.d, h.uid, 'weekly_report', '0', h.now);
     return say(h, '🔕 Воскресная сводка выключена. Включить: приложение → Ещё → Настройки → «Воскресная сводка по инвентарю Steam».');

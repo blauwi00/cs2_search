@@ -16,6 +16,9 @@ const TIME_BUDGET_MS = 7 * 60_000;  // укладываемся в 10-минут
 const STEAM_CHUNK = 25;             // предметов в одной отправке в Worker
 const SALES_CHUNK = 40;
 const started = Date.now();
+// Режим «домашний агент» (STEAM_ONLY=1): запускается на компьютере владельца и делает только то, что требует Steam
+// (цены Steam, инвентари, «Разгон»). Всё остальное (площадки, картинки, курсы, новости) собирает GitHub.
+const HOME = process.env.STEAM_ONLY === '1';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -44,13 +47,15 @@ const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUnti
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
-const STEAM_MAX_REQ = 24;
-const steamPaused = steamPauseUntil > now();
+const STEAM_MAX_REQ = HOME ? 40 : 24;  // дома адрес свой — можно чуть больше
+let homePause = 0;
+if (HOME) { try { homePause = JSON.parse(readFileSync('.cache/steam_pause.json', 'utf8')).until || 0; } catch { homePause = 0; } }
+const steamPaused = HOME ? homePause > now() : steamPauseUntil > now();
 let steamReq = 0, steamLimited = false;
 const steamCan = (reserve = 0) => !steamPaused && !steamLimited && steamReq + reserve < STEAM_MAX_REQ;
 if (steamPaused) console.log(`Steam: пауза после ограничений до ${new Date(steamPauseUntil * 1000).toISOString()} — запросов к Steam не делаем`);
 // Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
-if (card && card.id) {
+if (card && card.id && !HOME) {
   const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
   mkdirSync('.cache', { recursive: true });
   writeFileSync('.cache/card.json', JSON.stringify(card));
@@ -70,6 +75,7 @@ try {
   skinportCalls++;
   const all = await readJson(res);
   allItems = Array.isArray(all) ? all : [];
+  if (HOME) throw null; // дома Skinport нужен только для ранжирования «Разгона» — в Worker не отправляем
   if (needCatalog) {
     // Раз в сутки: все названия CS2 для поиска в боте и приложении.
     const names = [...new Set(all.map((x) => x.market_hash_name).filter(Boolean))].sort();
@@ -85,12 +91,14 @@ try {
   const r = rows.length || items.length ? await toWorker('/ingest', { kind: 'skinport_items', fetchedAt: now(), items: rows }) : 'нет предметов';
   console.log(`Skinport каталог: найдено ${rows.length} из ${items.length}`, r);
 } catch (e) {
-  console.error('Skinport каталог:', e.message);
-  await toWorker('/ingest', { kind: 'skinport_items', fetchedAt: now(), error: e.message }).catch(() => {});
+  if (e !== null) {
+    console.error('Skinport каталог:', e.message);
+    if (!HOME) await toWorker('/ingest', { kind: 'skinport_items', fetchedAt: now(), error: e.message }).catch(() => {});
+  }
 }
 
 // 2. Skinport: история продаж (ликвидность) — порциями.
-for (let i = 0; i < items.length && i / SALES_CHUNK < 4; i += SALES_CHUNK) {
+for (let i = 0; !HOME && i < items.length && i / SALES_CHUNK < 4; i += SALES_CHUNK) {
   const chunk = items.slice(i, i + SALES_CHUNK);
   try {
     const q = new URLSearchParams({ app_id: '730', currency: 'EUR', market_hash_name: chunk.join(',') });
@@ -137,12 +145,12 @@ try {
   for (const [k, v] of Object.entries(cat.charms)) charmNames.set(k, v);
   for (const [k, v] of Object.entries(cat.phases)) phases.set(k, v);
   console.log(`Каталог: картинок ${images.size}, наклеек ${stickerNames.size}, брелков ${charmNames.size}, фаз Doppler ${phases.size}`);
-  const send = missingImages.filter((n) => images.has(n)).map((n) => ({ name: n, url: images.get(n) }));
+  const send = HOME ? [] : missingImages.filter((n) => images.has(n)).map((n) => ({ name: n, url: images.get(n) }));
   if (send.length) console.log('Картинки для наблюдения:', await toWorker('/ingest', { kind: 'images', fetchedAt: now(), items: send.slice(0, 500) }));
   // Картинки для ВСЕХ предметов (поиск, ножи, перчатки, кейсы…): по 1000 за запрос (лимит CPU Worker), до 6000 за запуск.
   // Докуда дошли, помнит Worker (imgCursor; -1 — весь каталог отправлен, раз в неделю проход повторяется).
   const all = [...images].filter(([n]) => n.length <= 200).sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  let at = imgCursor ?? 0, pushed = 0;
+  let at = HOME ? -1 : imgCursor ?? 0, pushed = 0;
   while (at >= 0 && at < all.length && pushed < 6000) {
     const part = all.slice(at, at + 1000);
     const next = at + part.length >= all.length ? -1 : at + part.length;
@@ -275,7 +283,7 @@ const getJson = async (url) => {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return readJson(res);
 };
-await Promise.all([
+if (!HOME) await Promise.all([
   getJson('https://market.csgo.com/api/v2/prices/USD.json').then((j) => {
     for (const x of j.items ?? []) if (x.market_hash_name && Number(x.price) > 0) markets.csgomarket.set(x.market_hash_name, { p: Number(x.price), q: Number(x.volume) || 0 });
   }).catch((e) => console.error('Market.CSGO:', e.message)),
@@ -295,7 +303,7 @@ console.log(`Площадки: Market.CSGO ${markets.csgomarket.size}, Waxpeer $
 const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.06, lisskins: 0.05, steamavg: 0.15 };
 const RATE = { skinport: fx.EUR || 0, csgomarket: fx.USD || 0, waxpeer: fx.USD || 0, lisskins: fx.USD || 0, steamavg: fx.USD || 0 };
 let scan = [];
-try {
+if (!HOME) try {
   const sp = new Map(allItems.filter((x) => x && typeof x.market_hash_name === 'string' && x.min_price > 0).map((x) => [x.market_hash_name, x]));
   const names = new Set([...sp.keys(), ...markets.csgomarket.keys(), ...markets.waxpeer.keys(), ...markets.lisskins.keys()]);
   const offersOf = (n) => {
@@ -357,7 +365,7 @@ try {
 // 2ж. Цены со всех площадок для карточек предметов (раз в несколько часов, когда Worker попросит).
 // Прямые прайсы (Skinport, Market.CSGO, Waxpeer, LIS-SKINS) уже загружены выше; BUFF163, YouPin, C5GAME, CSFloat, CS.MONEY —
 // из открытых файлов CSGO Trader (lowest listing). Всё в центах USD; Skinport переводим из евро по НБУ.
-if (sitePriceNames.length) {
+if (sitePriceNames.length && !HOME) {
   try {
     const extra = { buff163: 'starting_at', youpin898: 'starting_at', c5game: 'starting_at', csfloat: 'starting_at', csmoney: null };
     const files = {};
@@ -398,7 +406,7 @@ if (sitePriceNames.length) {
 }
 
 // 2е. Курсы валют к доллару (открытый файл CSGO Trader) — для валют, которых нет у НБУ (RUB, BRL, ARS).
-try {
+if (!HOME) try {
   const r = await fetch('https://prices.csgotrader.app/latest/exchange_rates.json', { headers: { 'User-Agent': UA } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   console.log('Курсы к доллару:', await toWorker('/ingest', { kind: 'fx_usd', fetchedAt: now(), rates: await r.json() }));
@@ -407,7 +415,7 @@ try {
 }
 
 // 2д. Новости CS2: объявления разработчиков из Steam (открытый API новостей, к рынку Steam не относится).
-try {
+if (!HOME) try {
   const r = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=600&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
@@ -549,7 +557,16 @@ if (rally?.active && steamAvg.size && fx.USD && !steamBlocked && Date.now() - st
 }
 
 // Отчёт о Steam: Worker назначит паузу, если был 429, и снимет её после спокойного запуска.
-if (!steamPaused) {
+if (HOME) {
+  // Дома паузу помним сами (в файле), чтобы ограничение у GitHub не останавливало домашний агент и наоборот.
+  const prev = (() => { try { return JSON.parse(readFileSync('.cache/steam_pause.json', 'utf8')); } catch { return { level: 0 }; } })();
+  const level = steamLimited ? Math.min((prev.level || 0) + 1, 4) : steamPaused ? prev.level || 0 : 0;
+  const until = steamLimited ? now() + [0, 30, 60, 120, 180][level] * 60 : steamPaused ? prev.until : 0;
+  mkdirSync('.cache', { recursive: true });
+  writeFileSync('.cache/steam_pause.json', JSON.stringify({ level, until }));
+  console.log(`Steam (дом): запросов ${steamReq}${steamLimited ? `, получили 429 — пауза до ${new Date(until * 1000).toLocaleTimeString()}` : ''}`);
+  try { await toWorker('/ingest', { kind: 'agent_ping', fetchedAt: now(), requests: steamReq, limited: steamLimited }); } catch { /* не критично */ }
+} else if (!steamPaused) {
   try { console.log(`Steam: запросов ${steamReq}${steamLimited ? ', получили 429' : ''}`, await toWorker('/ingest', { kind: 'steam_limit', fetchedAt: now(), limited: steamLimited, requests: steamReq })); } catch (e) { console.error('Steam-отчёт:', e.message); }
 }
 console.log(`Готово за ${Math.round((Date.now() - started) / 1000)} с`);

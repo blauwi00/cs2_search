@@ -304,6 +304,9 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         await setMetaStmt(d, 'img_cursor', String(cur)).run();
         if (cur === -1) await setMetaStmt(d, 'img_pass_at', String(now)).run();
       }
+    } else if (body.kind === 'agent_ping') {
+      // Домашний агент (цены Steam с компьютера владельца) жив — показываем в /stats и панели.
+      await setMetaStmt(d, 'agent_at', JSON.stringify({ at: now, requests: Number((body as { requests?: unknown }).requests) || 0, limited: (body as { limited?: unknown }).limited === true })).run();
     } else if (body.kind === 'steam_limit') {
       // 429 → пауза 30 мин, при повторах 1 ч, 2 ч, 3 ч; спокойный запуск — сброс.
       const limited = (body as { limited?: unknown }).limited === true;

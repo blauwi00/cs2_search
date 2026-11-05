@@ -110,7 +110,14 @@ export async function statsCommand(h: H): Promise<void> {
     `Со списком наблюдения: ${watch?.u ?? 0}, разных предметов: ${watch?.i ?? 0}`,
     `Канал: ${ch ? esc(ch) : 'не подключён'}`,
     `💛 Пожертвования: <b>${don?.s ?? 0} ⭐</b> (${don?.n ?? 0} шт., за 30 дней ${don?.s30 ?? 0} ⭐)`,
-    `📮 Сообщений об ошибках за неделю: ${fb?.n ?? 0}`, '',
+    `📮 Сообщений об ошибках за неделю: ${fb?.n ?? 0}`,
+    await (async () => {
+      let ag: { at?: number; requests?: number; limited?: boolean } = {};
+      try { ag = JSON.parse((await getMeta(h.d, 'agent_at')) ?? '{}'); } catch { ag = {}; }
+      const pause = Number(await getMeta(h.d, 'steam_pause_until')) || 0;
+      return [`🏠 Домашний агент Steam: ${ag.at ? `${Math.round((h.now - ag.at) / 60)} мин назад, запросов ${ag.requests ?? 0}${ag.limited ? ', Steam ограничил' : ''}` : 'не подключён'}`,
+        `☁️ Steam с GitHub: ${pause > h.now ? `пауза ещё ${Math.round((pause - h.now) / 60)} мин (Steam ограничил)` : 'без паузы'}`].join('\n');
+    })(), '',
     '<b>Откуда пришли</b> (всего / за неделю):',
     ...refs.results.map((r) => `• ${esc(r.ref)}: ${r.n} / ${r.d7 ?? 0}`), '',
     'Ссылки с меткой для рекламы:',

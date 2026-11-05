@@ -68,3 +68,12 @@ test('площадки: устаревшие данные не показыва�
   assert.equal(list[0].cur, 'EUR'); assert.equal(list[0].at, NOW - 600);
 });
 
+
+test('главная: Waxpeer скрыт (рейтинг 2.6), но его цены в карточке предмета остаются', async () => {
+  const { sitesFor } = await import('../src/core/sites.ts');
+  const home = sitesFor({});
+  assert.equal(home.some((x) => x.key === 'waxpeer'), false);
+  assert.equal(home.length, 11);
+  const list = sitePriceList('AK-47 | Redline (Field-Tested)', { waxpeer: 1000 }, (c) => c * 41, {}, null, { waxpeer: NOW }, NOW);
+  assert.equal(list[0].key, 'waxpeer');
+});

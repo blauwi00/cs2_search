@@ -94,3 +94,19 @@ test('топ поддержки: имя из Telegram, сумма по чело�
   if (btn) await upd({ callback_query: { id: 'c2', from: { id: 22 }, data: btn[1], message: { message_id: 1, chat: { id: 22, type: 'private' } } } });
   assert.equal((await topDonors(D))[0].name, 'Аноним');
 });
+
+test('картинка инвентаря: принимаем только JPEG, одна на человека, ссылка /card/inv-….jpg отдаётся', async () => {
+  const { D, env } = setup();
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 8181, first_name: 'E' }) }, 'TEST_TOKEN');
+  await D.prepare("INSERT INTO meta (key, value) VALUES ('bot_username', 'cenolow_bot')").run();
+  const post = async (jpg: string, now = NOW) => (await handleAppApi(new Request('https://w.dev/app/api/sharecard', { method: 'POST', headers: { 'X-Init-Data': init, 'Content-Type': 'application/json' }, body: JSON.stringify({ jpg }) }), env, now)).json() as Promise<Record<string, any>>;
+  assert.equal((await post('iVBORw0KGgo=')).ok, false, 'не JPEG');
+  const a = await post('/9j/4AAQSkZJRgABAQ==');
+  assert.equal(a.ok, true); assert.match(a.url, /^https:\/\/w\.dev\/card\/inv-[a-f0-9]{16}\.jpg$/); assert.equal(a.bot, 'https://t.me/cenolow_bot?start=story');
+  assert.equal((await post('/9j/4AAQSkZJRgABAQ==', NOW + 5)).ok, false, 'слишком часто');
+  const b = await post('/9j/4AAQSkZJRgABAg==', NOW + 60);
+  assert.equal((await D.prepare("SELECT COUNT(*) AS n FROM cards WHERE id LIKE 'inv-%'").first<{ n: number }>())!.n, 1, 'старая удалена');
+  const { handleCard } = await import('../src/card.ts');
+  const res = await handleCard(new URL(b.url), env);
+  assert.equal(res.status, 200); assert.equal(res.headers.get('Content-Type'), 'image/jpeg');
+});

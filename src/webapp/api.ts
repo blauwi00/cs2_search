@@ -17,7 +17,7 @@ import { warsawDate } from '../utils/time.ts';
 import { steamListingUrl, safeLink } from '../utils/http.ts';
 import { backtest } from '../core/quality.ts';
 import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
-import { buildRecs, MARKETS, type Rec } from '../core/recs.ts';
+import { buildRecs, MARKETS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop } from '../currency/nbu.ts';
@@ -31,6 +31,7 @@ import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '..
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
+import { botUsername, getMeta } from '../core/channel.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
@@ -40,11 +41,13 @@ async function recsFor(d: D1Database, tid: number, now: number) {
   const r = buildRecs(scan.entries, fx, {
     minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp),
   });
-  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: r.deals.map(recDto), trends: r.trends.map(recDto) };
+  const pages = await loadSkinportPages(d, [...r.deals, ...r.trends].filter((x) => x.buyAt === 'skinport' || x.sellAt === 'skinport').map((x) => x.name).slice(0, 200));
+  const dto = (x: Rec) => recDto(x, pages);
+  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: r.deals.map(dto), trends: r.trends.map(dto) };
 }
 type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string; buyName: string; sellName: string };
-function recDto(r: Rec): RecDto {
-  return { ...r, buyUrl: MARKETS[r.buyAt].url(r.name), sellUrl: MARKETS[r.sellAt].url(r.name), buyName: MARKETS[r.buyAt].name, sellName: MARKETS[r.sellAt].name,
+function recDto(r: Rec, pages?: ItemPages): RecDto {
+  return { ...r, buyUrl: itemUrl(r.buyAt, r.name, pages), sellUrl: itemUrl(r.sellAt, r.name, pages), buyName: MARKETS[r.buyAt].name, sellName: MARKETS[r.sellAt].name,
     category: CATEGORY_RU[parseMarketHashName(r.name).category] ?? '' };
 }
 
@@ -286,7 +289,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
         status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
-        totalKop: total, totalNetKop: totalNet, items,
+        totalKop: total, totalNetKop: totalNet, items, bot: await getMeta(d, 'bot_username'),
       });
     }
     if (path === 'steam/login' && method === 'POST') {
@@ -562,6 +565,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'setup' && method === 'POST') {
       if (body.what === 'currency') await db.setSetting(d, tid, 'currency_ok', '1', now);
       else if (body.what === 'hide') await db.setSetting(d, tid, 'setup_hidden', '1', now);
+      else if (body.what === 'onboarded') await db.setSetting(d, tid, 'onboarded', '1', now);
       else if (body.what === 'notify') await db.setSetting(d, tid, 'notify_enabled', '1', now);
       else return bad('bad_setup');
       return json({ ok: true });
@@ -585,7 +589,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
     if (path === 'terms' && method === 'GET') {
       const s = await db.getSettings(d, tid);
-      return json({ ok: true, accepted: s.terms_ok === TERMS_VERSION, version: TERMS_VERSION, short: TERMS_SHORT, terms: TERMS_SECTIONS, privacy: PRIVACY_SECTIONS });
+      return json({ ok: true, accepted: s.terms_ok === TERMS_VERSION, onboarded: s.onboarded === '1', version: TERMS_VERSION, short: TERMS_SHORT, terms: TERMS_SECTIONS, privacy: PRIVACY_SECTIONS });
     }
     if (path === 'terms' && method === 'POST') {
       await db.setSetting(d, tid, 'terms_ok', TERMS_VERSION, now);
@@ -618,7 +622,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           }
         }
       }
-      const list = sitePriceList(name, cents, toK, links);
+      const list = sitePriceList(name, cents, toK, links, await loadSkinportPages(d, [name]));
       let steam: { kop: number; live: boolean } | null = null;
       if (item) {
         const [q, sa] = await Promise.all([quotesChunked(d, [item.id]), steamAvgFor(d, [item.id])]);
@@ -628,6 +632,25 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (live?.price_kop) steam = { kop: live.price_kop, live: true }; else if (avgK) steam = { kop: avgK, live: false };
       }
       return json({ ok: true, at, sites: list, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
+    }
+    // #2: картинка «Мой инвентарь стоит X» — рисует приложение, сервер только хранит (одна на человека, 30 дней).
+    if (path === 'sharecard' && method === 'POST') {
+      const jpg = typeof body.jpg === 'string' ? body.jpg : '';
+      if (!jpg.startsWith('/9j/') || jpg.length > 600_000 || !/^[A-Za-z0-9+/=]+$/.test(jpg)) return bad('bad_image');
+      const s = await db.getSettings(d, tid);
+      let prev: { id?: string; at?: number } = {};
+      try { prev = s.share_card ? JSON.parse(s.share_card) : {}; } catch { prev = {}; }
+      if (prev.at && now - prev.at < 15) return bad('Подожди пару секунд');
+      const id = 'inv-' + [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      await d.batch([
+        ...(prev.id ? [d.prepare('DELETE FROM cards WHERE id = ?').bind(prev.id)] : []),
+        d.prepare("DELETE FROM cards WHERE id LIKE 'inv-%' AND created_at < ?").bind(now - 30 * 86400),
+        d.prepare('INSERT INTO cards (id, jpg_b64, created_at) VALUES (?, ?, ?)').bind(id, jpg, now),
+        d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'share_card', ?, ?)
+          ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(tid, JSON.stringify({ id, at: now }), now),
+      ]);
+      const bot = await botUsername(d, new TelegramClient(env.TELEGRAM_BOT_TOKEN));
+      return json({ ok: true, url: `${new URL(req.url).origin}/card/${id}.jpg`, bot: bot ? `https://t.me/${bot}?start=story` : null });
     }
     if (path === 'feedback' && method === 'POST') {
       const tg = new TelegramClient(env.TELEGRAM_BOT_TOKEN);

@@ -11,6 +11,8 @@ import type { Fetcher } from '../utils/http.ts';
 import { moneyResolver } from '../currency/display.ts';
 import { reportCopy } from './origin.ts';
 import { jobHotRecs } from './hotrecs.ts';
+import { jobWeekly, isSunday, WEEKLY_HOUR } from './weekly.ts';
+import { warsawHour } from '../utils/time.ts';
 
 /** Порядок важен: при нехватке лимита раньше выполняются верхние задачи. */
 export const JOBS: (JobDef & { minD1: number })[] = [
@@ -25,6 +27,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'kick_collector', intervalSec: 10 * 60, lockSec: 60, minD1: 2 },
   { name: 'channel', intervalSec: 5 * 60, lockSec: 60, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'ideas', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 3 * 60 },
+  { name: 'weekly', intervalSec: 20 * 60, lockSec: 90, minD1: 6, firstDelaySec: 4 * 60 },
   { name: 'hot_recs', intervalSec: 5 * 60, lockSec: 90, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },
@@ -57,7 +60,9 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   }
 
   const jobs = new Map((await listJobs(d)).map((j) => [j.name, j]));
-  const minD1 = (def: (typeof JOBS)[number]) => (def.name === 'csfloat' && !env.CSFLOAT_API_KEY ? 2 : def.minD1);
+  // Воскресная сводка тратит запросы только вечером в воскресенье — в остальное время ничего не резервирует.
+  const weeklyNow = isSunday(now) && warsawHour(now) >= WEEKLY_HOUR;
+  const minD1 = (def: (typeof JOBS)[number]) => (def.name === 'csfloat' && !env.CSFLOAT_API_KEY ? 2 : def.name === 'weekly' && !weeklyNow ? 0 : def.minD1);
   // Только задачи, которым пора; из «тяжёлых» — не больше одной за вызов.
   const due: (typeof JOBS)[number][] = [];
   let heavyPicked = false;
@@ -69,6 +74,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
     const forced = opts.force?.includes(def.name) ?? false;
     if (!row || row.enabled !== 1) { result.skipped.push(def.name); continue; }
     if (!forced && row.next_run_at > now) continue;
+    if (def.name === 'weekly' && !weeklyNow && !forced) continue; // не тратим запросы на блокировку вне воскресного вечера
     if (def.heavy && heavyPicked) { result.skipped.push(def.name); continue; }
     if (def.heavy) heavyPicked = true;
     due.push(def);
@@ -98,6 +104,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
         case 'origin': await reportCopy(ctx.db, (u) => (ctx.fetcher ?? fetch)(u)); break;
         case 'ideas': await P.jobIdeas(ctx); break;
         case 'hot_recs': await jobHotRecs(ctx); break;
+        case 'weekly': await jobWeekly(ctx); break;
         case 'health': await P.jobHealth(ctx); break;
         case 'quality': await P.jobQuality(ctx); break;
         case 'daily_report': await P.jobDailyReport(ctx); break;

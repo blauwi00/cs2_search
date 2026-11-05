@@ -2,7 +2,7 @@
 import type { Env } from './env.ts';
 
 export async function handleCard(url: URL, env: Env): Promise<Response> {
-  const m = url.pathname.match(/^\/card\/((?:ideas|trends|cases|weekly)-\d{4}-\d{2}-\d{2})\.jpg$/);
+  const m = url.pathname.match(/^\/card\/((?:ideas|trends|cases|weekly)-\d{4}-\d{2}-\d{2}|inv-[a-f0-9]{16})\.jpg$/);
   if (!m) return new Response('Not Found', { status: 404 });
   const r = await env.DB.prepare('SELECT jpg_b64 FROM cards WHERE id = ?').bind(m[1]).first<{ jpg_b64: string }>();
   if (!r) return new Response('Not Found', { status: 404 });

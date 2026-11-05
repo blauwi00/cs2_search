@@ -3,6 +3,7 @@
 // В приложении такие ссылки честно помечены «партнёрская ссылка».
 
 import { getMeta, setMetaStmt } from './channel.ts';
+import { itemUrl, type ItemPages } from './recs.ts';
 
 export type SiteKey = 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins' | 'csfloat' | 'csmoney' | 'dmarket' | 'buffmarket' | 'skinbaron' | 'csdeals' | 'tradeit' | 'steam';
 
@@ -67,14 +68,14 @@ export const PRICE_SITES: { key: string; name: string; group: 'cash' | 'china' |
 export interface SitePrice { key: string; name: string; group: string; kop: number; url: string; icon: string; ref: boolean }
 
 /** Цены предмета на всех площадках (самое дешёвое объявление), в копейках. Партнёрская ссылка — на главную площадки. */
-export function sitePriceList(name: string, usdCents: Record<string, number>, toKopUsd: (c: number) => number | null, links: RefLinks): SitePrice[] {
+export function sitePriceList(name: string, usdCents: Record<string, number>, toKopUsd: (c: number) => number | null, links: RefLinks, pages?: ItemPages | null): SitePrice[] {
   const out: SitePrice[] = [];
   for (const s of PRICE_SITES) {
     const c = usdCents[s.key];
     const kop = c ? toKopUsd(c) : null;
     if (!kop) continue;
     const ref = links[s.key as SiteKey];
-    out.push({ key: s.key, name: s.name, group: s.group, kop, url: ref ?? s.url(name), icon: siteIcon(s.home), ref: !!ref });
+    out.push({ key: s.key, name: s.name, group: s.group, kop, url: ref ?? (s.key === 'skinport' || s.key === 'lisskins' ? itemUrl(s.key, name, pages) : s.url(name)), icon: siteIcon(s.home), ref: !!ref });
   }
   return out.sort((a, b) => a.kop - b.kop);
 }

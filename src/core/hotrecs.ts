@@ -2,7 +2,7 @@
 // новая выгодная сделка «купи → продай» приходит тем, у кого это включено, по ЕГО порогам прибыли и комиссиям,
 // не больше recs_per_day в сутки, с учётом тихих часов. Одна и та же сделка повторно — не раньше чем через сутки
 // (или если прибыль выросла на 25%+).
-import { buildRecs, MARKETS, type Rec } from './recs.ts';
+import { buildRecs, MARKETS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from './recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import * as db from '../storage/db.ts';
 import { getMeta, setMetaStmt } from './channel.ts';
@@ -31,9 +31,9 @@ export function hotText(r: Rec): string {
   ].filter((x) => x !== '').join('\n').replace('\n\n<i>', '\n\n<i>');
 }
 
-export function hotKeyboard(r: Rec, origin: string | null): Keyboard {
+export function hotKeyboard(r: Rec, origin: string | null, pages?: ItemPages | null): Keyboard {
   return [
-    [{ text: `🛒 Купить на ${MARKETS[r.buyAt].name}`, url: MARKETS[r.buyAt].url(r.name) }],
+    [{ text: `🛒 Купить на ${MARKETS[r.buyAt].name}`, url: itemUrl(r.buyAt, r.name, pages) }],
     ...(origin ? [[{ text: '📱 Все рекомендации', web_app: { url: `${origin}/app#deals` } }]] : []),
     [{ text: '🔕 Не присылать такие', callback_data: 'nr:off' }],
   ];
@@ -77,17 +77,24 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
   const isNew = (r: Rec) => { const p = before[hotKey(r)]; return !p || ctx.now - p.at >= HOT_REPEAT_SEC || (r.profitKop ?? 0) >= p.p * (1 + HOT_UP_BP / 10000); };
 
   const origin = await getMeta(d, 'public_origin');
-  let queued = 0;
+  const pending: { tid: number; r: Rec; s: db.Settings }[] = [];
   for (const tid of eligible) {
     const s = settings.get(tid)!;
     const limit = Math.min(10, Math.max(1, db.num(s.recs_per_day) || 3));
     if ((today.get(tid) ?? 0) >= limit) continue;
     const r = comboOf(s).find(isNew);
     if (!r) continue;
-    writes.push(d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at)
-      VALUES (?, 'recs', ?, NULL, ?, ?, NULL, ?, ?)`).bind(tid, `${hotKey(r)}:${scan.fetchedAt}`, hotText(r), JSON.stringify(hotKeyboard(r, origin)),
-      nextAllowed(ctx.now, db.num(s.quiet_start), db.num(s.quiet_end)), ctx.now));
+    pending.push({ tid, r, s });
     sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, sent[hotKey(r)]?.p ?? 0), at: ctx.now };
+  }
+  // Ссылка «Купить» — сразу на страницу предмета (для Skinport адрес берём из его API): один запрос на всю рассылку.
+  const spNames = pending.filter((x) => x.r.buyAt === 'skinport').map((x) => x.r.name);
+  const pages = spNames.length ? await loadSkinportPages(d, spNames) : null;
+  let queued = 0;
+  for (const { tid, r, s } of pending) {
+    writes.push(d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at)
+      VALUES (?, 'recs', ?, NULL, ?, ?, NULL, ?, ?)`).bind(tid, `${hotKey(r)}:${scan.fetchedAt}`, hotText(r), JSON.stringify(hotKeyboard(r, origin, pages)),
+      nextAllowed(ctx.now, db.num(s.quiet_start), db.num(s.quiet_end)), ctx.now));
     queued++;
   }
   for (const [k, v] of Object.entries(sent)) if (ctx.now - v.at > 3 * 86400) delete sent[k];

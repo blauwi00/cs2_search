@@ -26,6 +26,35 @@ export const MARKETS: Record<Market, { name: string; sellFeeBp: number; wallet: 
   waxpeer: { name: 'Waxpeer', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://waxpeer.com/?search=${encodeURIComponent(n)}&sort=ASC&order=price` },
   lisskins: { name: 'LIS-SKINS', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://lis-skins.com/market/csgo/?query=${encodeURIComponent(n)}` },
 };
+/** Прямые страницы предмета (#4). Skinport — точный адрес из его API (item_page), он хранится в market_quotes.url.
+ *  LIS-SKINS — адрес вида /market/csgo/ak-47-redline-field-tested/: строим только для обычных скинов оружия «X | Y (Износ)»,
+ *  где формат проверен; для StatTrak, сувениров, ножей, кейсов и наклеек остаётся поиск (адрес может отличаться). */
+const WEAR = '(Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)';
+const SIMPLE_SKIN = new RegExp(`^[A-Za-z0-9-]+(?: [A-Za-z0-9-]+)* \\| [A-Za-z0-9' -]+ \\(${WEAR}\\)$`);
+export function lisSkinsSlug(name: string): string | null {
+  if (!SIMPLE_SKIN.test(name) || name.startsWith('Souvenir ')) return null;
+  return name.toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+const SKINPORT_PAGE = /^https:\/\/skinport\.com\/item\/[a-z0-9-]+$/;
+export type ItemPages = Map<string, string>;
+/** Ссылка «Купить/Продать» на площадке: страница предмета, где адрес известен точно, иначе — поиск по названию. */
+export function itemUrl(m: Market | string, name: string, skinportPages?: ItemPages | null): string {
+  if (m === 'skinport') { const p = skinportPages?.get(name); if (p && SKINPORT_PAGE.test(p)) return p; }
+  if (m === 'lisskins') { const s = lisSkinsSlug(name); if (s) return `https://lis-skins.com/market/csgo/${s}/`; }
+  return (MARKETS as Record<string, { url: (n: string) => string }>)[m]?.url(name) ?? '';
+}
+/** Адреса страниц Skinport для набора предметов — одним запросом (по 90 названий). */
+export async function loadSkinportPages(d: D1Database, names: string[]): Promise<ItemPages> {
+  const out: ItemPages = new Map();
+  const uniq = [...new Set(names)];
+  for (let i = 0; i < uniq.length; i += 90) {
+    const part = uniq.slice(i, i + 90);
+    const r = await d.prepare(`SELECT i.market_hash_name AS n, MAX(q.url) AS url FROM market_quotes q JOIN items i ON i.id = q.item_id
+      WHERE q.source = 'skinport' AND q.url IS NOT NULL AND i.market_hash_name IN (${part.map(() => '?').join(',')}) GROUP BY i.market_hash_name`).bind(...part).all<{ n: string; url: string }>();
+    for (const x of r.results) out.set(x.n, x.url);
+  }
+  return out;
+}
 export const SKINPORT_SELL_FEE_HIGH_BP = 600;      // Skinport: 6% для продаж дороже 1000 €
 export const SKINPORT_HIGH_EUR_CENTS = 100_000;
 

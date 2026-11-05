@@ -246,6 +246,10 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
+  if (a === 'wk' && b === 'off') {
+    await db.setSetting(h.d, h.uid, 'weekly_report', '0', h.now);
+    return say(h, '🔕 Воскресная сводка выключена. Включить: приложение → Ещё → Настройки → «Воскресная сводка по инвентарю Steam».');
+  }
   if (a === 'dt') {
     const on = b === 'on';
     await db.setSetting(h.d, h.uid, 'donor_top', on ? '1' : '0', h.now);

@@ -45,6 +45,14 @@ button{font:inherit;color:inherit}
 .stile .sq i{position:absolute;top:3px;right:5px;font-style:normal;font-size:12px}
 .stile .sr{font-size:11px;font-weight:700;margin-top:-4px}.stile .sr.hi{color:var(--green)}.stile .sr.mid{color:var(--amber)}.stile .sr.lo{color:var(--red)}.stile .sr.off{color:var(--hint);font-weight:500}
 .stile .sn{font-size:12px;font-weight:600;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob{min-height:calc(100vh - 140px);display:flex;flex-direction:column;padding:6px 4px 0}
+.ob .art{font-size:76px;text-align:center;margin:22px 0 10px;line-height:1}
+.ob h2{font-size:24px;text-align:center;margin:0 0 10px;letter-spacing:-.3px}
+.ob p{font-size:15px;line-height:1.45;color:var(--hint);text-align:center;margin:0 6px 14px}
+.ob .pts{background:var(--card,#1d2430);border-radius:16px;padding:6px 14px;margin:4px 0 14px}
+.ob .pts div{padding:9px 0;font-size:15px;display:flex;gap:10px;align-items:flex-start}.ob .pts div+div{border-top:1px solid rgba(255,255,255,.06)}
+.ob .dots{display:flex;gap:6px;justify-content:center;margin:auto 0 12px}.ob .dots i{width:7px;height:7px;border-radius:4px;background:var(--hint);opacity:.35;transition:all .2s}.ob .dots i.on{width:20px;opacity:1;background:var(--link)}
+.ob .skip{text-align:center;color:var(--hint);font-size:14px;padding:10px;cursor:pointer}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -760,6 +768,7 @@ function steamBlock(st) {
   if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
+    if (st.totalKop > 0) h += '<button class="btn" id="st-share" style="margin:0 0 12px">📸 Поделиться: сколько стоит мой инвентарь</button>';
     h += st.items.slice(0, 60).map(function (x) {
       return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
         '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
@@ -787,6 +796,7 @@ function bindSteamBlock(st) {
     };
     return;
   }
+  if ($('#st-share')) $('#st-share').onclick = function () { haptic(); shareInventory(st); };
   $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function () { haptic('ok'); toast('Обновлю в течение ~10 минут'); again(); }).catch(function (e) { toast(e.message); }); };
   $('#st-off').onclick = function () {
     var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };
@@ -1011,8 +1021,137 @@ function termsGate(t, first) {
   h += '<div class="note" style="text-align:center">Не согласен — просто не пользуйся ботом. Удалить данные: /deletemydata в чате с ботом.</div>';
   view.innerHTML = h;
   $('#t-ok').onclick = function () {
-    api('terms', { method: 'POST' }).then(function () { haptic('ok'); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); if (first !== 'home') refreshTicker(); }).catch(function (e) { toast(e.message); });
+    api('terms', { method: 'POST' }).then(function () { haptic('ok'); if (!t.onboarded) return onboarding(first); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); if (first !== 'home') refreshTicker(); }).catch(function (e) { toast(e.message); });
   };
+}
+// ---------- Знакомство: 3 экрана при первом открытии (#1) ----------
+var OB = [
+  { art: '🔍', t: 'Где скин дешевле — за секунду', p: 'Бот сравнивает цены на 12 площадках и в Steam и сразу считает все комиссии.',
+    pts: [['💰', 'Цена предмета на каждом сайте — в твоей валюте'], ['📉', 'Подсказка: сейчас дёшево, обычная цена или дорого'], ['⭐', 'Рейтинг площадок, чтобы не нарваться на скам']] },
+  { art: '🔥', t: 'Рекомендации и уведомления', p: 'Бот каждые 10 минут ищет «купи тут → продай там» с прибылью после всех комиссий.',
+    pts: [['🔔', 'Пришлёт выгодную сделку или нужную цену в чат'], ['👁', 'Следит за предметами из твоего списка'], ['🤖', 'Ничего не покупает сам — решаешь ты']] },
+  { art: '🎒', t: 'Сколько стоит твой инвентарь', p: 'Подключи Steam — бот покажет цену каждого предмета, float и наклейки, а по воскресеньям пришлёт, как изменилась стоимость.',
+    pts: [['🔐', 'Вход на официальной странице Steam'], ['🙅', 'Пароль и Steam Guard бот не видит и не просит'], ['👀', 'Инвентарь в Steam должен быть открытым']] },
+];
+function onboarding(first) {
+  var i = 0, tabs = document.querySelector('.tabs');
+  if (tabs) tabs.style.display = 'none';
+  var done = function (to) {
+    api('setup', { method: 'POST', body: { what: 'onboarded' } }).catch(function () {});
+    if (tabs) tabs.style.display = '';
+    go(to); if (to !== 'home') refreshTicker();
+  };
+  var show = function () {
+    var o = OB[i], last = i === OB.length - 1;
+    $('#title').textContent = 'Ценолов';
+    view.innerHTML = '<div class="ob"><div class="art">' + o.art + '</div><h2>' + o.t + '</h2><p>' + o.p + '</p><div class="pts">' +
+      o.pts.map(function (x) { return '<div><span>' + x[0] + '</span><span>' + esc(x[1]) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="dots">' + OB.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('') + '</div>' +
+      (last ? '<button class="btn" id="ob-steam">🎮 Подключить Steam</button><div class="skip" id="ob-skip">Позже — сначала посмотрю</div>'
+        : '<button class="btn" id="ob-next">Дальше</button><div class="skip" id="ob-skip">Пропустить</div>') + '</div>';
+    haptic();
+    if ($('#ob-next')) $('#ob-next').onclick = function () { i++; show(); };
+    if ($('#ob-steam')) $('#ob-steam').onclick = function () { state.invTab = 'steam'; done('inv'); };
+    $('#ob-skip').onclick = function () { done(first); };
+  };
+  // Свайп влево/вправо — как в обычных приложениях.
+  var x0 = null;
+  view.ontouchstart = function (e) { x0 = e.touches[0].clientX; };
+  view.ontouchend = function (e) {
+    if (x0 === null || !$('.ob')) return; var dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (dx < -50 && i < OB.length - 1) { i++; show(); } else if (dx > 50 && i > 0) { i--; show(); }
+  };
+  show();
+}
+// ---------- #2: картинка «Мой инвентарь стоит X» для сторис, TikTok и друзей ----------
+function loadImg(src) {
+  return new Promise(function (ok) {
+    if (!src) return ok(null);
+    var im = new Image(); im.crossOrigin = 'anonymous';
+    var t = setTimeout(function () { ok(null); }, 4000);
+    im.onload = function () { clearTimeout(t); ok(im); }; im.onerror = function () { clearTimeout(t); ok(null); };
+    im.src = src;
+  });
+}
+function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function fitText(c, text, maxW, size, weight) {
+  var s = size; do { c.font = weight + ' ' + s + 'px -apple-system,"SF Pro Display","Segoe UI",Roboto,sans-serif'; s -= 2; } while (c.measureText(text).width > maxW && s > 18);
+  if (c.measureText(text).width <= maxW) return text;
+  while (text.length > 3 && c.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+  return text + '…';
+}
+function drawInvCard(st, withImgs) {
+  var W = 1080, H = 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var c = cv.getContext('2d'), A = '#3ee08f';
+  var g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#151b24'); g.addColorStop(1, '#0a0d12'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  var rg = c.createRadialGradient(W * 0.85, 120, 0, W * 0.85, 120, 900); rg.addColorStop(0, 'rgba(62,224,143,.28)'); rg.addColorStop(1, 'rgba(62,224,143,0)'); c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  var rg2 = c.createRadialGradient(0, H, 0, 0, H, 900); rg2.addColorStop(0, 'rgba(62,224,143,.14)'); rg2.addColorStop(1, 'rgba(62,224,143,0)'); c.fillStyle = rg2; c.fillRect(0, 0, W, H);
+  c.strokeStyle = 'rgba(255,255,255,.035)'; c.lineWidth = 2;
+  for (var x = 0; x < W; x += 60) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, 900); c.stroke(); }
+  for (var y = 0; y < 900; y += 60) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  var F = function (w, s) { c.font = w + ' ' + s + 'px -apple-system,"SF Pro Display","Segoe UI",Roboto,sans-serif'; };
+  c.fillStyle = A; c.beginPath(); c.arc(96, 150, 14, 0, 7); c.fill();
+  F('800', 34); c.fillText('ЦЕНОЛОВ · CS2', 128, 162);
+  c.fillStyle = '#adb5bd'; F('500', 48); c.fillText('Мой инвентарь CS2 стоит', 80, 330);
+  var big = '≈ ' + money(st.totalKop, false, true);
+  c.fillStyle = A; var t = fitText(c, big, W - 160, 168, '800'); c.fillText(t, 80, 500);
+  var cnt = st.items.reduce(function (a, x) { return a + x.qty; }, 0);
+  c.fillStyle = '#868e96'; F('500', 40); c.fillText(cnt + ' ' + plural(cnt, 'предмет', 'предмета', 'предметов') + ' · по ценам Steam', 80, 580);
+  c.fillStyle = '#f1f3f5'; F('800', 40); c.fillText('САМЫЕ ДОРОГИЕ', 80, 720);
+  var top = st.items.filter(function (x) { return x.priceKop; }).sort(function (a, b) { return b.priceKop - a.priceKop; }).slice(0, 3);
+  top.forEach(function (x, i) {
+    var y0 = 770 + i * 250;
+    c.fillStyle = 'rgba(255,255,255,.055)'; rrect(c, 60, y0, W - 120, 220, 36); c.fill();
+    var im = withImgs[i];
+    if (im) { var s = 180, r = Math.min(s / im.width, s / im.height); c.drawImage(im, 90 + (s - im.width * r) / 2, y0 + 20 + (s - im.height * r) / 2, im.width * r, im.height * r); }
+    else { c.font = '110px sans-serif'; c.fillText(ICON[x.category] || '🎒', 115, y0 + 150); }
+    var parts = x.name.split(' | '), n1 = parts[0], n2 = parts.slice(1).join(' | ');
+    c.fillStyle = '#f1f3f5'; c.fillText(fitText(c, n2 ? n2 : n1, W - 470, 46, '700'), 300, y0 + (n2 ? 95 : 120));
+    if (n2) { c.fillStyle = '#868e96'; c.fillText(fitText(c, n1 + (x.qty > 1 ? ' · ×' + x.qty : ''), W - 470, 34, '500'), 300, y0 + 145); }
+    c.fillStyle = A; c.textAlign = 'right'; c.fillText(fitText(c, money(x.priceKop, false, true), 260, 50, '800'), W - 100, y0 + (n2 ? 190 : 175)); c.textAlign = 'left';
+  });
+  var fy = H - 330;
+  c.fillStyle = 'rgba(62,224,143,.12)'; rrect(c, 60, fy, W - 120, 230, 40); c.fill();
+  c.fillStyle = '#f1f3f5'; F('800', 54); c.fillText('А сколько стоит твой?', 110, fy + 95);
+  c.fillStyle = A; F('700', 44); c.fillText(st.bot ? '@' + st.bot + ' — бесплатно' : 'Бот «Ценолов» в Telegram', 110, fy + 170);
+  c.fillStyle = '#5c636e'; F('500', 28); c.fillText('Оценка по средним продажам в Steam. Не финансовый совет.', 80, H - 50);
+  return cv;
+}
+function plural(n, a, b, c) { var m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; }
+function shareInventory(st) {
+  sheet('<h2>📸 Мой инвентарь</h2><div class="sub">Рисую картинку…</div><div class="skel" style="height:420px"></div>');
+  var top = st.items.filter(function (x) { return x.priceKop; }).sort(function (a, b) { return b.priceKop - a.priceKop; }).slice(0, 3);
+  Promise.all(top.map(function (x) { return loadImg(x.img); })).then(function (imgs) {
+    var cv = drawInvCard(st, imgs), url;
+    try { url = cv.toDataURL('image/jpeg', 0.86); }
+    catch (e) { cv = drawInvCard(st, []); url = cv.toDataURL('image/jpeg', 0.86); } // картинки с чужого сайта не дали нарисовать — без них
+    var b64 = url.split(',')[1];
+    $('#sc').innerHTML = '<h2>📸 Мой инвентарь</h2><div class="sub">Сохрани для TikTok/Instagram или выложи в историю Telegram.</div>' +
+      '<img src="' + url + '" alt="" style="width:62%;display:block;margin:0 auto 12px;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.4)">' +
+      '<button class="btn" id="sh-story">📲 В историю Telegram</button><button class="btn sec2" id="sh-save">💾 Сохранить картинку</button><button class="btn sec2" id="sh-friend">📤 Отправить другу</button>' +
+      '<div class="note">На картинке нет твоего ника и ссылки на профиль Steam — только сумма и предметы.</div>';
+    var up = null;
+    var upload = function () { if (!up) up = api('sharecard', { method: 'POST', body: { jpg: b64 } }); up.catch(function () { up = null; }); return up; };
+    $('#sh-story').onclick = function () {
+      upload().then(function (r) {
+        if (tg && tg.shareToStory) tg.shareToStory(r.url, { text: 'Сколько стоит твой инвентарь CS2? ' + (r.bot || ''), widget_link: r.bot ? { url: r.bot, name: 'Проверить свой' } : undefined });
+        else openLink(r.url);
+      }).catch(function (e) { toast(e.message); });
+    };
+    $('#sh-save').onclick = function () {
+      upload().then(function (r) {
+        if (tg && tg.downloadFile) tg.downloadFile({ url: r.url, file_name: 'inventory-cs2.jpg' });
+        else openLink(r.url);
+      }).catch(function (e) { toast(e.message); });
+    };
+    $('#sh-friend').onclick = function () {
+      upload().then(function (r) {
+        var link = r.bot || r.url;
+        var u = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent('Мой инвентарь CS2 стоит ≈ ' + money(st.totalKop, false, true) + '. Проверь свой бесплатно 👇');
+        if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else openLink(u);
+      }).catch(function (e) { toast(e.message); });
+    };
+  });
 }
 function termsSheet() {
   sheet('<div class="skel"></div><div class="skel"></div>');
@@ -1075,7 +1214,7 @@ function settings() {
   sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   api('settings').then(function (r) {
     var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в ' + esc(CUR.code) + '.</div>';
-    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'notify_recs', 'recs_per_day', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
+    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'notify_recs', 'recs_per_day', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['weekly_report', 'daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
     var by = {}; r.settings.forEach(function (s) { by[s.key] = s; });
     if (r.currencies && r.currencies.length) {
       h += '<div class="sec">Валюта</div><div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Показывать цены в<div class="mut" style="font-size:12px">Пересчёт по курсу НБУ (RUB, BRL, ARS — через доллар). В Steam цена в твоём кошельке может немного отличаться.</div></span><select id="curSel" style="width:auto;max-width:46%;padding:7px 10px">' +
@@ -1133,7 +1272,7 @@ var hashTab = (location.hash || '').replace('#', '');
 var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : ['deals', 'market', 'inv', 'more'].indexOf(hashTab) >= 0 ? hashTab : 'home';
 // Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
 loading(3);
-api('terms').then(function (t) { if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });
+api('terms').then(function (t) { if (t.accepted && !t.onboarded) onboarding(first); else if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });
 })();
 </script>
 </body>

@@ -20,7 +20,7 @@ const STATUS_RU: Record<string, string> = {
   ok: '✅ работает', degraded: '⚠️ ошибки', down: '❌ недоступен', disabled: '⏸ выключен', rate_limited: '⏳ лимит запросов',
 };
 
-export async function mainMenu(d: D1Database, now: number, appUrl?: string): Promise<View> {
+export async function mainMenu(d: D1Database, now: number, appUrl?: string, isAdmin = false): Promise<View> {
   const jobs = await listJobs(d);
   const sources = await db.listSourceStatus(d);
   const watched = await db.countActiveWatched(d);
@@ -29,20 +29,23 @@ export async function mainMenu(d: D1Database, now: number, appUrl?: string): Pro
   const lastOk = Math.max(0, ...priceSources.map((s) => s.last_ok_at ?? 0));
   const okSources = priceSources.filter((s) => s.status === 'ok').length;
   const cronAlive = lastRun > 0 && now - lastRun < 300;
+  // Технические подробности (планировщик, источники) — только владельцу; пользователю — просто меню.
   const text = [
-    '<b>CS2 Market Bot</b>', '',
-    `Мониторинг: ${cronAlive ? 'активен' : lastRun ? `⚠️ планировщик не запускался ${ago(lastRun, now)}` : 'ещё не запускался'}`,
-    `Источников цен работает: ${okSources} из ${priceSources.length}`,
-    `Предметов отслеживается: ${watched}`,
-    `Последняя проверка цен: ${ago(lastOk || null, now)}`,
-    '', '<i>Валюта — в /currency. Бот только анализирует — ничего не покупает и не продаёт.</i>',
+    '<b>Ценолов · CS2</b>', '',
+    ...(isAdmin ? [
+      `Мониторинг: ${cronAlive ? 'активен' : lastRun ? `⚠️ планировщик не запускался ${ago(lastRun, now)}` : 'ещё не запускался'}`,
+      `Источников цен работает: ${okSources} из ${priceSources.length}`,
+      `Предметов отслеживается: ${watched}`,
+      `Последняя проверка цен: ${ago(lastOk || null, now)}`, '',
+    ] : ['Цены CS2 на всех площадках, рекомендации, инвентарь и уведомления.', '']),
+    '<i>Валюта — в /currency. Бот только анализирует — ничего не покупает и не продаёт.</i>',
   ].join('\n');
   const keyboard: Keyboard = [
     ...(appUrl ? [[{ text: '📱 Открыть приложение', web_app: { url: appUrl } }]] : []),
     [{ text: '💰 Выгодные сделки', callback_data: 'm:deals' }, { text: '👁 Мониторинг цен', callback_data: 'm:watch' }],
     [{ text: '📦 Кейсы', callback_data: 'm:cases' }, { text: '🎒 Мой инвентарь', callback_data: 'm:inv' }],
     [{ text: '📈 Аналитика', callback_data: 'm:an' }, { text: '🧾 История сделок', callback_data: 'm:trades' }],
-    [{ text: '⚙️ Настройки', callback_data: 'm:set' }, { text: '🩺 Состояние системы', callback_data: 'm:status' }],
+    [{ text: '⚙️ Настройки', callback_data: 'm:set' }, ...(isAdmin ? [{ text: '🩺 Состояние системы', callback_data: 'm:status' }] : [])],
   ];
   return { text, keyboard };
 }

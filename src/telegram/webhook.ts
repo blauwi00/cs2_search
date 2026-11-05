@@ -129,7 +129,7 @@ async function onText(text: string, h: H): Promise<void> {
     case '/broadcast': return broadcastCommand(h, text.trim().replace(/^\/broadcast(@\w+)?/i, ''));
     case '/menu': {
       await db.clearState(h.d, h.uid);
-      return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`));
+      return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`, h.isAdmin));
     }
     case '/app': return say(h, 'Приложение откроется внутри Telegram:', [[{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }]]);
     case '/status': if (!h.isAdmin) return say(h, '✅ Бот работает. Цены обновляются примерно каждые 10 минут.');
@@ -215,7 +215,7 @@ async function doSearch(h: H, query: string): Promise<void> {
   if (query.length < 2) return say(h, 'Слишком короткий запрос.');
   const hits: SearchHit[] = (await findItems(h, query)).map((n) => ({ marketHashName: n, sellListings: null }));
   if (hits.length === 0 && (await catalogInfo(h.d)).count === 0) {
-    return say(h, '⏳ Каталог названий ещё не загружен (его присылает сборщик GitHub при первом запуске). Пока можно добавить точным названием: /addlist');
+    return say(h, '⏳ Поиск по названиям ещё готовится. Пока можно добавить предмет точным названием: /addlist');
   }
   if (hits.length === 0) return say(h, 'Ничего не найдено. Попробуй другое название (на английском, как в Steam).');
   await db.setState(h.d, h.uid, 'pick', hits.map((x) => x.marketHashName), h.now);
@@ -265,7 +265,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
     await db.setSetting(h.d, h.uid, 'notify_recs', '0', h.now);
     return say(h, '🔕 Горячие рекомендации больше не приходят. Включить снова: приложение → Ещё → Настройки → «Горячие рекомендации по всему рынку».');
   }
-  if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`), msgId); }
+  if (data === 'm') { await db.clearState(h.d, h.uid); return show(h, await M.mainMenu(h.d, h.now, `${h.origin}/app`, h.isAdmin), msgId); }
   if (a === 'm') {
     switch (b) {
       case 'deals': return show(h, await M.dealsView(h.d, h.now, c === 'roi' || c === 'priority' ? c : 'spread', h.uid), msgId);

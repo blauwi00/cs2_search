@@ -493,7 +493,7 @@ function deals() {
       h += '<div class="empty"><div class="e">⏳</div>Рынок ещё не проверен.<br>Бот проверяет цены каждые 10 минут — загляни чуть позже.</div>';
     } else {
       state.cache.recsAt = r.fetchedAt;
-      h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale ? ' ⚠️ данные устарели' : '') + '</div>';
+      h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale && state.isAdmin ? ' ⚠️ данные устарели' : '') + '</div>';
       h += '<div class="row" id="r-rally" style="margin-bottom:6px"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Маленький бюджет, минимальный риск, симуляция</div></div><div class="mut">›</div></div>';
       h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
@@ -645,7 +645,7 @@ function addSheet() {
 function howOften(n) {
   n = n || {};
   var h = '<h2>Как часто обновляется</h2><div class="sub">Бот работает сам, 24/7, даже когда приложение закрыто.</div><div class="card info">';
-  h += '<p>📥 <b>Цены</b> — сборщик забирает их примерно <b>каждые 10 минут</b> (расписание GitHub иногда опаздывает на 5–20 минут). Steam отдаёт ~20 предметов в минуту (за один запуск — около 120), поэтому большой список обновляется по кругу: при ' + (n.watched || 0) + ' предметах полный круг Steam — около ' + Math.max(10, Math.ceil((n.watched || 0) / 120) * 10) + ' мин.</p>';
+  h += '<p>📥 <b>Цены</b> — сборщик забирает их примерно <b>каждые 10 минут</b> (расписание GitHub иногда опаздывает на 5–20 минут). Цены Steam обновляются по кругу: чем больше предметов в списках, тем дольше полный круг.</p>';
   h += '<p>🌍 <b>Рекомендации «Что купить»</b> (Skinport, Market.CSGO, Waxpeer, LIS-SKINS, Steam) — пересчитываются <b>каждые ~10 минут</b>.</p>';
   h += '<p>🧠 <b>Анализ</b> новых цен — каждую минуту.</p>';
   h += '<p>🔔 <b>Уведомления в Telegram</b> — ' + (n.enabled ? '<b>сразу</b>, как только находится выгодная сделка по твоему списку или срабатывает целевая цена. Одна и та же сделка повторно — не раньше чем через 6 часов (или если цена изменилась на 20%+). Не больше <b>' + n.maxPerHour + '</b> в час.' : '<b>выключены</b> (Ещё → Настройки).') + '</p>';
@@ -662,7 +662,7 @@ function bindSearch(input, out, onPick, mark) {
     if (q.length < 2) { out.innerHTML = ''; return; }
     timer = setTimeout(function () {
       api('search?q=' + encodeURIComponent(q)).then(function (r) {
-        if (!r.results.length) { out.innerHTML = '<div class="card mut">' + (r.catalog.count ? 'Ничего не найдено. Попробуй иначе: «ак азимов», «керамбит», «AWP Asiimov».' : 'Каталог названий ещё загружается сборщиком (до 10–20 минут).') + '</div>'; return; }
+        if (!r.results.length) { out.innerHTML = '<div class="card mut">' + (r.catalog.count ? 'Ничего не найдено. Попробуй иначе: «ак азимов», «керамбит», «AWP Asiimov».' : 'Поиск ещё готовится — попробуй через несколько минут.') + '</div>'; return; }
         out.innerHTML = '<div class="card" style="padding:4px 0">' + r.results.map(function (n, i) {
           return '<div class="kv" style="padding:8px 14px;cursor:pointer;align-items:center" data-pick="' + i + '"><span style="display:flex;align-items:center;gap:10px;min-width:0">' + pic((r.images || {})[n], ICON[guessCat(n)] || '🎲') + '<span>' + esc(n) + '</span></span><span class="v" style="color:var(--link)">' + (mark || '') + '</span></div>';
         }).join('') + '</div>';
@@ -788,7 +788,7 @@ function inventory() {
   }).catch(fail);
 }
 // ---------- Инвентарь Steam (вход через Steam — только номер аккаунта) ----------
-var INV_ST = { private: '🔒 Инвентарь закрыт. Открой его: Steam → Профиль → Изменить профиль → Приватность → «Инвентарь: Открытый», потом нажми «Обновить».', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Steam временно ограничил запросы — бот повторит сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
+var INV_ST = { private: '🔒 Инвентарь закрыт. Открой его: Steam → Профиль → Изменить профиль → Приватность → «Инвентарь: Открытый», потом нажми «Обновить».', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Обновление инвентаря займёт чуть больше времени — бот сделает это сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
 function steamBlock(st) {
   var h = '';
   if (!st) return h + '<div class="card mut">Не удалось загрузить.</div>';
@@ -1283,7 +1283,8 @@ function rallyOpps(r) {
   var c = r.candidates, s = r.settings, h = '';
   h += '<div class="card" style="font-size:13px">Бот ищет дешёвые ликвидные предметы, которые сейчас продаются <b>ниже обычной цены</b>, и считает, что останется после <b>7 дней блокировки</b> и <b>точной комиссии Steam</b>. Лимит на покупку ' + uahShort(s.maxItemKop) + ', резерв ' + uahShort(s.reserveKop) + ', не больше ' + s.maxPositions + ' позиций. Бот ничего не покупает сам — это не гарантия прибыли.</div>';
   if (r.walletWarn) h += '<div class="card" style="color:var(--amber);font-size:13px">⚠️ Цены Steam здесь — в гривнах (кошелёк ' + esc(s.walletCur) + '). У тебя в боте выбрана валюта ' + esc(r.walletWarn) + ': если кошелёк Steam в другой валюте, цены в нём будут другими.</div>';
-  if (r.bot) {
+  // Ход проверки схемы ботом видит только владелец, пока результат не подтверждён.
+  if (r.bot && (state.isAdmin || r.bot.post === 'done')) {
     var b = r.bot;
     h += '<details class="more"><summary><span class="chev">›</span> 🤖 Проверка схемы ботом: ' + (b.closed ? 'в плюсе ' + b.wins + ' из ' + b.closed : 'идёт') + '</summary><div class="card" style="font-size:13px">' +
       '<div class="mut" style="margin-bottom:6px">10 виртуальных счетов по 30 ₴, те же правила (6 ₴, резерв 18 ₴, низкий риск), разные предметы. Продажа — по фактической цене Steam после 7 дней блокировки. Вывод — после ' + b.need + ' закрытых сделок.' + (b.since ? ' Идёт с ' + dateRu(b.since) + '.' : '') + '</div>' +
@@ -1292,7 +1293,7 @@ function rallyOpps(r) {
       b.last.map(function (t) { var p = t.sold_net_kop - t.buy_kop * t.qty; return kv((p > 0 ? '✅ ' : '❌ ') + esc(t.name), uahShort(t.buy_kop) + ' → ' + uahShort(t.sold_price_kop) + ' · <span class="' + cls(p) + '">' + uah(p, true) + '</span>'); }).join('') +
       (!b.open.length && !b.last.length ? '<div class="mut">Пока ни одной сделки: подходящих безопасных возможностей не было.</div>' : '') + '</div></details>';
   }
-  h += '<div class="mut" style="font-size:12px;margin:0 2px 8px">Данные Steam: ' + (r.dataAt ? 'обновлено ' + ago(r.dataAt) + ' · свежих предметов ' + r.checked : 'ещё не собраны — сборщик начнёт проверку в ближайшие 10–20 минут') + '</div>';
+  h += '<div class="mut" style="font-size:12px;margin:0 2px 8px">' + (state.isAdmin ? 'Данные Steam: ' + (r.dataAt ? 'обновлено ' + ago(r.dataAt) + ' · свежих предметов ' + r.checked : 'ещё не собраны') : (r.dataAt ? 'Проверено ' + ago(r.dataAt) : 'Бот подбирает предметы — первые варианты появятся позже')) + '</div>';
   if (!c.list.length) {
     h += '<div class="empty"><div class="e">🛡</div>' + esc(c.message || 'Безопасных торговых возможностей по текущим критериям не найдено') + '</div>';
   } else h += c.list.map(function (x, i) {
@@ -1310,7 +1311,7 @@ function rallyOpps(r) {
   }).join('');
   if (c.hidden) h += '<div class="note">Скрыто ' + c.hidden + ' вариантов со средним/высоким риском — в настройках выбран «' + (s.risk === 'low' ? 'минимальный риск' : s.risk) + '».</div>';
   var rej = Object.keys(c.rejected || {});
-  if (rej.length) h += '<details class="more"><summary><span class="chev">›</span> Почему остальные отброшены</summary><div class="card" style="font-size:13px">' + rej.map(function (k) { return kv(esc(k), c.rejected[k]); }).join('') + '</div></details>';
+  if (rej.length && state.isAdmin) h += '<details class="more"><summary><span class="chev">›</span> Почему остальные отброшены</summary><div class="card" style="font-size:13px">' + rej.map(function (k) { return kv(esc(k), c.rejected[k]); }).join('') + '</div></details>';
   h += '<details class="more"><summary><span class="chev">›</span> Стратегия B: Steam → площадка → Steam</summary><div class="card" style="font-size:13px"><b>' + (r.chain.feasible ? 'Можно' : 'Сейчас не предлагается') + '</b><ul style="margin:6px 0 0;padding-left:18px">' + r.chain.reasons.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') +
     '<li>Цепочка занимает от ' + r.chain.days + ' дней: блокировка после покупки в Steam и защита обмена (Trade Protection) при передаче туда и обратно.</li><li>Комиссии: Steam 15%, площадки 2–8% + вывод; у площадок бывают минимальные суммы.</li></ul></div></details>';
   return h;
@@ -1515,7 +1516,7 @@ function donateSheet() {
 function more() {
   view.innerHTML = (state.isAdmin ? '<div class="row" id="m-own"><div class="ic">🛠</div><div class="m"><div class="n">Панель владельца</div><div class="d">Пользователи, Steam и домашний агент, проверка разгона, донаты, ошибки</div></div><div class="mut">›</div></div>' : '') +
     '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
+    (state.isAdmin ? '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' : '') +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
@@ -1526,7 +1527,7 @@ function more() {
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); ownerPanel(); };
   $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
-  $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
+  $('#m-set').onclick = settings; if ($('#m-st')) $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }
 function settings() {

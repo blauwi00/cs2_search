@@ -743,7 +743,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         bot: await (async () => {
           const bt = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id <= 0 AND telegram_id >= -9 AND mode = 'sim' ORDER BY id DESC LIMIT 200").all<RallyTrade>()).results;
           const st = botStats(bt);
-          return { closed: st.closed, wins: st.wins, realizedKop: st.realizedKop, need: BOT_MIN_CLOSED, open: bt.filter((x) => x.status === 'open').slice(0, 10), last: bt.filter((x) => x.status === 'sold').slice(0, 10), since: Number(await getMeta(d, 'rally_bot_started')) || null };
+          return { post: (await getMeta(d, 'rally_post')) ?? null, closed: st.closed, wins: st.wins, realizedKop: st.realizedKop, need: BOT_MIN_CLOSED, open: bt.filter((x) => x.status === 'open').slice(0, 10), last: bt.filter((x) => x.status === 'sold').slice(0, 10), since: Number(await getMeta(d, 'rally_bot_started')) || null };
         })(),
         positions: t.filter((x) => x.status === 'open').map((x) => ({ ...x, itemId: ids.get(x.name) ?? null })),
         history: t.filter((x) => x.status !== 'open').slice(0, 60),

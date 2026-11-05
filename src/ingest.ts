@@ -291,7 +291,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
           .map((x) => d.prepare('INSERT INTO item_nameids (name, nameid, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET nameid = excluded.nameid, at = excluded.at').bind(x.name, x.id, now)),
       ]);
       result.stored = fresh.length;
-      const r = await afterRallyScan(d, merged, now, await getMeta(d, 'public_origin'));
+      const r = await afterRallyScan(d, merged, now, await getMeta(d, 'public_origin'), Number(env.ADMIN_TELEGRAM_ID) || null);
       result.sellAlerts = r.notified;
     } else if (body.kind === 'scan') {
       const fresh = parseScan(body.items, at);
@@ -316,7 +316,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       result.stored = list.length;
     } else if (body.kind === 'card') {
       // Картинка поста канала (JPEG, base64). Адрес Worker запоминаем: по нему Telegram возьмёт картинку.
-      const id = typeof body.id === 'string' && /^(ideas|trends|cases|weekly)-\d{4}-\d{2}-\d{2}$/.test(body.id) ? body.id : null;
+      const id = typeof body.id === 'string' && /^(ideas|trends|cases|weekly|rally)-\d{4}-\d{2}-\d{2}$/.test(body.id) ? body.id : null;
       const jpg = typeof body.jpg === 'string' && body.jpg.length < 1_500_000 && body.jpg.startsWith('/9j/') ? body.jpg : null;
       if (!id || !jpg) return json({ ok: false, error: 'bad_card' }, 400);
       await d.batch([

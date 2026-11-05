@@ -111,6 +111,7 @@ test('разгон: сборщик → кандидаты в приложени�
   const ingest = (body: object, at: number) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ fetchedAt: at, ...body }) }), env, at);
   const items = (at: number) => handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, at).then((r) => r.json() as Promise<Record<string, any>>);
 
+  d.db.exec(`INSERT INTO meta (key, value) VALUES ('rally_bot', 'off')`); // симуляция бота выключена — проверяем только пользователя
   assert.equal((await items(NOW)).rally.active, false, 'никто не пользуется — сборщик не тратит запросы к Steam');
   const empty = await api('rally');
   assert.equal(empty.candidates.message, NO_DEALS_TEXT);
@@ -149,4 +150,35 @@ test('разгон: сборщик → кандидаты в приложени�
   assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind = 'rally'").get().n, n1, 'повторов нет');
   const texts = (d.db.prepare("SELECT text FROM outbox WHERE kind = 'rally'").all() as { text: string }[]).map((x) => x.text).join('\n');
   assert.match(texts, /Можно продавать/); assert.match(texts, /новая возможность/);
+});
+
+test('симуляция бота: покупает сам по правилам, продаёт по факту; пост в канал — только если итог в плюсе', async () => {
+  const { migratedDb, testEnv, ADMIN } = await import('./helpers.ts');
+  const { handleIngest } = await import('../src/ingest.ts');
+  const db = await import('../src/storage/db.ts');
+  const run = async (sellMedian: string) => {
+    const d = migratedDb(); const D = d as unknown as D1Database;
+    const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+    await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+    d.db.exec(`INSERT INTO meta (key, value) VALUES ('channel_id', '-1001'), ('bot_username', 'cenolow_bot')`);
+    const ingest = (items: object[], at: number) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'rally_scan', fetchedAt: at, items }) }), env, at);
+    const sa = { d1: 0.1755, d7: 0.1765, d30: 0.1775, d90: 0.175 };
+    const it = (name: string, low: string, med: string) => ({ name, sa, steam: { lowest_price: low, median_price: med, volume: '1,234' } });
+    assert.equal((await (await handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, NOW)).json() as any).rally.active, true, 'симуляция бота включает сбор данных');
+    await ingest([it('Revolution Case', '4,50₴', '7,00₴'), it('Fever Case', '4,40₴', '7,00₴')], NOW);
+    await ingest([it('Revolution Case', '4,50₴', '7,00₴'), it('Fever Case', '4,40₴', '7,00₴')], NOW + 600);
+    const bought = d.db.prepare("SELECT name, buy_kop FROM rally_trades WHERE telegram_id = 0 ORDER BY id").all() as any[];
+    assert.deepEqual(bought.map((x) => x.name).sort(), ['Fever Case', 'Revolution Case']);
+    await ingest([it('Revolution Case', sellMedian, sellMedian), it('Fever Case', sellMedian, sellMedian)], NOW + 8 * 86400);
+    return d;
+  };
+  const good = await run('6,90₴');
+  assert.equal(good.db.prepare("SELECT COUNT(*) AS n FROM rally_trades WHERE telegram_id = 0 AND status = 'sold'").get().n, 2);
+  const pend = JSON.parse((good.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get() as any).value);
+  assert.match(pend.text, /Разгон баланса/); assert.match(pend.text, /симуляци/); assert.match(pend.text, /не обещание заработка/);
+  assert.equal(JSON.parse((good.db.prepare("SELECT value FROM meta WHERE key = 'card_request'").get() as any).value).slot, 'rally');
+  assert.match((good.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref LIKE 'post:%'").get(ADMIN) as any).text, /сработала/);
+  const bad = await run('4,60₴'); // продали дешевле — после комиссии убыток
+  assert.equal(bad.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get(), undefined, 'убыток — поста нет');
+  assert.match((bad.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref = 'fail'").get(ADMIN) as any).text, /не сработала/);
 });

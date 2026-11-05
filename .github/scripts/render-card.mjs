@@ -17,7 +17,7 @@ function loadPlaywright() {
   throw new Error('playwright-core не найден');
 }
 
-const ACCENT = { ideas: '#3ee08f', trends: '#ffa94d', cases: '#ffd43b', weekly: '#74c0fc' };
+const ACCENT = { ideas: '#3ee08f', trends: '#ffa94d', cases: '#ffd43b', weekly: '#74c0fc', rally: '#3ee08f' };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const img = (u, size) => u
   ? `<div class="pic" style="width:${size}px;height:${size}px"><img src="${esc(u)}"></div>`
@@ -34,6 +34,16 @@ function rows(list, size = 60) {
 }
 
 function body(c) {
+  if (c.slot === 'rally') {
+    return `
+      <div class="week">
+        <div class="bigbox" style="width:380px;padding-top:10px"><div class="lb">ИТОГ СИМУЛЯЦИИ</div><div class="big" style="color:#3ee08f;font-size:88px;white-space:nowrap">${esc(c.big)}</div><div class="sub" style="font-size:20px">${esc(c.bigLabel)}</div>
+          <div class="sub" style="margin-top:18px;font-size:17px">🔒 7 дней блокировки · комиссия Steam учтена</div></div>
+        <div class="cols1">${(c.deals ?? []).map((d) => `
+          <div class="row">${img(d.img, 64)}<div class="rn"><div class="nm">${esc(d.name)}</div><div class="sub">${esc(d.buyPrice)} → ${esc(d.sellPrice)}</div></div>
+          <div class="pill" style="color:#3ee08f;background:rgba(62,224,143,.13)">${esc(d.profit)}</div></div>`).join('')}</div>
+      </div>`;
+  }
   if (c.slot === 'ideas' && c.deals?.length) {
     const [d, ...rest] = c.deals;
     return `

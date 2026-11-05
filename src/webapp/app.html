@@ -1282,6 +1282,15 @@ function rallyOpps(r) {
   var c = r.candidates, s = r.settings, h = '';
   h += '<div class="card" style="font-size:13px">Бот ищет дешёвые ликвидные предметы, которые сейчас продаются <b>ниже обычной цены</b>, и считает, что останется после <b>7 дней блокировки</b> и <b>точной комиссии Steam</b>. Лимит на покупку ' + uahShort(s.maxItemKop) + ', резерв ' + uahShort(s.reserveKop) + ', не больше ' + s.maxPositions + ' позиций. Бот ничего не покупает сам — это не гарантия прибыли.</div>';
   if (r.walletWarn) h += '<div class="card" style="color:var(--amber);font-size:13px">⚠️ Цены Steam здесь — в гривнах (кошелёк ' + esc(s.walletCur) + '). У тебя в боте выбрана валюта ' + esc(r.walletWarn) + ': если кошелёк Steam в другой валюте, цены в нём будут другими.</div>';
+  if (r.bot) {
+    var b = r.bot;
+    h += '<details class="more"><summary><span class="chev">›</span> 🤖 Бот проверяет схему сам: ' + uahShort(b.cap.balanceKop + b.cap.inItemsKop) + ' из ' + uahShort(b.cap.startKop) + ' · сделок ' + b.cap.closedCount + '</summary><div class="card" style="font-size:13px">' +
+      '<div class="mut" style="margin-bottom:6px">Виртуальные 30 ₴, те же правила (6 ₴, резерв 18 ₴, низкий риск). Продажа — по фактической цене Steam после разблокировки.' + (b.since ? ' Идёт с ' + dateRu(b.since) + '.' : '') + '</div>' +
+      kv('Итог закрытых', '<span class="' + cls(b.cap.realizedKop) + '">' + uah(b.cap.realizedKop, true) + '</span>') +
+      b.open.map(function (t) { return kv('🔒 ' + esc(t.name), 'куплено ' + uahShort(t.buy_kop) + ' · до ' + dateRu(t.unlock_at)); }).join('') +
+      b.closed.map(function (t) { var p = t.sold_net_kop - t.buy_kop * t.qty; return kv('✓ ' + esc(t.name), uahShort(t.buy_kop) + ' → ' + uahShort(t.sold_price_kop) + ' · <span class="' + cls(p) + '">' + uah(p, true) + '</span>'); }).join('') +
+      (!b.open.length && !b.closed.length ? '<div class="mut">Пока ни одной сделки: подходящих безопасных возможностей не было.</div>' : '') + '</div></details>';
+  }
   h += '<div class="mut" style="font-size:12px;margin:0 2px 8px">Данные Steam: ' + (r.dataAt ? 'обновлено ' + ago(r.dataAt) + ' · свежих предметов ' + r.checked : 'ещё не собраны — сборщик начнёт проверку в ближайшие 10–20 минут') + '</div>';
   if (!c.list.length) {
     h += '<div class="empty"><div class="e">🛡</div>' + esc(c.message || 'Безопасных торговых возможностей по текущим критериям не найдено') + '</div>';

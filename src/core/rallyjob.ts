@@ -3,7 +3,8 @@
 import { parseSteamPriceString } from '../utils/money.ts';
 import { safeImg } from './recs.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
-import { RALLY_KEYS, parseRallySettings, findCandidates, simSale, capital, RISK_RU, type RallyEntry, type RallyTrade, type RallySettings, type Track } from './rally.ts';
+import { RALLY_KEYS, RALLY_DEFAULTS, parseRallySettings, findCandidates, simSale, capital, buyBlockers, RISK_RU, type RallyEntry, type RallyTrade, type RallySettings, type Track } from './rally.ts';
+import { getMeta, setMetaStmt } from './channel.ts';
 import { steamNetKop } from './fees.ts';
 import { loadUserSettings, nextAllowed } from './audience.ts';
 import { TERMS_VERSION } from './terms.ts';
@@ -53,7 +54,9 @@ export function mergeRally(old: RallyEntry[], fresh: RallyEntry[], now: number):
 export async function rallyInfo(d: D1Database): Promise<{ active: boolean; names: string[]; nameids: Record<string, number>; maxItemKop: number }> {
   const users = (await d.prepare(`SELECT COUNT(DISTINCT telegram_id) AS n FROM user_settings WHERE key = 'rally_on' AND value = '1'`).first<{ n: number }>())?.n ?? 0;
   const open = (await d.prepare(`SELECT DISTINCT name FROM rally_trades WHERE status = 'open' LIMIT 20`).all<{ name: string }>()).results.map((r) => r.name);
-  if (!users && !open.length) return { active: false, names: [], nameids: {}, maxItemKop: 600 };
+  // Симуляция самого бота (BOT_TID) работает всегда, пока её не выключили: meta rally_bot = off.
+  const botOn = (await getMeta(d, 'rally_bot')) !== 'off';
+  if (!users && !open.length && !botOn) return { active: false, names: [], nameids: {}, maxItemKop: 600 };
   const max = (await d.prepare(`SELECT MAX(CAST(value AS INTEGER)) AS m FROM user_settings WHERE key = 'rally_max_item'`).first<{ m: number | null }>())?.m ?? 600;
   const ids = (await d.prepare('SELECT name, nameid FROM item_nameids ORDER BY at DESC LIMIT 1500').all<{ name: string; nameid: number }>()).results;
   return { active: true, names: open, nameids: Object.fromEntries(ids.map((r) => [r.name, r.nameid])), maxItemKop: Math.max(600, Math.min(max, 100000)) };
@@ -74,8 +77,71 @@ const outboxStmt = (d: D1Database, tid: number, kind: string, ref: string, text:
   d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, ?)`)
     .bind(tid, kind, ref, text, JSON.stringify(kb), at, now);
 
+/** Виртуальный счёт самого бота: он торгует по схеме «Разгона» с настройками по умолчанию (30 ₴, 6 ₴, резерв 18 ₴, 2 позиции, только низкий риск). */
+export const BOT_TID = 0;
+const fmtUah = (k: number, sign = false) => `${sign && k > 0 ? '+' : k < 0 ? '−' : ''}${(Math.abs(k) / 100).toFixed(2).replace('.', ',')} ₴`;
+
+/** Пост о новой функции — ТОЛЬКО если симуляция бота дала результат: ≥ 2 закрытых сделок и итог в плюсе. Иначе — честный отчёт владельцу. */
+export function rallyPostText(cap: ReturnType<typeof capital>, closed: RallyTrade[], bot: string | null): string {
+  const lines = closed.slice(0, 4).map((t) => `• ${esc(t.name)}: купил за ${fmtUah(t.buy_kop * t.qty)} → продал за ${fmtUah(t.sold_price_kop! * t.qty)} → пришло ${fmtUah(t.sold_net_kop!)} (${fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true)})`);
+  return [
+    '🚀 <b>Новое в боте: «Разгон баланса» Steam</b>', '',
+    `Мы проверили схему на себе — в симуляции, на виртуальных ${fmtUah(cap.startKop)}. Бот сам выбирал сделки внутри Steam, ждал 7 дней блокировки и «продавал» по <b>реальным</b> ценам Steam на тот момент, с настоящей комиссией.`, '',
+    `<b>Итог: ${fmtUah(cap.startKop)} → ${fmtUah(cap.balanceKop + cap.inItemsKop)}</b> (${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} ${cap.closedCount === 1 ? 'сделку' : cap.closedCount < 5 ? 'сделки' : 'сделок'})`,
+    ...lines, '',
+    'Что умеет раздел:',
+    '• ищет дешёвые ликвидные предметы ниже обычной цены — до 5 кандидатов, только с подтверждёнными данными;',
+    '• считает точную комиссию Steam и 7 дней блокировки, показывает риск;',
+    '• лимиты: 6 ₴ на покупку, резерв 18 ₴, максимум 2 позиции (всё настраивается);',
+    '• симуляция — сначала тренируйся на виртуальных деньгах.', '',
+    '<i>Это симуляция, а не обещание заработка: рынок за 7 дней может измениться, бывают и убыточные сделки. Бот ничего не покупает сам.</i>',
+    bot ? `
+Открыть: приложение бота → «Разгон баланса»` : '',
+  ].filter((x) => x !== '').join('\n').replace('\n<i>', '\n\n<i>');
+}
+
+async function botSim(d: D1Database, entries: RallyEntry[], now: number, adminId: number | null, writes: D1PreparedStatement[]): Promise<void> {
+  if ((await getMeta(d, 'rally_bot')) === 'off') return;
+  const trades = (await d.prepare('SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = ?').bind(BOT_TID, 'sim').all<RallyTrade>()).results;
+  const s = RALLY_DEFAULTS;
+  const cap = capital(trades, s, 'sim', now);
+  const startedAt = Number(await getMeta(d, 'rally_bot_started')) || 0;
+  if (!startedAt) writes.push(setMetaStmt(d, 'rally_bot_started', String(now)));
+  // Покупка: лучший кандидат с низким риском, которого ещё нет в портфеле, если позволяют лимиты.
+  const { list } = findCandidates(entries, s, now, await rallyTrack(d, null));
+  const pick = list.find((c) => !trades.some((t) => t.status === 'open' && t.name === c.name));
+  if (pick && !buyBlockers(cap, s, pick.buyKop).length) {
+    writes.push(d.prepare(`INSERT INTO rally_trades (telegram_id, mode, name, img, qty, buy_kop, bought_at, unlock_at, target_kop, predicted_net_kop, risk) VALUES (?, 'sim', ?, ?, 1, ?, ?, ?, ?, ?, ?)`)
+      .bind(BOT_TID, pick.name, pick.img, pick.buyKop, now, pick.unlockAt, pick.targetKop, pick.netKop, pick.risk));
+    if (adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `buy:${pick.name}:${now}`, `🤖 <b>Симуляция бота: виртуальная покупка</b>\n${esc(pick.name)} за ${fmtUah(pick.buyKop)} → план ${fmtUah(pick.targetKop)}, прогноз ${fmtUah(pick.profitKop, true)} · риск ${RISK_RU[pick.risk]}`, [], now, now));
+  }
+  // Итог: пост в канал — только если схема сработала. Один раз.
+  const state = await getMeta(d, 'rally_post');
+  if (state === 'done') return;
+  const closed = trades.filter((t) => t.status === 'sold').sort((a, b) => (b.sold_at ?? 0) - (a.sold_at ?? 0));
+  if (closed.length >= 2) {
+    if (cap.realizedKop > 0 && !(await getMeta(d, 'channel_pending')) && (await getMeta(d, 'channel_id'))) {
+      const day = new Date(now * 1000).toISOString().slice(0, 10);
+      const id = `rally-${day}`;
+      const text = rallyPostText(cap, closed, await getMeta(d, 'bot_username'));
+      const card = { id, slot: 'rally', date: day.split('-').reverse().join('.'), title: 'Разгон баланса', subtitle: 'симуляция бота · реальные цены Steam',
+        big: fmtUah(cap.realizedKop, true), bigLabel: `${fmtUah(cap.startKop)} → ${fmtUah(cap.balanceKop + cap.inItemsKop)} за ${cap.closedCount} сделки`,
+        deals: closed.slice(0, 3).map((t) => ({ name: t.name, img: t.img, buy: 'Steam', buyPrice: fmtUah(t.buy_kop * t.qty), sell: 'Steam, через 7 дней', sellPrice: fmtUah(t.sold_price_kop! * t.qty), profit: fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true), roi: `${Math.round(((t.sold_net_kop! - t.buy_kop * t.qty) * 100) / (t.buy_kop * t.qty))}%` })),
+        note: 'симуляция, не обещание заработка' };
+      writes.push(setMetaStmt(d, 'channel_pending', JSON.stringify({ id, text, image: null, at: now })), setMetaStmt(d, 'card_request', JSON.stringify(card)), setMetaStmt(d, 'rally_post', 'done'));
+      if (adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `post:${day}`, `✅ <b>Схема сработала в симуляции</b>: ${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} сделки. Пост о «Разгоне баланса» с картинкой уйдёт в канал в ближайшие ~10–25 минут.`, [], now, now));
+    } else if (cap.realizedKop <= 0 && state !== 'fail' && adminId) {
+      writes.push(setMetaStmt(d, 'rally_post', 'fail'));
+      writes.push(outboxStmt(d, adminId, 'rally_bot', 'fail', `⚠️ <b>Симуляция бота: схема пока не сработала</b> — ${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} сделки. Пост в канал не публикую. Симуляция продолжается: если итог станет плюсовым, пост выйдет сам.`, [], now, now));
+    }
+  } else if (startedAt && now - startedAt > 3 * 86400 && !trades.length && !(await getMeta(d, 'rally_bot_empty')) && adminId) {
+    writes.push(setMetaStmt(d, 'rally_bot_empty', String(now)));
+    writes.push(outboxStmt(d, adminId, 'rally_bot', 'empty', '🤖 <b>Симуляция бота</b>: за 3 дня безопасных сделок по правилам «Разгона» (6 ₴, резерв 18 ₴, низкий риск) не нашлось. Это честный результат: на дешёвых предметах Steam выгодные расхождения редки.', [], now, now));
+  }
+}
+
 /** После свежих данных: закрыть сделки симуляции, разослать уведомления. */
-export async function afterRallyScan(d: D1Database, entries: RallyEntry[], now: number, origin: string | null): Promise<{ simClosed: number; notified: number }> {
+export async function afterRallyScan(d: D1Database, entries: RallyEntry[], now: number, origin: string | null, adminId: number | null = null): Promise<{ simClosed: number; notified: number }> {
   const by = new Map(entries.map((e) => [e.name, e]));
   const writes: D1PreparedStatement[] = [];
   let simClosed = 0, notified = 0;
@@ -85,7 +151,7 @@ export async function afterRallyScan(d: D1Database, entries: RallyEntry[], now: 
   const open = (await d.prepare(`SELECT * FROM rally_trades WHERE status = 'open' LIMIT 500`).all<RallyTrade & { telegram_id: number; n_target: number; n_unlock: number; n_change: number }>()).results;
   const tids = [...new Set([...open.map((t) => t.telegram_id),
     ...(await d.prepare(`SELECT telegram_id FROM user_settings WHERE key = 'rally_on' AND value = '1' LIMIT 500`).all<{ telegram_id: number }>()).results.map((r) => r.telegram_id)])];
-  if (!tids.length) return { simClosed, notified };
+  if (!tids.length) { await flushBot(); return { simClosed, notified }; }
   const st = await loadUserSettings(d, tids);
   const canNotify = (tid: number) => { const s = st.get(tid); return !!s && s.notify_enabled === '1' && s.terms_ok === TERMS_VERSION && s.rally_notify !== '0'; };
   const when = (tid: number) => { const s = st.get(tid)!; return nextAllowed(now, db.num(s.quiet_start), db.num(s.quiet_end)); };
@@ -150,6 +216,14 @@ export async function afterRallyScan(d: D1Database, entries: RallyEntry[], now: 
       appKb(), when(tid), now));
     notified++;
   }
-  for (let i = 0; i < writes.length; i += 90) await d.batch(writes.slice(i, i + 90));
+  await flushBot();
   return { simClosed, notified };
+
+  async function flushBot() {
+    // Сначала закрытия выше, потом — симуляция бота (по обновлённым данным).
+    for (let i = 0; i < writes.length; i += 90) await d.batch(writes.slice(i, i + 90));
+    const w2: D1PreparedStatement[] = [];
+    await botSim(d, entries, now, adminId, w2);
+    for (let i = 0; i < w2.length; i += 90) await d.batch(w2.slice(i, i + 90));
+  }
 }

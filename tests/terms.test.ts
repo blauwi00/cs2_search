@@ -67,8 +67,8 @@ test('партнёрские ссылки: /ref только владельцу,
   assert.equal(checkRefUrl('waxpeer', 'https://waxpeer.com.evil.io/?ref=abc'), null, 'чужой домен');
   assert.equal(checkRefUrl('waxpeer', 'http://waxpeer.com/'), null, 'только https');
   assert.equal(checkRefUrl('lisskins', 'https://lis-skins.com/ru/?rf=1'), 'https://lis-skins.com/ru/?rf=1');
-  const sites = sitesFor({ waxpeer: 'https://waxpeer.com/?ref=abc' });
-  assert.equal(sites.find((x) => x.key === 'waxpeer')!.ref, true);
+  const sites = sitesFor({ lisskins: 'https://lis-skins.com/ru/?rf=1' });
+  assert.equal(sites.find((x) => x.key === 'lisskins')!.ref, true);
   assert.equal(sites.find((x) => x.key === 'skinport')!.url, 'https://skinport.com/');
   const { ADMIN } = await import('./helpers.ts');
   const d = migratedDb();

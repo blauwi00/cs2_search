@@ -13,7 +13,7 @@ import { loadLatestFx } from '../storage/db.ts';
 import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
-import { rubricFor, cheapestPost, tipPost, pickPollCase, pollQuestion, POLL_OPTIONS, type RubricKind, type OpenPoll } from './rubrics.ts';
+import { rubricFor, pickCaseEV, caseEvPost, trackedPost, storyPost, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
 import { header, dealBlock, moveLine, FOOT_DEALS, pct, ruDate } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'rubric' | 'trends' | 'cases' | 'weekly';
@@ -105,8 +105,8 @@ export function dueSlot(now: number, done: Partial<Record<Slot, string | null>>)
   return null;
 }
 
-/** poll — рубрика «Опрос»: text (если есть) — итог прошлого опроса, затем сам опрос. meta — что записать после публикации. */
-export interface ChannelPost { text: string; image: string | null; card: PostCard | null; poll?: { question: string; options: string[]; open: OpenPoll }; meta?: [string, string][] }
+/** meta — что записать в базу после публикации (очередь рубрик). */
+export interface ChannelPost { text: string; image: string | null; card: PostCard | null; meta?: [string, string][] }
 
 
 /** Собирает текст поста для слота из базы (общий для расписания, предпросмотра и «Опубликовать сейчас»). */
@@ -205,21 +205,22 @@ export async function caseStats(d: D1Database): Promise<CaseStat[]> {
 
 const jsonList = (v: string | null): string[] => { try { const x = JSON.parse(v ?? '[]'); return Array.isArray(x) ? x.filter((s) => typeof s === 'string') : []; } catch { return []; } };
 
-/**
- * Рубрика дня (13:00). Нет данных для «Где дешевле» или «Опроса» — выходит «Совет», чтобы день не пустовал.
- * Итог прошлого опроса (по фактической цене) подставляет канал при публикации нового опроса.
- */
+/** Рубрика дня (13:00). Нет данных для рубрики — выходит история, чтобы день не пустовал. */
 export async function composeRubric(d: D1Database, kind: RubricKind, fresh: ScanEntry[] | null, fx: Map<Currency, FxRate>, now: number): Promise<ChannelPost | null> {
-  if (kind === 'cheapest' && fresh) {
-    const recent = jsonList(await getMeta(d, 'rubric_recent'));
-    const p = cheapestPost(fresh, fx, recent, now);
-    if (p) return { text: p.text, image: await itemImage(d, p.name, fresh), card: null, meta: [['rubric_recent', JSON.stringify([p.name, ...recent].slice(0, 30))]] };
+  if (kind === 'caseev') {
+    let ev: { at?: number; items?: CaseEV[] } = {};
+    try { ev = JSON.parse((await getMeta(d, 'case_ev')) ?? '{}'); } catch { ev = {}; }
+    const recent = jsonList(await getMeta(d, 'caseev_recent'));
+    const c = ev.at && now - ev.at < 2 * 86400 && Array.isArray(ev.items) ? pickCaseEV(ev.items, recent) : null;
+    if (c) return { text: caseEvPost(c, fx, now), image: safeImg(c.img) ?? await itemImage(d, c.name, fresh), card: null, meta: [['caseev_recent', JSON.stringify([c.name, ...recent].slice(0, 30))]] };
   }
-  if (kind === 'poll') {
-    const recent = jsonList(await getMeta(d, 'poll_recent'));
-    const c = pickPollCase(await caseStats(d), recent);
-    if (c) return { text: '', image: null, card: null, poll: { question: pollQuestion(c, fx), options: POLL_OPTIONS, open: { name: c.name, d1: c.d1!, at: now } }, meta: [['poll_recent', JSON.stringify([c.name, ...recent].slice(0, 8))]] };
+  if (kind === 'tracked') {
+    const rows = (await d.prepare(`SELECT i.name AS name, COUNT(DISTINCT w.telegram_id) AS n FROM watchlist w JOIN items i ON i.id = w.item_id
+      WHERE w.active = 1 GROUP BY w.item_id HAVING n >= ? ORDER BY n DESC, i.name LIMIT 7`).bind(TRACKED_MIN_USERS).all<{ name: string; n: number }>()).results;
+    const total = (await d.prepare('SELECT COUNT(DISTINCT telegram_id) AS n FROM watchlist WHERE active = 1').first<{ n: number }>())?.n ?? 0;
+    const text = trackedPost(rows, total, now);
+    if (text) return { text, image: rows[0] ? await itemImage(d, rows[0].name, fresh) : null, card: null };
   }
-  const idx = Number(await getMeta(d, 'tip_idx')) || 0;
-  return { text: tipPost(idx, now), image: null, card: null, meta: [['tip_idx', String(idx + 1)]] };
+  const idx = Number(await getMeta(d, 'story_idx')) || 0;
+  return { text: storyPost(idx, now), image: null, card: null, meta: [['story_idx', String(idx + 1)]] };
 }

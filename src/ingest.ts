@@ -75,6 +75,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
       // Записи в D1 за сегодня по источникам (выборочный учёт, ≈). Бесплатный лимит — 100 000 строк в сутки.
       writes: Object.fromEntries(Object.entries(await db.counters(d, now)).filter(([k]) => k.startsWith('w:'))),
+      needCaseEv: await (async () => { try { return now - (JSON.parse((await getMeta(d, 'case_ev')) ?? '{}').at ?? 0) > 20 * 3600; } catch { return true; } })(),
       newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
       steamPauseUntil: Number(await getMeta(d, 'steam_pause_until')) || 0,
@@ -361,6 +362,17 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const pending = (await d.prepare('SELECT * FROM idea_log WHERE checked_at IS NULL AND created_at <= ? LIMIT 20').bind(now - 20 * 3600).all<IdeaRow>()).results;
       const checks = checkStmts(d, pending, merged, fx, now);
       if (checks.length) await d.batch(checks);
+    } else if (body.kind === 'case_ev') {
+      // «Окупается ли кейс»: средняя отдача открытия (считает сборщик). Одна запись в сутки.
+      const c = (x: unknown) => (typeof x === 'number' && Number.isSafeInteger(x) && x > 0 && x < 1e9 ? x : null);
+      const list = (Array.isArray(body.items) ? body.items : []).slice(0, 60).map((r: Record<string, any>) => {
+        const best = r?.best && typeof r.best.name === 'string' && r.best.name.length <= 120 && c(r.best.cents) && typeof r.best.p === 'number' ? { name: r.best.name, cents: r.best.cents, p: r.best.p } : null;
+        return typeof r?.name === 'string' && r.name.length <= 80 && c(r.caseCents) && c(r.keyCents) && c(r.evCents) && c(r.evNetCents)
+          && typeof r.pWin === 'number' && r.pWin >= 0 && r.pWin <= 1 && best
+          ? { name: r.name, img: typeof r.img === 'string' && r.img.length < 600 ? r.img : null, caseCents: r.caseCents, keyCents: r.keyCents, evCents: r.evCents, evNetCents: r.evNetCents, pWin: r.pWin, best } : null;
+      }).filter(Boolean);
+      if (list.length) await setMetaStmt(d, 'case_ev', JSON.stringify({ at: now, items: list })).run();
+      result.stored = list.length;
     } else if (body.kind === 'cases_stats') {
       // Средние продажи Steam по всем кейсам (из прайса CSGO Trader) — для «индекса кейсов» и вечернего поста.
       const c = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 1e6 ? Math.round(x * 100) : null);

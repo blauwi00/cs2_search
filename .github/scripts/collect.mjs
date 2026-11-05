@@ -6,6 +6,7 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { decodeCertificate } from './inspect.mjs';
 import { russianSummary } from './patchnotes.mjs';
+import { computeCaseEV } from './caseev.mjs';
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -44,7 +45,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false } = await toWorker('/ingest/items');
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
@@ -187,6 +188,22 @@ try {
   // Все кейсы — для «индекса кейсов» и вечернего поста в канале.
   const cases = [...steamAvg.entries()].filter(([n]) => / Case$/.test(n)).map(([name, v]) => ({ name, ...v }));
   if (cases.length) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
+  // «Окупается ли кейс» — раз в сутки (по запросу Worker): состав кейсов из открытого набора ByMykel/CSGO-API.
+  if (needCaseEv && !HOME) {
+    try {
+      const base = 'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/';
+      const [crates, skins] = await Promise.all(['crates.json', 'skins.json'].map(async (f) => {
+        const r = await fetch(base + f, { headers: { 'User-Agent': UA } });
+        if (!r.ok) throw new Error(`${f}: HTTP ${r.status}`);
+        return r.json();
+      }));
+      const price = (n) => { const v = steamAvg.get(n); const usd = v?.d7 ?? v?.d30 ?? null; return usd && usd > 0 ? Math.round(usd * 100) : null; };
+      const ev = computeCaseEV(crates, skins, price);
+      console.log('Окупаемость кейсов:', ev.length, await toWorker('/ingest', { kind: 'case_ev', fetchedAt: now(), items: ev.slice(0, 60) }));
+    } catch (e) {
+      console.error('Окупаемость кейсов:', e.message);
+    }
+  }
 } catch (e) {
   console.error('Прайс Steam:', e.message);
 }

@@ -25,8 +25,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { pollResultText, type OpenPoll } from './rubrics.ts';
-import { composeChannelPost, caseStats, type ChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
+import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, newsRuLines, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
@@ -848,9 +847,7 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
       writes.push(setMetaStmt(ctx.db, `channel_done_${slot}`, warsawDate(ctx.now)));
       const p = await composeChannelPost(ctx.db, slot, ctx.now);
       for (const [k, v] of p?.meta ?? []) writes.push(setMetaStmt(ctx.db, k, v));
-      if (p?.poll) {
-        await publishPoll(ctx, Number(chat), p.poll, user, post, writes);
-      } else if (p?.card) {
+      if (p?.card) {
         // Сначала — картинка: сборщик нарисует её за ~10 минут, тогда и опубликуем.
         writes.push(setMetaStmt(ctx.db, 'channel_pending', JSON.stringify({ id: p.card.id, text: p.text, image: p.image, at: ctx.now })));
         writes.push(setMetaStmt(ctx.db, 'card_request', JSON.stringify(p.card)));
@@ -858,30 +855,6 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     }
   }
   if (writes.length) await ctx.db.batch(writes);
-}
-
-/** «Опрос»: сначала итог прошлого (по фактической цене кейса и голосам), потом новый опрос. */
-async function publishPoll(ctx: Ctx, chat: number, poll: NonNullable<ChannelPost['poll']>, user: string | null,
-  post: (text: string, kb: Keyboard, image: string | null) => Promise<number | false>, writes: D1PreparedStatement[]): Promise<void> {
-  let prev: OpenPoll | null = null;
-  try { prev = JSON.parse((await getMeta(ctx.db, 'poll_open')) ?? 'null') as OpenPoll | null; } catch { prev = null; }
-  if (prev?.name && prev.d1 > 0) {
-    const nowD1 = (await caseStats(ctx.db)).find((c) => c.name === prev!.name)?.d1 ?? null;
-    let votes: number[] | null = null;
-    if (prev.msgId && spendExternal(ctx)) {
-      try { votes = (await ctx.tg.stopPoll(chat, prev.msgId)).options.map((o) => o.voter_count); } catch { votes = null; }
-    }
-    const fx = await db.loadLatestFx(ctx.db);
-    if (nowD1) await post(pollResultText(prev, nowD1, fx, votes, ctx.now), botButton(user), null);
-  }
-  if (!spendExternal(ctx)) return;
-  try {
-    const m = await ctx.tg.sendPoll(chat, poll.question, poll.options);
-    bump(ctx, 'channel_posts');
-    writes.push(setMetaStmt(ctx.db, 'poll_open', JSON.stringify({ ...poll.open, msgId: m?.message_id })));
-  } catch (e) {
-    await db.log(ctx.db, 'warn', 'channel', 'poll', (e as Error).message.slice(0, 300), ctx.now);
-  }
 }
 
 /** Идеи дня записываются каждый день с 10:00, даже без канала: из них потом честная статистика «сработало / нет». */

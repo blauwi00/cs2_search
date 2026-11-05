@@ -9,7 +9,7 @@ import { say, type H } from './context.ts';
 import { nextAllowed } from '../core/audience.ts';
 import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
-const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', rubric: 'Рубрика дня: «Где дешевле» пн/чт, «Опрос» ср/сб, «Совет» вт/пт/вс (13:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
+const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', rubric: 'Рубрика дня: «Окупается ли кейс» пн/чт, «Что отслеживают» сб, «Истории CS2» вт/ср/пт/вс (13:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
 export async function channelCommand(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
@@ -66,10 +66,6 @@ export async function postPreview(h: H, arg: string): Promise<void> {
   if (!p) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post rubric</code>, <code>/post trends</code>, <code>/post cases</code>, <code>/post weekly</code>`);
   const channel = await getMeta(h.d, 'channel_id');
   await say(h, '👀 <b>Предпросмотр</b> — так пост будет выглядеть в канале:');
-  if (p.poll) {
-    return say(h, `${p.poll.question}\n\n${p.poll.options.map((o) => '• ' + esc(o)).join('\n')}\n\n<i>Это опрос: в канале он выйдет настоящим опросом Telegram, а перед ним — итог прошлого опроса (если был).</i>`,
-      channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : []);
-  }
   await h.tg.sendMessage(h.uid, p.text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])], p.image);
 }
 
@@ -81,15 +77,6 @@ export async function publishNow(h: H, slot: string): Promise<void> {
   const p = await composeChannelPost(h.d, s, h.now);
   if (!p) return say(h, 'Сейчас нечего публиковать.');
   if (p.meta?.length) await h.d.batch(p.meta.map(([k, v]) => setMetaStmt(h.d, k, v)));
-  if (p.poll) {
-    try {
-      const m = await h.tg.sendPoll(Number(channel), p.poll.question, p.poll.options);
-      await setMetaStmt(h.d, 'poll_open', JSON.stringify({ ...p.poll.open, msgId: m?.message_id })).run();
-      return say(h, '✅ Опрос опубликован. Итог — в следующем опросе.');
-    } catch (e) {
-      return say(h, `❌ ${esc((e as Error).message).slice(0, 200)}`);
-    }
-  }
   try {
     await h.tg.sendMessage(Number(channel), p.text, botButton(await botUsername(h.d, h.tg)), p.image);
     return say(h, '✅ Опубликовано.');

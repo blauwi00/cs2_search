@@ -1,5 +1,5 @@
 // Автопостинг в Telegram-канал или группу (бот должен быть там администратором с правом публиковать).
-// Три поста в день по Варшаве: 10:00 «Идеи дня», 15:00 «Растут в цене», 20:00 «Кейсы: что дорожает и дешевеет».
+// Посты по Варшаве: 10:00 «Рекомендации дня», 13:00 рубрика (см. rubrics.ts), 15:00 «Растут в цене», 20:00 «Кейсы», вс 19:00 итог недели.
 // Данные — то же сканирование рынка, что и во вкладке «Идеи». Нет содержательных данных — пост пропускается.
 // В каждом посте кнопка на бота с меткой ?start=ch — так видно, сколько людей пришло из канала.
 
@@ -13,14 +13,15 @@ import { loadLatestFx } from '../storage/db.ts';
 import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
+import { rubricFor, cheapestPost, tipPost, pickPollCase, pollQuestion, POLL_OPTIONS, type RubricKind, type OpenPoll } from './rubrics.ts';
 import { header, dealBlock, moveLine, FOOT_DEALS, pct, ruDate } from './postfmt.ts';
 
-export type Slot = 'ideas' | 'trends' | 'cases' | 'weekly';
+export type Slot = 'ideas' | 'rubric' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
 export const SLOTS: { slot: Slot; hour: number; weekday?: number }[] = [
-  { slot: 'ideas', hour: 10 }, { slot: 'trends', hour: 15 }, { slot: 'weekly', hour: 19, weekday: 0 }, { slot: 'cases', hour: 20 },
+  { slot: 'ideas', hour: 10 }, { slot: 'rubric', hour: 13 }, { slot: 'trends', hour: 15 }, { slot: 'weekly', hour: 19, weekday: 0 }, { slot: 'cases', hour: 20 },
 ];
-export const ALL_SLOTS: Slot[] = ['ideas', 'trends', 'cases', 'weekly'];
+export const ALL_SLOTS: Slot[] = ['ideas', 'rubric', 'trends', 'cases', 'weekly'];
 
 const fmt = (k: number | null) => formatUah(k);
 
@@ -104,7 +105,8 @@ export function dueSlot(now: number, done: Partial<Record<Slot, string | null>>)
   return null;
 }
 
-export interface ChannelPost { text: string; image: string | null; card: PostCard | null }
+/** poll — рубрика «Опрос»: text (если есть) — итог прошлого опроса, затем сам опрос. meta — что записать после публикации. */
+export interface ChannelPost { text: string; image: string | null; card: PostCard | null; poll?: { question: string; options: string[]; open: OpenPoll }; meta?: [string, string][] }
 
 
 /** Собирает текст поста для слота из базы (общий для расписания, предпросмотра и «Опубликовать сейчас»). */
@@ -130,6 +132,7 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     }
     return { text, image, card: full };
   };
+  if (slot === 'rubric') return composeRubric(d, rubricFor(warsawWeekday(now)), fresh, fx, now);
   const row = (r: CardRow) => ({ name: r.name, pct: pct(r.bp), upward: r.bp >= 0, price: r.kop ? formatUah(r.kop) : null });
   if (slot === 'ideas') {
     const today = await ensureTodayIdeas(d, fresh, fx, now);
@@ -198,4 +201,25 @@ export async function itemImage(d: D1Database, name: string, entries: ScanEntry[
 
 export async function caseStats(d: D1Database): Promise<CaseStat[]> {
   try { return JSON.parse((await getMeta(d, 'cases_stats')) ?? '[]') as CaseStat[]; } catch { return []; }
+}
+
+const jsonList = (v: string | null): string[] => { try { const x = JSON.parse(v ?? '[]'); return Array.isArray(x) ? x.filter((s) => typeof s === 'string') : []; } catch { return []; } };
+
+/**
+ * Рубрика дня (13:00). Нет данных для «Где дешевле» или «Опроса» — выходит «Совет», чтобы день не пустовал.
+ * Итог прошлого опроса (по фактической цене) подставляет канал при публикации нового опроса.
+ */
+export async function composeRubric(d: D1Database, kind: RubricKind, fresh: ScanEntry[] | null, fx: Map<Currency, FxRate>, now: number): Promise<ChannelPost | null> {
+  if (kind === 'cheapest' && fresh) {
+    const recent = jsonList(await getMeta(d, 'rubric_recent'));
+    const p = cheapestPost(fresh, fx, recent, now);
+    if (p) return { text: p.text, image: await itemImage(d, p.name, fresh), card: null, meta: [['rubric_recent', JSON.stringify([p.name, ...recent].slice(0, 30))]] };
+  }
+  if (kind === 'poll') {
+    const recent = jsonList(await getMeta(d, 'poll_recent'));
+    const c = pickPollCase(await caseStats(d), recent);
+    if (c) return { text: '', image: null, card: null, poll: { question: pollQuestion(c, fx), options: POLL_OPTIONS, open: { name: c.name, d1: c.d1!, at: now } }, meta: [['poll_recent', JSON.stringify([c.name, ...recent].slice(0, 8))]] };
+  }
+  const idx = Number(await getMeta(d, 'tip_idx')) || 0;
+  return { text: tipPost(idx, now), image: null, card: null, meta: [['tip_idx', String(idx + 1)]] };
 }

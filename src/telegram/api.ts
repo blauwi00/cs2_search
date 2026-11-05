@@ -19,7 +19,7 @@ export class TelegramClient {
 
   async call<T = unknown>(method: string, body: Record<string, unknown>): Promise<T> {
     this.calls++;
-    for (const k of ['text', 'caption'] as const) {
+    for (const k of ['text', 'caption', 'question'] as const) {
       const v = body[k];
       if (typeof v === 'string' && v.includes('⟦')) {
         const chat = Number(body.chat_id);
@@ -47,6 +47,16 @@ export class TelegramClient {
       link_preview_options: image ? { url: image, prefer_large_media: true, show_above_text: true } : { is_disabled: true },
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
+  }
+
+  /** Опрос (в канале — только анонимный). */
+  sendPoll(chatId: number, question: string, options: string[], keyboard?: Keyboard): Promise<{ message_id: number }> {
+    return this.call('sendPoll', { chat_id: chatId, question, options: options.map((text) => ({ text })), is_anonymous: true, ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) });
+  }
+
+  /** Закрыть опрос — вернёт голоса по вариантам. */
+  stopPoll(chatId: number, messageId: number): Promise<{ options: { text: string; voter_count: number }[] }> {
+    return this.call('stopPoll', { chat_id: chatId, message_id: messageId });
   }
 
   /** Фото по file_id (уже лежит в Telegram) с подписью до 1024 символов. */

@@ -1,3 +1,4 @@
+import { getMeta } from '../core/channel.ts';
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
@@ -92,6 +93,12 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
 
 async function onText(text: string, h: H): Promise<void> {
   // Добавление списком: /addlist и точные названия, по одному в строке (без поиска в Steam).
+  // Владелец прислал ссылку на пост канала (если переслать нельзя — «Копировать ссылку»): исправить пост об обновлении на русский.
+  const postLink = h.isAdmin ? /^(?:https?:\/\/)?t\.me\/(?:c\/\d+|[A-Za-z0-9_]{4,})\/(\d+)\/?(?:\?\S*)?$/i.exec(text.trim()) : null;
+  if (postLink) {
+    const chat = Number(await getMeta(h.d, 'channel_id'));
+    if (chat) return fixNewsPost(h, chat, Number(postLink[1]));
+  }
   if (/^\/addlist(@\w+)?(\s|$)/i.test(text.trim())) return addList(h, text.trim().replace(/^\/addlist(@\w+)?/i, ''));
   const t = text.trim().slice(0, 200);
   const cmd = t.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, '');

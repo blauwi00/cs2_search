@@ -191,3 +191,27 @@ test('владелец пересылает боту старый пост из 
   assert.match(edits[0].body.text, /Mirage/);
   assert.equal(sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234).length, 0, 'нового поста нет');
 });
+
+test('владелец не может переслать пост — присылает ссылку на него, бот исправляет этот пост', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  await ingest(env, { kind: 'news', items: [{ gid: '1', title: 'Counter-Strike 2 Update', url: 'https://store.steampowered.com/news/app/730/view/1', date: DAY1 - 86400, contents: '[p]x[/p]' }] }, DAY1);
+  await ingest(env, { kind: 'news_ru', gid: '1', titleRu: 'Обновление Counter-Strike 2', summary: { market: [], sections: [{ name: 'Карты', items: ['Исправлен Mirage'] }], more: 0 } }, DAY1 + 10);
+  await d.db.exec(`UPDATE news SET posted_at = ${DAY1}, ru_posted_at = NULL WHERE gid = '1'`);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
+  ]);
+  const msg = (text: string, from = ADMIN) => handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, message: { message_id: 1, from: { id: from }, chat: { id: from, type: 'private' }, text } }) }), env, DAY1 + 100, fetcher);
+  await msg('https://t.me/c/1234/42', 555);
+  assert.equal(sent.filter((s) => s.method === 'editMessageText').length, 0, 'чужая ссылка — не трогаем');
+  await msg('https://t.me/skinradar_ua/42');
+  const edits = sent.filter((s) => s.method === 'editMessageText');
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].body.message_id, 42);
+  assert.equal(edits[0].body.chat_id, -1001234);
+  assert.match(edits[0].body.text, /Mirage/);
+  assert.match(sent.at(-1)!.body.text, /исправлен/);
+});

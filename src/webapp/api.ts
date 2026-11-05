@@ -37,6 +37,9 @@ import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '.
 import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
+import { findCandidates, capital, buyBlockers, checkChain, RALLY_KEYS, UNLOCK_SEC, type RallyTrade, type RallySettings } from '../core/rally.ts';
+import { loadRallyScan, rallySettingsFor, rallyTrack } from '../core/rallyjob.ts';
+import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
@@ -242,6 +245,12 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
         },
         ok: true, now, watched, actions,
+        rally: st.rally_on === '1' ? await (async () => {
+          const rs = await rallySettingsFor(d, tid);
+          const tr = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = 'real'").bind(tid).all<RallyTrade>()).results;
+          const c = capital(tr, rs, 'real', now);
+          return { balanceKop: c.balanceKop, availableKop: c.availableKop, reserveKop: rs.reserveKop, realizedKop: c.realizedKop, openCount: c.openCount, maxPositions: rs.maxPositions };
+        })() : null,
         recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 6), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
         sites: sitesFor(await loadRefLinks(d)),
         donors: await topDonors(d, 10),
@@ -712,6 +721,104 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const mode = url.searchParams.get('mode') === 'get' ? 'get' : 'sell';
       const s = await db.getSettings(d, tid);
       return json({ ok: true, mode, withdrawBp: db.num(s.withdraw_fee_bp), rows: calcFees(kop, mode, db.num(s.withdraw_fee_bp)) });
+    }
+    // ---------- «Разгон баланса» ----------
+    if (path === 'rally' && method === 'GET') {
+      await d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'rally_on', '1', ?) ON CONFLICT(telegram_id, key) DO NOTHING`).bind(tid, now).run();
+      const [rs, scan, trades, track, wallet] = await Promise.all([rallySettingsFor(d, tid), loadRallyScan(d),
+        d.prepare('SELECT * FROM rally_trades WHERE telegram_id = ? ORDER BY id DESC LIMIT 300').bind(tid).all<RallyTrade>(), rallyTrack(d, null), walletCur()]);
+      const found = findCandidates(scan.entries, rs, now, track);
+      const names = [...new Set([...found.list.map((c) => c.name), ...trades.results.map((t) => t.name)])].slice(0, 90);
+      const idRows = names.length ? (await d.prepare(`SELECT id, market_hash_name AS n FROM items WHERE market_hash_name IN (${names.map(() => '?').join(',')})`).bind(...names).all<{ id: number; n: string }>()).results : [];
+      const ids = new Map(idRows.map((r) => [r.n, r.id]));
+      const t = trades.results;
+      const freshCount = scan.entries.filter((e) => e.steam && now - e.steam.at < 3 * 3600).length;
+      return json({
+        ok: true, settings: rs, walletWarn: wallet.code !== rs.walletCur ? wallet.code : null,
+        real: capital(t, rs, 'real', now), sim: capital(t, rs, 'sim', now), track,
+        candidates: { ...found, list: found.list.map((c) => ({ ...c, itemId: ids.get(c.name) ?? null })) },
+        dataAt: scan.at, checked: freshCount,
+        positions: t.filter((x) => x.status === 'open').map((x) => ({ ...x, itemId: ids.get(x.name) ?? null })),
+        history: t.filter((x) => x.status !== 'open').slice(0, 60),
+        chain: checkChain({ freeKop: Math.max(0, capital(t, rs, 'real', now).balanceKop - rs.reserveKop), steamBuyKop: null, siteSellNetKop: null, siteMinWithdrawKop: null, backItemCostKop: null, backItemSteamTargetKop: null, confirmed: false }),
+      });
+    }
+    if (path === 'rally/settings' && method === 'POST') {
+      const v = (body.values && typeof body.values === 'object' ? body.values : {}) as Record<string, unknown>;
+      const cur = await rallySettingsFor(d, tid);
+      const stmts: D1PreparedStatement[] = [];
+      for (const [k, key] of Object.entries(RALLY_KEYS) as [keyof RallySettings, string][]) {
+        if (!(k in v)) continue;
+        let val: string;
+        if (k === 'risk') val = ['low', 'medium', 'high'].includes(String(v[k])) ? String(v[k]) : 'low';
+        else if (k === 'notify') val = v[k] ? '1' : '0';
+        else if (k === 'walletCur') val = /^[A-Z]{3}$/.test(String(v[k])) ? String(v[k]) : 'UAH';
+        else if (k === 'maxPositions' || k === 'minRoiBp') { const n = Number(v[k]); if (!Number.isSafeInteger(n) || n < 0) return bad('Неверное значение'); val = String(n); }
+        else { const n = Number(v[k]); if (!Number.isSafeInteger(n) || n < 0 || n > 1e10) return bad('Неверная сумма'); val = String(n); }
+        stmts.push(d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(tid, key, val, now));
+      }
+      if (stmts.length) await d.batch(stmts);
+      return json({ ok: true, settings: { ...cur, ...(await rallySettingsFor(d, tid)) } });
+    }
+    if (path === 'rally/buy' && method === 'POST') {
+      const mode = body.mode === 'real' ? 'real' : 'sim';
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) : '';
+      const qty = Number(body.qty ?? 1), price = Number(body.priceKop);
+      if (name.length < 3 || !Number.isSafeInteger(qty) || qty < 1 || qty > 100 || !Number.isSafeInteger(price) || price < 3) return bad('Укажи предмет, количество и цену покупки');
+      const rs = await rallySettingsFor(d, tid);
+      const trades = (await d.prepare('SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = ?').bind(tid, mode).all<RallyTrade>()).results;
+      const cap = capital(trades, rs, mode, now);
+      const blockers = buyBlockers(cap, rs, price * qty);
+      if (blockers.length) return bad(blockers.join('. '));
+      const days = Number(body.unlockDays ?? 7);
+      const unlock = now + (Number.isFinite(days) && days >= 0 && days <= 30 ? Math.round(days * 86400) : UNLOCK_SEC);
+      const target = Number(body.targetKop), pred = Number(body.predictedNetKop);
+      await d.prepare(`INSERT INTO rally_trades (telegram_id, mode, name, img, qty, buy_kop, bought_at, unlock_at, target_kop, predicted_net_kop, risk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(tid, mode, name, safeImg(body.img), qty, price, now, unlock, Number.isSafeInteger(target) && target > 0 ? target : null,
+          Number.isSafeInteger(pred) && pred > 0 ? pred : null, typeof body.risk === 'string' ? body.risk.slice(0, 10) : null).run();
+      await d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'rally_on', '1', ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = '1'`).bind(tid, now).run();
+      // 6) Достигнут лимит: больше покупок по правилам не будет, пока не продашь/отменишь.
+      const after = capital([...trades, { mode, status: 'open', qty, buy_kop: price, unlock_at: unlock, predicted_net_kop: null } as RallyTrade], rs, mode, now);
+      const limit = after.openCount >= rs.maxPositions ? `открыто ${after.openCount} из ${rs.maxPositions} позиций` : after.balanceKop - rs.reserveKop < 3 ? 'свободные деньги сверх резерва закончились' : null;
+      if (limit && mode === 'real') {
+        await d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at) VALUES (?, 'rally', ?, NULL, ?, '[]', NULL, ?, ?)`)
+          .bind(tid, `limit:${Math.floor(now / 3600)}`, `🛑 <b>Лимит «Разгона баланса» достигнут</b>\n\n${limit}. Новые покупки по твоим правилам — после продажи или отмены. Резерв ⟦${rs.reserveKop}⟧ не трогаем.`, now, now).run();
+      }
+      return json({ ok: true, limit });
+    }
+    if ((path === 'rally/sell' || path === 'rally/cancel' || path === 'rally/edit') && method === 'POST') {
+      const id = Number(body.id);
+      const t = Number.isSafeInteger(id) ? await d.prepare(`SELECT * FROM rally_trades WHERE id = ? AND telegram_id = ? AND status = 'open'`).bind(id, tid).first<RallyTrade>() : null;
+      if (!t) return bad('Сделка не найдена');
+      if (path === 'rally/cancel') {
+        await d.prepare(`UPDATE rally_trades SET status = 'cancelled', sold_at = ?, sold_note = 'отменено пользователем' WHERE id = ?`).bind(now, id).run();
+        return json({ ok: true });
+      }
+      if (path === 'rally/edit') {
+        const target = body.targetKop === null ? null : Number(body.targetKop);
+        const days = body.unlockDate ? Date.parse(String(body.unlockDate) + 'T12:00:00Z') / 1000 : NaN;
+        await d.prepare('UPDATE rally_trades SET target_kop = ?, unlock_at = ?, n_target = 0, n_unlock = 0 WHERE id = ?')
+          .bind(target === null ? null : Number.isSafeInteger(target) && target > 0 ? target : t.target_kop, Number.isFinite(days) && days > now - 30 * 86400 && days < now + 60 * 86400 ? days : t.unlock_at, id).run();
+        return json({ ok: true });
+      }
+      // Продажа (в т.ч. частичная): цена покупателя за 1 шт. → получено по точной комиссии Steam.
+      const qty = Number(body.qty ?? t.qty), price = Number(body.priceKop);
+      if (!Number.isSafeInteger(qty) || qty < 1 || qty > t.qty || !Number.isSafeInteger(price) || price < 3) return bad('Укажи количество и цену продажи');
+      const net = Number.isSafeInteger(Number(body.netKop)) && Number(body.netKop) > 0 ? Number(body.netKop) * qty : (steamNetKop(price) ?? 0) * qty;
+      if (qty === t.qty) {
+        await d.prepare(`UPDATE rally_trades SET status = 'sold', sold_qty = ?, sold_price_kop = ?, sold_net_kop = ?, sold_at = ? WHERE id = ?`).bind(qty, price, net, now, id).run();
+      } else {
+        await d.batch([
+          d.prepare(`INSERT INTO rally_trades (telegram_id, mode, name, img, qty, buy_kop, bought_at, unlock_at, target_kop, predicted_net_kop, risk, status, sold_qty, sold_price_kop, sold_net_kop, sold_at, parent_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sold', ?, ?, ?, ?, ?)`).bind(tid, t.mode, t.name, t.img, qty, t.buy_kop, t.bought_at, t.unlock_at, t.target_kop, t.predicted_net_kop, t.risk, qty, price, net, now, id),
+          d.prepare('UPDATE rally_trades SET qty = qty - ? WHERE id = ?').bind(qty, id),
+        ]);
+      }
+      return json({ ok: true, netKop: net, profitKop: net - t.buy_kop * qty });
+    }
+    if (path === 'rally/reset' && method === 'POST') {
+      await d.prepare(`DELETE FROM rally_trades WHERE telegram_id = ? AND mode = 'sim'`).bind(tid).run();
+      return json({ ok: true });
     }
     if (path === 'recstats' && method === 'GET') return json({ ok: true, ...(await recStats(d, now, 30)) });
     if (path === 'feedback' && method === 'POST') {

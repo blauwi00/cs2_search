@@ -40,7 +40,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
 // Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
 if (card && card.id) {
   const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
@@ -407,16 +407,84 @@ try {
   console.error('Новости CS2:', e.message);
 }
 
+// 2з. «Разгон баланса»: дешёвые ликвидные предметы для покупки внутри Steam (только если разделом кто-то пользуется).
+// Кандидаты — из открытого прайса средних продаж (без запросов к Steam), затем по ~10 за запуск — живая цена Steam
+// (priceoverview: самое дешёвое объявление, медиана и число продаж за сутки) и для самых перспективных — ордер покупателя
+// (itemordershistogram). Паузы между запросами; при 429 — остановка до следующего запуска. Ничего не покупается.
+let steamBlocked = false;
+if (rally?.active && steamAvg.size && fx.USD) {
+  try {
+    const maxCents = Math.ceil(((rally.maxItemKop ?? 600) / 100 / fx.USD) * 100 * 1.15);
+    const pop = new Map(allItems.filter((x) => x && x.market_hash_name).map((x) => [x.market_hash_name, Number(x.quantity) || 0]));
+    const unique = /★|Doppler|Fade|Marble|Case Hardened|Crimson Web|Slaughter|Heat Treated|Phase/;
+    const pool = [...steamAvg.entries()].filter(([n, v]) => {
+      if (unique.test(n) || !(v.d1 > 0 && v.d7 > 0 && v.d30 > 0 && v.d90 > 0)) return false;
+      const c = v.d7 * 100;
+      return c >= 2 && c <= maxCents && Math.abs(v.d1 / v.d7 - 1) <= 0.15 && Math.abs(v.d7 / v.d30 - 1) <= 0.2;
+    }).sort((a, b) => (pop.get(b[0]) ?? 0) - (pop.get(a[0]) ?? 0)).slice(0, 400).map(([n]) => n);
+    const blocks = Math.max(1, Math.ceil(pool.length / 10));
+    const rot = Math.floor(Date.now() / 600_000) % blocks;
+    const pick = [...new Set([...(rally.names ?? []).slice(0, 6), ...pool.slice(rot * 10, rot * 10 + 10)])];
+    const nameids = rally.nameids ?? {};
+    const out = [], newIds = [];
+    let orderCalls = 0;
+    const steamGet = async (url, json = true) => {
+      const res = await fetch(url, { headers: { 'User-Agent': UA } });
+      if (res.status === 429) { steamBlocked = true; throw new Error('429'); }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return json ? readJson(res) : res.text();
+    };
+    const kop = (s) => { if (typeof s !== 'string') return null; const v = Number(s.replace(/[^\d,.]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')); return Number.isFinite(v) && v > 0 ? Math.round(v * 100) : null; };
+    for (const name of pick) {
+      if (steamBlocked) break;
+      const sa = steamAvg.get(name) ?? null;
+      const e = { name, img: images.get(name) ?? null, sa, steam: null, orders: null };
+      try {
+        const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
+        const b = await steamGet(`https://steamcommunity.com/market/priceoverview/?${q}`);
+        if (b?.success) e.steam = { lowest_price: b.lowest_price ?? null, median_price: b.median_price ?? null, volume: b.volume ?? null };
+      } catch (err) { console.log('Разгон: Steam', name, err.message); }
+      await sleep(STEAM_GAP_MS);
+      // Ордер покупателя — только если сделка в принципе проходит по прибыли (экономим запросы к Steam).
+      const low = kop(e.steam?.lowest_price), med = kop(e.steam?.median_price);
+      const refs = [med, sa ? Math.round(sa.d7 * fx.USD * 100) : null, sa ? Math.round(sa.d30 * fx.USD * 100) : null].filter((x) => x > 0);
+      const promising = low && refs.length >= 2 && Math.min(...refs) * 0.8 - low >= 50;
+      if (promising && orderCalls < 3 && !steamBlocked) {
+        try {
+          let id = nameids[name];
+          if (!id) {
+            const html = await steamGet(`https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}`, false);
+            id = Number(html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/)?.[1]) || null;
+            if (id) newIds.push({ name, id });
+            await sleep(STEAM_GAP_MS);
+          }
+          if (id) {
+            const h = await steamGet(`https://steamcommunity.com/market/itemordershistogram?country=UA&language=english&currency=18&item_nameid=${id}&two_factor=0`);
+            if (h?.success) e.orders = { buy: Number(h.highest_buy_order) || null, sell: Number(h.lowest_sell_order) || null };
+            orderCalls++;
+            await sleep(STEAM_GAP_MS);
+          }
+        } catch (err) { console.log('Разгон: ордера', name, err.message); }
+      }
+      out.push(e);
+    }
+    console.log(`Разгон баланса: пул ${pool.length}, проверено ${out.length}, с ордерами ${out.filter((x) => x.orders).length}${steamBlocked ? ', Steam ограничил (429)' : ''}`);
+    if (out.length) console.log('Разгон:', await toWorker('/ingest', { kind: 'rally_scan', fetchedAt: now(), items: out, nameids: newIds }));
+  } catch (e) {
+    console.error('Разгон баланса:', e.message);
+  }
+}
+
 // 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.
 let batch = [];
-let strikes = 0;
+let strikes = steamBlocked ? 2 : 0;
 const flush = async () => {
   if (!batch.length) return;
   const r = await toWorker('/ingest', { kind: 'steam', fetchedAt: now(), items: batch });
   console.log(`Steam: отправлено ${batch.length}`, r);
   batch = [];
 };
-for (const name of items) {
+for (const name of steamBlocked ? [] : items) {
   if (Date.now() - started > TIME_BUDGET_MS) { console.log('Время запуска вышло, остальное — в следующий раз'); break; }
   const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
   let entry;

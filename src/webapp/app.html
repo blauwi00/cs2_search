@@ -53,6 +53,9 @@ button{font:inherit;color:inherit}
 .ob .pts div{padding:9px 0;font-size:15px;display:flex;gap:10px;align-items:flex-start}.ob .pts div+div{border-top:1px solid rgba(255,255,255,.06)}
 .ob .dots{display:flex;gap:6px;justify-content:center;margin:auto 0 12px}.ob .dots i{width:7px;height:7px;border-radius:4px;background:var(--hint);opacity:.35;transition:all .2s}.ob .dots i.on{width:20px;opacity:1;background:var(--link)}
 .ob .skip{text-align:center;color:var(--hint);font-size:14px;padding:10px;cursor:pointer}
+.seg.scroll{overflow-x:auto;scrollbar-width:none}.seg.scroll::-webkit-scrollbar{display:none}.seg.scroll button{flex:0 0 auto;white-space:nowrap;padding:7px 11px;font-size:13px}
+.risk{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px}.risk.low{background:color-mix(in srgb,var(--green) 18%,transparent);color:var(--green)}.risk.medium{background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber)}.risk.high,.risk.unknown{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red)}
+.rcap{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .wrap{padding:0 12px}
 .card{background:var(--card);border-radius:var(--r);padding:14px;margin:0 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -266,7 +269,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
+var TITLES = { rally: 'Разгон баланса', home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -275,7 +278,7 @@ function go(t) {
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
-  ({ home: home, deals: deals, market: market, inv: inventory, more: more })[t]();
+  ({ home: home, deals: deals, market: market, inv: inventory, more: more, rally: rally })[t]();
 }
 
 // ---------- Состояние: зелёный — всё работает; жёлтый — работает, но Steam/Skinport временно ограничены; красный — бот стоит ----------
@@ -380,6 +383,9 @@ function home() {
     renderTicker(s);
     var h = '';
     h += setupCard(s.setup);
+    // «Разгон баланса»: капитал, свободно сверх резерва, результат, активные позиции.
+    h += s.rally ? '<div class="row" id="h-rally"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса · ' + uahShort(s.rally.balanceKop) + '</div><div class="d">свободно ' + uahShort(s.rally.availableKop) + ' сверх резерва ' + uahShort(s.rally.reserveKop) + ' · итог <span class="' + cls(s.rally.realizedKop) + '">' + uah(s.rally.realizedKop, true) + '</span> · позиций ' + s.rally.openCount + '/' + s.rally.maxPositions + '</div></div><div class="mut">›</div></div>'
+      : '<div class="row" id="h-rally"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Осторожные сделки внутри Steam от 30 ₴ — сначала в симуляции</div></div><div class="mut">›</div></div>';
     if (s.inventory.lots) {
       var diff = s.inventory.valueKop - s.inventory.costKop;
       h += '<div class="row" id="h-inv"><div class="ic">🎒</div><div class="m"><div class="n">Мои покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
@@ -395,6 +401,7 @@ function home() {
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();
+    if ($('#h-rally')) $('#h-rally').onclick = function () { haptic(); go('rally'); };
     if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('inv'); };
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
@@ -486,6 +493,7 @@ function deals() {
     } else {
       state.cache.recsAt = r.fetchedAt;
       h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale ? ' ⚠️ данные устарели' : '') + '</div>';
+      h += '<div class="row" id="r-rally" style="margin-bottom:6px"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Маленький бюджет, минимальный риск, симуляция</div></div><div class="mut">›</div></div>';
       h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
       h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
@@ -502,6 +510,7 @@ function deals() {
     };
     bindRecs(r.deals.concat(r.trends));
     bindDeals(mine);
+    if ($('#r-rally')) $('#r-rally').onclick = function () { haptic(); go('rally'); };
     if ($('#r-stats')) {
       $('#r-stats').onclick = function () { haptic(); recStatsSheet(); };
       api('recstats').then(function (s) { var n = s.plus + s.minus; if (n && $('#r-stats-d')) $('#r-stats-d').innerHTML = '<b class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + s.plus + ' из ' + n + '</b> в плюсе через сутки · за ' + s.days + ' дней'; }).catch(function () {});
@@ -1242,6 +1251,152 @@ function termsSheet() {
       secHtml(t.terms) + '<h2 style="margin-top:18px">🛡 Конфиденциальность</h2>' + secHtml(t.privacy);
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
+// ---------- «Разгон баланса» ----------
+var RISK_RU = { low: 'низкий риск', medium: 'средний риск', high: 'высокий риск', unknown: 'недостаточно данных' };
+function riskTag(r) { return '<span class="risk ' + esc(r) + '">' + (RISK_RU[r] || r) + '</span>'; }
+function dateRu(t) { return t ? new Date(t * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—'; }
+function rally() {
+  loading(4);
+  state.rallyTab = state.rallyTab || 'opps';
+  api('rally').then(function (r) {
+    state.rally = r;
+    var tabs = [['opps', 'Возможности'], ['real', 'Мои сделки'], ['sim', 'Симуляция'], ['hist', 'История'], ['set', 'Настройки']];
+    var h = '<div class="seg scroll" id="rtab">' + tabs.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (state.rallyTab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    h += ({ opps: rallyOpps, real: function (x) { return rallyBook(x, 'real'); }, sim: function (x) { return rallyBook(x, 'sim'); }, hist: rallyHist, set: rallySet })[state.rallyTab](r);
+    view.innerHTML = h;
+    Array.prototype.forEach.call(document.querySelectorAll('#rtab button'), function (b) { b.onclick = function () { haptic(); state.rallyTab = b.getAttribute('data-t'); rally(); }; });
+    bindRally(r);
+  }).catch(fail);
+}
+function capHtml(c, mode, s) {
+  return '<div class="rcap">' + stat(mode === 'sim' ? 'Виртуальный баланс' : 'Баланс Steam', uahShort(c.balanceKop), 'свободно ' + uahShort(c.availableKop) + ' сверх резерва ' + uahShort(s.reserveKop)) +
+    stat('Итог закрытых', '<span class="' + cls(c.realizedKop) + '">' + uah(c.realizedKop, true) + '</span>', c.closedCount + ' сделок · ' + pct(c.roiBp)) + '</div>' +
+    '<details class="more"><summary><span class="chev">›</span> Капитал подробно</summary><div class="card">' +
+    kv('Старт', uah(c.startKop)) + kv('Деньги на балансе', uah(c.balanceKop)) + kv('В купленных предметах', uah(c.inItemsKop) + '<div class="mut" style="font-size:12px;font-weight:400">по цене покупки · с блокировкой: ' + c.lockedCount + '</div>') +
+    (mode === 'real' ? kv('На внешних площадках', uah(c.externalKop) + '<div class="mut" style="font-size:12px;font-weight:400">вводишь сам в настройках</div>') : '') +
+    kv('Ожидаемая прибыль', uah(c.expectedProfitKop, true) + '<div class="mut" style="font-size:12px;font-weight:400">прогноз по открытым — ещё не заработано</div>') +
+    kv('Фактическая прибыль', '<span class="' + cls(c.realizedKop) + '">' + uah(c.realizedKop, true) + '</span>') + kv('Убытки', uah(-c.lossesKop)) + kv('Комиссии Steam уплачено', uah(c.feesKop)) +
+    kv('Позиций открыто', c.openCount + ' из ' + s.maxPositions) + '</div></details>';
+}
+function rallyOpps(r) {
+  var c = r.candidates, s = r.settings, h = '';
+  h += '<div class="card" style="font-size:13px">Бот ищет дешёвые ликвидные предметы, которые сейчас продаются <b>ниже обычной цены</b>, и считает, что останется после <b>7 дней блокировки</b> и <b>точной комиссии Steam</b>. Лимит на покупку ' + uahShort(s.maxItemKop) + ', резерв ' + uahShort(s.reserveKop) + ', не больше ' + s.maxPositions + ' позиций. Бот ничего не покупает сам — это не гарантия прибыли.</div>';
+  if (r.walletWarn) h += '<div class="card" style="color:var(--amber);font-size:13px">⚠️ Цены Steam здесь — в гривнах (кошелёк ' + esc(s.walletCur) + '). У тебя в боте выбрана валюта ' + esc(r.walletWarn) + ': если кошелёк Steam в другой валюте, цены в нём будут другими.</div>';
+  h += '<div class="mut" style="font-size:12px;margin:0 2px 8px">Данные Steam: ' + (r.dataAt ? 'обновлено ' + ago(r.dataAt) + ' · свежих предметов ' + r.checked : 'ещё не собраны — сборщик начнёт проверку в ближайшие 10–20 минут') + '</div>';
+  if (!c.list.length) {
+    h += '<div class="empty"><div class="e">🛡</div>' + esc(c.message || 'Безопасных торговых возможностей по текущим критериям не найдено') + '</div>';
+  } else h += c.list.map(function (x, i) {
+    return '<div class="rc" style="cursor:default"><div style="display:flex;gap:10px;align-items:center">' + pic(x.img, '📦') + '<div style="flex:1;min-width:0"><div style="font-weight:700">' + esc(x.name) + '</div><div style="margin-top:3px">' + riskTag(x.risk) + '</div></div><div class="pos" style="font-weight:800">+' + uahShort(x.profitKop) + '</div></div>' +
+      '<div class="card" style="margin:8px 0 0">' + kv('Покупка', uah(x.buyKop) + '<div class="mut" style="font-size:12px;font-weight:400">самое дешёвое объявление · ' + ago(x.dataAt) + '</div>') + kv('Целевая продажа', uah(x.targetKop) + '<div class="mut" style="font-size:12px;font-weight:400">через 7 дней, ≈ ' + dateRu(x.unlockAt) + '</div>') +
+      kv('Придёт после комиссии', uah(x.netKop)) + kv('Чистая прибыль', '<span class="pos">' + uah(x.profitKop, true) + ' (' + pct(x.roiBp) + ')</span>') + '</div>' +
+      '<details class="more"><summary><span class="chev">›</span> Почему и насколько надёжно</summary><div class="card" style="font-size:13px">' +
+      '<p style="margin:0 0 6px">' + esc(x.reason) + '</p>' +
+      kv('Продаж за 24 ч', x.volume24h != null ? x.volume24h : '—') + kv('Продаж за 7 дней', '<span class="mut">нет данных у бесплатных источников</span>') +
+      kv('Медиана продаж за сутки', x.medianKop ? uah(x.medianKop) : '—') + kv('Средняя продаж 7 / 30 дн.', (x.avg && x.avg.d7 ? uahShort(x.avg.d7) : '—') + ' / ' + (x.avg && x.avg.d30 ? uahShort(x.avg.d30) : '—')) +
+      kv('Ордер покупателя', x.buyOrderKop ? uah(x.buyOrderKop) : '<span class="mut">нет данных</span>') + kv('Если цена упадёт на 10%', uah(x.downsideNetKop) + ' придёт (' + uah(x.downsideNetKop - x.buyKop, true) + ')') +
+      '<div style="margin-top:6px"><b>Риск:</b> ' + x.riskWhy.map(esc).join('; ') + '</div><div class="mut" style="margin-top:6px">Подтверждено: ' + x.confirmed.map(esc).join(', ') + '. Разблокировка — оценка: точную дату Steam показывает в инвентаре.</div></div></details>' +
+      '<div class="btns"><button class="btn" data-rbuy="' + i + '">✅ Отметить как купленное</button><button class="btn sec2" data-rsteam="' + i + '">Открыть в Steam</button></div>' +
+      '<div class="btns"><button class="btn sec2" data-rwatch="' + i + '">👁 В наблюдение</button>' + (x.itemId ? '<button class="btn sec2" data-rhist="' + i + '">📈 История цены</button>' : '') + '<button class="btn sec2" data-rcalc="' + i + '">🧮 Прибыль</button></div></div>';
+  }).join('');
+  if (c.hidden) h += '<div class="note">Скрыто ' + c.hidden + ' вариантов со средним/высоким риском — в настройках выбран «' + (s.risk === 'low' ? 'минимальный риск' : s.risk) + '».</div>';
+  var rej = Object.keys(c.rejected || {});
+  if (rej.length) h += '<details class="more"><summary><span class="chev">›</span> Почему остальные отброшены</summary><div class="card" style="font-size:13px">' + rej.map(function (k) { return kv(esc(k), c.rejected[k]); }).join('') + '</div></details>';
+  h += '<details class="more"><summary><span class="chev">›</span> Стратегия B: Steam → площадка → Steam</summary><div class="card" style="font-size:13px"><b>' + (r.chain.feasible ? 'Можно' : 'Сейчас не предлагается') + '</b><ul style="margin:6px 0 0;padding-left:18px">' + r.chain.reasons.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') +
+    '<li>Цепочка занимает от ' + r.chain.days + ' дней: блокировка после покупки в Steam и защита обмена (Trade Protection) при передаче туда и обратно.</li><li>Комиссии: Steam 15%, площадки 2–8% + вывод; у площадок бывают минимальные суммы.</li></ul></div></details>';
+  return h;
+}
+function rallyBook(r, mode) {
+  var cap = r[mode], s = r.settings, h = '';
+  if (mode === 'sim') h += '<div class="card" style="font-size:13px">🧪 <b>Симуляция</b>: виртуальные ' + uahShort(s.simStartKop) + '. Отмечай покупки из «Возможностей» как виртуальные — после разблокировки бот сам «продаст» их по <b>фактической</b> цене Steam на тот момент и сравнит с прогнозом.</div>';
+  h += capHtml(cap, mode, s);
+  var pos = r.positions.filter(function (p) { return p.mode === mode; });
+  h += '<div class="sec">Открытые позиции</div>';
+  h += pos.length ? pos.map(function (p) {
+    var locked = p.unlock_at * 1000 > Date.now();
+    return '<div class="row" data-rpos="' + p.id + '">' + pic(p.img, '📦') + '<div class="m"><div class="n">' + esc(p.name) + (p.qty > 1 ? ' ×' + p.qty : '') + '</div><div class="d">куплено по ' + uahShort(p.buy_kop) + ' · ' + (locked ? '🔒 до ' + dateRu(p.unlock_at) : '🔓 можно продавать') + (p.target_kop ? ' · план ' + uahShort(p.target_kop) : '') + '</div></div><div class="mut">›</div></div>';
+  }).join('') : '<div class="card mut" style="font-size:14px">Нет открытых позиций.</div>';
+  h += '<button class="btn sec2" id="r-manual">＋ Записать покупку вручную</button>';
+  if (mode === 'sim') h += '<button class="btn danger" id="r-reset">Сбросить симуляцию</button>';
+  return h;
+}
+function rallyHist(r) {
+  var h = '';
+  if (r.track.n) h += '<div class="card" style="font-size:13px">Прогнозы: в <b>' + r.track.hit + ' из ' + r.track.n + '</b> закрытых сделках получили не меньше прогноза (все пользователи, реальные и симуляция).</div>';
+  h += r.history.length ? r.history.map(function (t) {
+    var res = t.status === 'sold' ? (t.sold_net_kop - t.buy_kop * t.qty) : null;
+    return '<div class="row" style="cursor:default">' + pic(t.img, '📦') + '<div class="m"><div class="n">' + esc(t.name) + (t.qty > 1 ? ' ×' + t.qty : '') + ' <span class="mut" style="font-size:12px">' + (t.mode === 'sim' ? '🧪 симуляция' : '💰 реальная') + '</span></div><div class="d">' +
+      (t.status === 'cancelled' ? 'отменено' : 'купл. ' + uahShort(t.buy_kop) + ' → прод. ' + uahShort(t.sold_price_kop) + ' · пришло ' + uahShort(t.sold_net_kop) + (t.predicted_net_kop ? ' · прогноз ' + uahShort(t.predicted_net_kop * t.qty) : '')) + ' · ' + dateRu(t.sold_at) + '</div></div>' +
+      '<div class="r"><div class="big ' + cls(res) + '">' + (res == null ? '—' : uah(res, true)) + '</div></div></div>';
+  }).join('') : '<div class="empty"><div class="e">🧾</div>Закрытых сделок пока нет.</div>';
+  return h;
+}
+var RSET = [['startKop', 'Стартовый баланс Steam', 'uah'], ['simStartKop', 'Виртуальный баланс симуляции', 'uah'], ['maxItemKop', 'Максимум на одну покупку', 'uah'], ['reserveKop', 'Неснижаемый резерв', 'uah'],
+  ['maxPositions', 'Открытых позиций, не больше', 'int'], ['minProfitKop', 'Мин. чистая прибыль на сделку', 'uah'], ['minRoiBp', 'Мин. доходность, %', 'pct'], ['externalKop', 'Деньги на внешних площадках', 'uah']];
+function rallySet(r) {
+  var s = r.settings;
+  var h = '<div class="card" style="padding:4px 14px">' + RSET.map(function (x) {
+    var v = x[2] === 'uah' ? units(s[x[0]]) : x[2] === 'pct' ? String(s[x[0]] / 100).replace('.', ',') : s[x[0]];
+    return '<div class="kv" style="align-items:center"><span>' + esc(x[1]) + '</span><input data-rs="' + x[0] + '" data-k="' + x[2] + '" inputmode="decimal" value="' + esc(v) + '" style="width:96px;text-align:right;padding:8px 10px"></div>';
+  }).join('') +
+    '<div class="kv" style="align-items:center"><span>Какой риск показывать</span><select data-rs="risk" style="width:auto;padding:7px 10px">' + [['low', 'только низкий'], ['medium', 'до среднего'], ['high', 'все']].map(function (o) { return '<option value="' + o[0] + '"' + (s.risk === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+    '<div class="kv" style="align-items:center"><span>Уведомления раздела</span><label class="sw"><input type="checkbox" data-rs="notify"' + (s.notify ? ' checked' : '') + '><b></b></label></div></div>';
+  h += '<div class="note">Суммы — в ' + esc(CUR.code) + '. Баланс считается так: старт − покупки + выручка от продаж после комиссии. Ожидаемая прибыль в баланс не входит.</div>';
+  return h;
+}
+function rallyBuyForm(pre, mode) {
+  var h = '<h2>Отметить покупку</h2><div class="sub">' + (pre.name ? esc(pre.name) : 'Запиши, что купил в Steam') + '</div>' +
+    '<div class="seg" id="rbm"><button data-m="sim" class="' + (mode !== 'real' ? 'on' : '') + '">🧪 Симуляция</button><button data-m="real" class="' + (mode === 'real' ? 'on' : '') + '">💰 По-настоящему</button></div>' +
+    (pre.name ? '' : '<label class="f"><span>Предмет (точное название из Steam)</span><input id="rbn" placeholder="Revolution Case"></label>') +
+    '<label class="f"><span>Цена за 1 шт., ' + esc(CUR.sign) + '</span><input id="rbp" inputmode="decimal" value="' + (pre.buyKop ? units(pre.buyKop) : '') + '"></label>' +
+    '<label class="f"><span>Количество</span><input id="rbq" inputmode="numeric" value="1"></label>' +
+    '<label class="f"><span>Продать можно через, дней (Steam покажет точную дату)</span><input id="rbd" inputmode="numeric" value="7"></label>' +
+    '<button class="btn" id="rbok">Записать</button><div class="note">Бот ничего не покупает: это журнал. Проверяются лимит на покупку, резерв и число позиций.</div>';
+  sheet(h);
+  var m = mode === 'real' ? 'real' : 'sim';
+  Array.prototype.forEach.call(document.querySelectorAll('#rbm button'), function (b) { b.onclick = function () { m = b.getAttribute('data-m'); Array.prototype.forEach.call(document.querySelectorAll('#rbm button'), function (x) { x.classList.toggle('on', x === b); }); }; });
+  $('#rbok').onclick = function () {
+    var k = toKop($('#rbp').value);
+    api('rally/buy', { method: 'POST', body: { mode: m, name: pre.name || ($('#rbn') && $('#rbn').value), qty: +$('#rbq').value || 1, priceKop: k, unlockDays: +$('#rbd').value, targetKop: pre.targetKop, predictedNetKop: pre.netKop, risk: pre.risk, img: pre.img } })
+      .then(function (x) { haptic('ok'); closeSheet(); toast(x.limit ? 'Записано. Лимит: ' + x.limit : 'Записано'); state.rallyTab = m; rally(); }).catch(function (e) { toast(e.message); });
+  };
+}
+function rallyPosSheet(p) {
+  var locked = p.unlock_at * 1000 > Date.now();
+  var h = '<h2>' + esc(p.name) + (p.qty > 1 ? ' ×' + p.qty : '') + '</h2><div class="sub">' + (p.mode === 'sim' ? '🧪 симуляция' : '💰 реальная сделка') + ' · ' + (locked ? '🔒 продать можно ≈ ' + dateRu(p.unlock_at) : '🔓 можно продавать') + '</div>' +
+    '<div class="card">' + kv('Куплено', uah(p.buy_kop) + ' × ' + p.qty) + kv('План продажи', p.target_kop ? uah(p.target_kop) : '—') + kv('Прогноз: придёт', p.predicted_net_kop ? uah(p.predicted_net_kop * p.qty) : '—') + kv('Риск при покупке', p.risk ? riskTag(p.risk) : '—') + '</div>';
+  if (p.mode === 'real' || !locked) h += '<div class="sec">Отметить продажу</div><label class="f"><span>Цена покупателя за 1 шт., ' + esc(CUR.sign) + '</span><input id="rsp" inputmode="decimal" value="' + (p.target_kop ? units(p.target_kop) : '') + '"></label>' +
+    '<label class="f"><span>Сколько продал (из ' + p.qty + ')</span><input id="rsq" inputmode="numeric" value="' + p.qty + '"></label><div class="mut" id="rsn" style="font-size:13px;margin:-4px 2px 8px"></div><button class="btn" id="rsok">✅ Продано</button>';
+  h += '<div class="sec">Изменить</div><div style="display:flex;gap:8px"><input id="rtg" inputmode="decimal" placeholder="новый план, ' + esc(CUR.sign) + '" style="flex:1"><input id="rud" type="date" style="flex:1" value="' + new Date(p.unlock_at * 1000).toISOString().slice(0, 10) + '"></div><button class="btn sec2" id="rsave">Сохранить план и дату</button>';
+  h += '<div class="btns"><button class="btn sec2" id="rst">Открыть в Steam</button><button class="btn danger" id="rcan">Отменить запись</button></div>';
+  sheet(h);
+  var upd = function () { var k = toKop($('#rsp').value), q = +$('#rsq').value || 1; if (!(k >= 3)) { $('#rsn').textContent = ''; return; } api('calc?kop=' + k + '&mode=sell').then(function (c) { var st = c.rows.filter(function (x) { return x.key === 'steam'; })[0]; if (st && $('#rsn')) $('#rsn').innerHTML = 'Придёт ≈ ' + uah(st.getKop * q) + ' · итог ' + uah(st.getKop * q - p.buy_kop * q, true); }).catch(function () {}); };
+  if ($('#rsp')) { $('#rsp').oninput = upd; $('#rsq').oninput = upd; upd(); }
+  if ($('#rsok')) $('#rsok').onclick = function () { api('rally/sell', { method: 'POST', body: { id: p.id, qty: +$('#rsq').value || p.qty, priceKop: toKop($('#rsp').value) } }).then(function (x) { haptic('ok'); closeSheet(); toast('Продажа записана: ' + uah(x.profitKop, true)); rally(); }).catch(function (e) { toast(e.message); }); };
+  $('#rsave').onclick = function () { var k = $('#rtg').value ? toKop($('#rtg').value) : undefined; api('rally/edit', { method: 'POST', body: { id: p.id, targetKop: k, unlockDate: $('#rud').value } }).then(function () { toast('Сохранено'); closeSheet(); rally(); }).catch(function (e) { toast(e.message); }); };
+  $('#rst').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(p.name)); };
+  $('#rcan').onclick = function () { api('rally/cancel', { method: 'POST', body: { id: p.id } }).then(function () { toast('Отменено'); closeSheet(); rally(); }).catch(function (e) { toast(e.message); }); };
+}
+function bindRally(r) {
+  var list = r.candidates.list;
+  var each = function (sel, attr, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) { el.onclick = function () { haptic(); fn(list[+el.getAttribute(attr)]); }; }); };
+  each('[data-rbuy]', 'data-rbuy', function (x) { rallyBuyForm(x, 'sim'); });
+  each('[data-rsteam]', 'data-rsteam', function (x) { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); });
+  each('[data-rwatch]', 'data-rwatch', function (x) { api('watch', { method: 'POST', body: { name: x.name } }).then(function () { haptic('ok'); toast('Добавлено в «Рынок»'); }).catch(function (e) { toast(e.message); }); });
+  each('[data-rhist]', 'data-rhist', function (x) { itemSheet(x.itemId, 30); });
+  each('[data-rcalc]', 'data-rcalc', function (x) { calcSheet(x.targetKop); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-rpos]'), function (el) { el.onclick = function () { haptic(); rallyPosSheet(r.positions.filter(function (p) { return p.id === +el.getAttribute('data-rpos'); })[0]); }; });
+  if ($('#r-manual')) $('#r-manual').onclick = function () { rallyBuyForm({}, state.rallyTab === 'real' ? 'real' : 'sim'); };
+  if ($('#r-reset')) $('#r-reset').onclick = function () { var go2 = function () { api('rally/reset', { method: 'POST' }).then(function () { toast('Симуляция сброшена'); rally(); }); }; if (tg && tg.showConfirm) tg.showConfirm('Удалить все виртуальные сделки?', function (ok) { if (ok) go2(); }); else go2(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-rs]'), function (el) {
+    el.onchange = function () {
+      var k = el.getAttribute('data-rs'), kind = el.getAttribute('data-k'), v;
+      if (el.type === 'checkbox') v = el.checked; else if (kind === 'uah') v = toKop(el.value); else if (kind === 'pct') v = Math.round(parseFloat(String(el.value).replace(',', '.')) * 100); else if (kind === 'int') v = parseInt(el.value, 10); else v = el.value;
+      if (v !== true && v !== false && typeof v === 'number' && !(v >= 0)) return toast('Неверное значение');
+      var o = {}; o[k] = v;
+      api('rally/settings', { method: 'POST', body: { values: o } }).then(function () { haptic('ok'); toast('Сохранено'); }).catch(function (e) { toast(e.message); });
+    };
+  });
+}
 // ---------- #14: калькулятор комиссий ----------
 function calcSheet(preKop) {
   var mode = 'sell', timer = null;
@@ -1383,7 +1538,7 @@ function status() {
 if (!INIT) { view.innerHTML = '<div class="empty"><div class="e">🔒</div>Открой приложение из своего бота в Telegram — кнопкой «Приложение» рядом с полем ввода.</div>'; return; }
 var start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
 var hashTab = (location.hash || '').replace('#', '');
-var first = ['deals', 'market', 'inv', 'more'].indexOf(start) >= 0 ? start : ['deals', 'market', 'inv', 'more'].indexOf(hashTab) >= 0 ? hashTab : 'home';
+var first = ['deals', 'market', 'inv', 'more', 'rally'].indexOf(start) >= 0 ? start : ['deals', 'market', 'inv', 'more', 'rally'].indexOf(hashTab) >= 0 ? hashTab : 'home';
 // Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
 loading(3);
 api('terms').then(function (t) { if (t.accepted && !t.onboarded) onboarding(first); else if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });

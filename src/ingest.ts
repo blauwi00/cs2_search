@@ -21,6 +21,7 @@ import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
+import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
@@ -68,6 +69,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       card: await pendingCard(d),
       // Цены со всех площадок — раз в 6 часов для предметов из списков, инвентарей и идей.
       sitePriceNames: await sitePriceNames(d, now),
+      // «Разгон баланса»: нужен ли проход по дешёвым предметам Steam и какие проверить первыми.
+      rally: await rallyInfo(d),
       // Картинки для всего каталога: с какого места продолжать (раз в неделю — новый проход, чтобы подхватить новые предметы).
       imgCursor: await (async () => {
         const c = Number(await getMeta(d, 'img_cursor')) || 0;
@@ -277,6 +280,19 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         await setMetaStmt(d, 'img_cursor', String(cur)).run();
         if (cur === -1) await setMetaStmt(d, 'img_pass_at', String(now)).run();
       }
+    } else if (body.kind === 'rally_scan') {
+      const fresh = parseRallyItems(body.items, fx.get('USD') ?? null, at);
+      const old = await loadRallyScan(d);
+      const merged = mergeRally(old.entries, fresh, now);
+      const ids = (Array.isArray((body as { nameids?: unknown }).nameids) ? (body as { nameids: unknown[] }).nameids : []).slice(0, 20) as { name?: unknown; id?: unknown }[];
+      await d.batch([
+        d.prepare('INSERT INTO rally_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at').bind(JSON.stringify(merged), at),
+        ...ids.filter((x) => typeof x?.name === 'string' && (x.name as string).length <= 200 && Number.isSafeInteger(x.id) && (x.id as number) > 0)
+          .map((x) => d.prepare('INSERT INTO item_nameids (name, nameid, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET nameid = excluded.nameid, at = excluded.at').bind(x.name, x.id, now)),
+      ]);
+      result.stored = fresh.length;
+      const r = await afterRallyScan(d, merged, now, await getMeta(d, 'public_origin'));
+      result.sellAlerts = r.notified;
     } else if (body.kind === 'scan') {
       const fresh = parseScan(body.items, at);
       if (fresh.length === 0) return json({ ok: false, error: 'empty_scan' }, 400);

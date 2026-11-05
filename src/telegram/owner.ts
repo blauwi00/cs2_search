@@ -119,6 +119,14 @@ export async function statsCommand(h: H): Promise<void> {
       const pause = Number(await getMeta(h.d, 'steam_pause_until')) || 0;
       return [`🏠 Домашний агент Steam: ${ag.at ? `${Math.round((h.now - ag.at) / 60)} мин назад, запросов ${ag.requests ?? 0}${ag.limited ? ', Steam ограничил' : ''}` : 'не подключён'}`,
         `☁️ Steam с GitHub: ${pause > h.now ? `пауза ещё ${Math.round((pause - h.now) / 60)} мин (Steam ограничил)` : 'без паузы'}`].join('\n');
+    })(),
+    await (async () => {
+      // Записи в базу за сутки (UTC) — выборочный учёт, приблизительно. Бесплатно — 100 000 строк на весь аккаунт Cloudflare.
+      const w = Object.entries((await h.d.prepare(`SELECT counter, value FROM usage_counters WHERE day = ? AND counter LIKE 'w:%'`).bind(new Date(h.now * 1000).toISOString().slice(0, 10)).all<{ counter: string; value: number }>()).results.reduce((m, r) => ({ ...m, [r.counter]: r.value }), {} as Record<string, number>));
+      if (!w.length) return '💾 Записи в базу сегодня: ещё не посчитаны';
+      const total = w.filter(([k]) => !/^w:(evaluate|outbox|channel|ideas|hot_recs|health|quality|daily_report|cleanup|origin|kick_collector|fx|weekly|csfloat|steam|skinport_items|skinport_sales)$/.test(k)).reduce((s, [, v]) => s + v, 0);
+      const top = w.filter(([k]) => k !== 'w:cron').sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k.slice(2)} ${v}`).join(', ');
+      return `💾 Записи в базу сегодня ≈ <b>${total}</b> из 100 000${total > 70000 ? ' ⚠️' : ''}\n   больше всего: ${esc(top)}`;
     })(), '',
     '<b>Откуда пришли</b> (всего / за неделю):',
     ...refs.results.map((r) => `• ${esc(r.ref)}: ${r.n} / ${r.d7 ?? 0}`), '',

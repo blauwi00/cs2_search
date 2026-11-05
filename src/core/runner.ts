@@ -2,8 +2,8 @@
 
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
-import { budgetedDb, newBudget, BudgetExceeded, D1_RESERVE, type Budget } from '../storage/budget.ts';
-import { ensureJobs, listJobs, tryAcquire, releaseOk, releaseFail, disableStuckJobs, jitterSec, type JobDef } from './scheduler.ts';
+import { budgetedDb, newBudget, BudgetExceeded, D1_RESERVE, sampleWrites, WRITE_SAMPLE, type Budget } from '../storage/budget.ts';
+import { ensureJobs, tryAcquire, releaseOk, releaseFail, disableStuckJobs, jitterSec, type JobDef, type JobRow } from './scheduler.ts';
 import * as P from './pipeline.ts';
 import { SYSTEM_SETTINGS } from './audience.ts';
 import { TelegramClient } from '../telegram/api.ts';
@@ -36,6 +36,19 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'origin', intervalSec: 24 * 3600, lockSec: 60, minD1: 2, firstDelaySec: 600 },
 ];
 
+/**
+ * «Есть ли работа» у частых задач — тем же запросом, что и список задач (без лишних запросов к D1).
+ * Без работы задача не трогает базу: захват и снятие блокировки — 2 записи, а запусков ×1440 в сутки.
+ */
+/** Задачи, после которых в том же вызове может появиться работа для оценки и очереди уведомлений. */
+const ENQUEUERS = new Set(['skinport_items', 'skinport_sales', 'steam', 'csfloat', 'evaluate']);
+
+const IDLE_SQL = `SELECT j.*, CASE j.name
+    WHEN 'evaluate' THEN EXISTS (SELECT 1 FROM items WHERE needs_eval > 0)
+    WHEN 'outbox' THEN EXISTS (SELECT 1 FROM outbox WHERE state = 'pending' AND not_before <= ?)
+    ELSE 1 END AS has_work
+  FROM scheduler_jobs j ORDER BY j.name`;
+
 export interface CycleResult { ran: string[]; skipped: string[]; errors: { job: string; error: string }[]; budget: Budget; disabled: string[] }
 
 export async function runCycle(env: Env, opts: { now: number; force?: string[]; fetcher?: Fetcher; rawDb?: D1Database } = { now: 0 }): Promise<CycleResult> {
@@ -47,7 +60,10 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   tg.money = moneyResolver(d);
   const result: CycleResult = { ran: [], skipped: [], errors: [], budget, disabled: [] };
 
-  await ensureJobs(d, JOBS, now);
+  const sampled = sampleWrites();
+  const loadJobs = async () => (await d.prepare(IDLE_SQL).bind(now).all<JobRow & { has_work: number }>()).results;
+  let jobList = await loadJobs();
+  if (await ensureJobs(d, JOBS, now, jobList)) jobList = await loadJobs();
   // Сигналы считаются по общим (системным) порогам; рассылка фильтруется настройками каждого человека.
   // Включение/выключение источников — настройка администратора.
   const admin = await db.getSettings(d, adminId);
@@ -59,7 +75,8 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
     await db.log(d, 'error', name, 'cpu_limit', 'Задача отключена: запуски обрывались платформой (вероятно, лимит CPU 10 мс бесплатного тарифа)', now);
   }
 
-  const jobs = new Map((await listJobs(d)).map((j) => [j.name, j]));
+  if (result.disabled.length) jobList = await loadJobs();
+  const jobs = new Map(jobList.map((j) => [j.name, j]));
   // Воскресная сводка тратит запросы только вечером в воскресенье — в остальное время ничего не резервирует.
   const weeklyNow = isSunday(now) && warsawHour(now) >= WEEKLY_HOUR;
   const minD1 = (def: (typeof JOBS)[number]) => (def.name === 'csfloat' && !env.CSFLOAT_API_KEY ? 2 : def.name === 'weekly' && !weeklyNow ? 0 : def.minD1);
@@ -87,6 +104,12 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
     ctx.reserveD1 = due.slice(idx + 1).reduce((s, x) => s + minD1(x), 0);
     if (budget.d1 - D1_RESERVE < minD1(def) || budget.external < 2) { result.skipped.push(def.name); continue; }
 
+    // Частые задачи без работы не трогают базу: захват и снятие блокировки — 2 записи, ×1440 запусков в сутки.
+    // Работа могла появиться в этом же вызове (цены → оценка → очередь уведомлений) — тогда запускаем как обычно.
+    if (!forced && row.has_work === 0 && !result.ran.some((n) => ENQUEUERS.has(n))) { result.skipped.push(def.name); continue; }
+    // CSFloat без ключа: статус «нужен ключ» записываем один раз, дальше не тратим записи каждые 3 минуты.
+    if (!forced && def.name === 'csfloat' && !env.CSFLOAT_API_KEY && row.last_run_at) { result.skipped.push(def.name); continue; }
+    const w0 = budget.written;
     const token = `${now}-${Math.random().toString(36).slice(2, 10)}`;
     if (!(await tryAcquire(d, def.name, def.lockSec, now, token, forced))) { result.skipped.push(def.name); continue; }
     try {
@@ -112,6 +135,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
       }
       await releaseOk(d, def.name, token, def.intervalSec, now, def.intervalSec >= 300 ? jitterSec(20) : 0, cursor ?? null);
       result.ran.push(def.name);
+      if (sampled && budget.written > w0) P.bump(ctx, `w:${def.name}`, (budget.written - w0) * WRITE_SAMPLE);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       result.errors.push({ job: def.name, error: msg });
@@ -125,6 +149,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
       await db.log(d, 'warn', def.name, 'job_failed', `${msg} (повтор через ${Math.round(delay / 60)} мин)`, now);
     }
   }
+  if (sampled) P.bump(ctx, 'w:cron', budget.written * WRITE_SAMPLE);
   try { await P.flushCounters(ctx); } catch { /* счётчики не критичны */ }
   return result;
 }

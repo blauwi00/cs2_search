@@ -7,7 +7,7 @@
 
 import type { Env } from './env.ts';
 import * as db from './storage/db.ts';
-import { budgetedDb, newBudget } from './storage/budget.ts';
+import { budgetedDb, newBudget, sampleWrites, WRITE_SAMPLE } from './storage/budget.ts';
 import { parsePriceOverview } from './api/steam.ts';
 import { itemToQuote, parseSalesHistory } from './api/skinport.ts';
 import { toKop } from './currency/nbu.ts';
@@ -73,6 +73,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // «Разгон баланса»: нужен ли проход по дешёвым предметам Steam и какие проверить первыми.
       rally: await rallyInfo(d),
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
+      // Записи в D1 за сегодня по источникам (выборочный учёт, ≈). Бесплатный лимит — 100 000 строк в сутки.
+      writes: Object.fromEntries(Object.entries(await db.counters(d, now)).filter(([k]) => k.startsWith('w:'))),
       newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
       steamPauseUntil: Number(await getMeta(d, 'steam_pause_until')) || 0,
@@ -425,12 +427,14 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       `INSERT INTO source_status (source, status, last_ok_at) VALUES ('collector', 'ok', ?)
        ON CONFLICT(source) DO UPDATE SET status = 'ok', last_ok_at = excluded.last_ok_at, down_since = NULL, alerted_at = NULL`,
     ).bind(now).run();
+    // Учёт записей в D1 (выборочно) — видно в /stats и панели владельца, какой приём сколько пишет.
+    if (sampleWrites()) await db.counterStmt(d, `w:in:${String(body.kind).slice(0, 20)}`, (budget.written + 1) * WRITE_SAMPLE, now).run();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db.log(d, 'error', 'collector', 'ingest', msg, now);
     return json({ ok: false, error: msg.slice(0, 200) }, e instanceof SourceError ? 422 : 500);
   }
-  return json(result);
+  return json({ ...result, written: budget.written });
 }
 
 /** Заказ картинки для поста: есть ожидающий пост, а картинки ещё нет. */

@@ -5,7 +5,7 @@ import * as db from '../storage/db.ts';
 import { hideSignal } from '../storage/db.ts';
 import { WATCH_LIMIT } from '../core/audience.ts';
 import { channelCommand, postPreview, publishNow, refStmt, statsCommand, refCommand, broadcastCommand, broadcastConfirm, fixNewsPost } from './owner.ts';
-import { budgetedDb, newBudget } from '../storage/budget.ts';
+import { budgetedDb, newBudget, sampleWrites, WRITE_SAMPLE } from '../storage/budget.ts';
 import { setJobEnabled, listJobs } from '../core/scheduler.ts';
 import { TelegramClient, esc, type Keyboard } from './api.ts';
 import * as M from './menus.ts';
@@ -93,6 +93,7 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
     await db.log(d, 'error', 'telegram', 'handler', (e as Error).message, now);
     try { await tg.sendMessage(uid, `⚠️ Ошибка обработки команды: ${esc((e as Error).message).slice(0, 300)}`); } catch { /* ignore */ }
   }
+  if (budget.written > 0 && sampleWrites()) await db.counterStmt(d, 'w:tg', (budget.written + 1) * WRITE_SAMPLE, now).run().catch(() => undefined);
   return new Response('ok');
 }
 

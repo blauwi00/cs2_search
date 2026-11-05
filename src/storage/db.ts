@@ -450,7 +450,8 @@ export async function sourceFail(db: D1Database, source: string, status: string,
 export async function sourceDisabled(db: D1Database, source: string, reason: string): Promise<void> {
   await db.prepare(
     `INSERT INTO source_status (source, status, disabled_reason) VALUES (?, 'disabled', ?)
-     ON CONFLICT(source) DO UPDATE SET status = 'disabled', disabled_reason = excluded.disabled_reason, down_since = NULL`,
+     ON CONFLICT(source) DO UPDATE SET status = 'disabled', disabled_reason = excluded.disabled_reason, down_since = NULL
+     WHERE source_status.status IS NOT 'disabled' OR source_status.disabled_reason IS NOT excluded.disabled_reason OR source_status.down_since IS NOT NULL`,
   ).bind(source, reason).run();
 }
 

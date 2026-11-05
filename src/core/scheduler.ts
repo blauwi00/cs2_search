@@ -18,11 +18,19 @@ export const MAX_BACKOFF_SEC = 6 * 3600;
 /** Сколько подряд оборванных запусков (например, превышение лимита CPU) до автоматического отключения задачи. */
 export const MAX_UNFINISHED = 3;
 
-export async function ensureJobs(db: D1Database, defs: JobDef[], now: number): Promise<void> {
-  await db.batch(defs.map((d) => db.prepare(
+/**
+ * Новые задачи и изменённые интервалы. Записывает только то, что изменилось:
+ * раньше перезапись всех задач каждую минуту тратила ~25 000 строк в сутки из бесплатных 100 000.
+ */
+export async function ensureJobs(db: D1Database, defs: JobDef[], now: number, existing?: Pick<JobRow, 'name' | 'interval_sec'>[]): Promise<boolean> {
+  const have = new Map((existing ?? await listJobs(db)).map((j) => [j.name, j.interval_sec]));
+  const need = defs.filter((d) => have.get(d.name) !== d.intervalSec);
+  if (!need.length) return false;
+  await db.batch(need.map((d) => db.prepare(
     `INSERT INTO scheduler_jobs (name, interval_sec, next_run_at) VALUES (?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET interval_sec = excluded.interval_sec`,
+     ON CONFLICT(name) DO UPDATE SET interval_sec = excluded.interval_sec WHERE scheduler_jobs.interval_sec != excluded.interval_sec`,
   ).bind(d.name, d.intervalSec, now + (d.firstDelaySec ?? 0))));
+  return true;
 }
 
 export interface JobRow {

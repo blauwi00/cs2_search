@@ -33,6 +33,8 @@ import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta } from '../core/channel.ts';
 import { recStats } from '../core/insights.ts';
+import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
+import { calcFees } from '../core/calc.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
@@ -257,7 +259,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const rows = linked ? (await d.prepare(`SELECT v.item_id, v.qty, v.marketable, v.tradable, v.details, i.market_hash_name AS name, i.category FROM steam_inventory v JOIN items i ON i.id = v.item_id
         WHERE v.telegram_id = ? LIMIT 500`).bind(tid).all<{ item_id: number; qty: number; marketable: number; tradable: number; details: string | null; name: string; category: string }>()).results : [];
       const ids = rows.map((r) => r.item_id);
-      const [avgs, quotes, imgs, fxm] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d)]);
+      const [avgs, quotes, imgs, fxm, alerts] = await Promise.all([steamAvgFor(d, ids), quotesChunked(d, ids.slice(0, 360)), imagesFor(d, rows.map((r) => r.name)), db.loadLatestFx(d),
+        d.prepare('SELECT item_id, target_kop FROM sell_alerts WHERE telegram_id = ? AND notified_at IS NULL').bind(tid).all<{ item_id: number; target_kop: number }>()]);
+      const targets = new Map(alerts.results.map((a) => [a.item_id, a.target_kop]));
       const usd = fxm.get('USD') ?? null;
       let total = 0, totalNet = 0;
       const items = rows.map((r) => {
@@ -283,7 +287,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         return {
           details, flags, pattern,
           itemId: r.item_id, name: r.name, category: r.category, categoryRu: CATEGORY_RU[r.category as 'case'] ?? r.category, qty: r.qty, marketable: !!r.marketable,
-          img: imgs.get(r.name) ?? null, priceKop: est, live: !!live?.price_kop, netKop: net, advice: r.marketable ? ownedAdvice(sa) : null,
+          img: imgs.get(r.name) ?? null, priceKop: est, live: !!live?.price_kop, targetKop: targets.get(r.item_id) ?? null, netKop: net, advice: r.marketable ? ownedAdvice(sa) : null,
         };
       }).sort((a, b) => (b.priceKop ?? 0) * b.qty - (a.priceKop ?? 0) * a.qty);
       return json({
@@ -652,6 +656,30 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       ]);
       const bot = await botUsername(d, new TelegramClient(env.TELEGRAM_BOT_TOKEN));
       return json({ ok: true, url: `${new URL(req.url).origin}/card/${id}.jpg`, bot: bot ? `https://t.me/${bot}?start=story` : null });
+    }
+    // #8: цель продажи для предмета инвентаря Steam («скажи, когда станет дороже X»). kop: null — убрать.
+    if (path === 'sellalert' && method === 'POST') {
+      const itemId = Number(body.itemId);
+      const own = Number.isSafeInteger(itemId) ? await d.prepare('SELECT 1 AS x FROM steam_inventory WHERE telegram_id = ? AND item_id = ?').bind(tid, itemId).first() : null;
+      if (!own) return bad('Этого предмета нет в твоём инвентаре Steam');
+      if (body.kop === null) {
+        await d.prepare('DELETE FROM sell_alerts WHERE telegram_id = ? AND item_id = ?').bind(tid, itemId).run();
+        return json({ ok: true, targetKop: null });
+      }
+      const kop = Number(body.kop);
+      if (!Number.isSafeInteger(kop) || kop <= 0 || kop > 1e11) return bad('Введи цену, например 120');
+      const n = (await d.prepare('SELECT COUNT(*) AS n FROM sell_alerts WHERE telegram_id = ? AND notified_at IS NULL AND item_id != ?').bind(tid, itemId).first<{ n: number }>())?.n ?? 0;
+      if (n >= MAX_SELL_ALERTS) return bad(`Не больше ${MAX_SELL_ALERTS} целей продажи`);
+      await d.prepare(`INSERT INTO sell_alerts (telegram_id, item_id, target_kop, created_at, notified_at) VALUES (?, ?, ?, ?, NULL)
+        ON CONFLICT(telegram_id, item_id) DO UPDATE SET target_kop = excluded.target_kop, created_at = excluded.created_at, notified_at = NULL`).bind(tid, itemId, kop, now).run();
+      return json({ ok: true, targetKop: kop });
+    }
+    if (path === 'calc' && method === 'GET') {
+      const kop = Number(url.searchParams.get('kop'));
+      if (!Number.isSafeInteger(kop) || kop < 3 || kop > 1e11) return bad('Введи цену, например 120');
+      const mode = url.searchParams.get('mode') === 'get' ? 'get' : 'sell';
+      const s = await db.getSettings(d, tid);
+      return json({ ok: true, mode, withdrawBp: db.num(s.withdraw_fee_bp), rows: calcFees(kop, mode, db.num(s.withdraw_fee_bp)) });
     }
     if (path === 'recstats' && method === 'GET') return json({ ok: true, ...(await recStats(d, now, 30)) });
     if (path === 'feedback' && method === 'POST') {

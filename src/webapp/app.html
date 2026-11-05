@@ -615,7 +615,7 @@ function market() {
 }
 function addSheet() {
   var h = '<h2>Добавить предметы</h2><div class="sub">Пиши по-английски, как в Steam: <i>revolution</i>, <i>ak-47 redline</i>…</div>';
-  h += '<div class="search"><input id="aq" placeholder="🔍 Найти предмет…" autocomplete="off"></div><div id="asr"></div>';
+  h += '<div class="search"><input id="aq" placeholder="🔍 Найти: «калаш азимов», «керамбит», AWP…" autocomplete="off"></div><div id="asr"></div>';
   h += '<div class="sec">Или списком</div><label class="f"><span>Каждый предмет с новой строки (точное название из Steam)</span><textarea id="alist" rows="5" style="width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--sep);background:var(--card);color:var(--text);padding:10px;font:inherit"></textarea></label>';
   h += '<button class="btn" id="aadd">Добавить список</button>';
   sheet(h);
@@ -798,7 +798,7 @@ function steamBlock(st) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
     if (st.totalKop > 0) h += '<button class="btn" id="st-share" style="margin:0 0 12px">📸 Поделиться: сколько стоит мой инвентарь</button>';
     h += st.items.slice(0, 60).map(function (x) {
-      return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
+      return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.targetKop ? ' · 🎯 ' + uahShort(x.targetKop) : '') + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
         '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
     }).join('');
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
@@ -836,7 +836,7 @@ function bindSteamBlock(st) {
       var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + '</h2><div class="sub">×' + x.qty + ' в инвентаре Steam</div>';
       if (x.advice) h += verdict(x.advice);
       h += '<div class="card">' + kv('Цена в Steam', x.priceKop ? (x.live ? '' : '≈ ') + uah(x.priceKop) : '—') + kv('Придёт на баланс за 1 шт.', x.netKop ? '≈ ' + uah(x.netKop) : '—') + kv('Всего за ×' + x.qty, x.netKop ? '≈ ' + uah(x.netKop * x.qty) : '—') + '</div>';
-      if (x.marketable) h += sellBoxHtml();
+      if (x.marketable) h += sellBoxHtml() + '<div id="tgtbox"></div>';
       h += pricesBoxHtml();
       h += assetDetails(x);
       h += '<div class="btns"><button class="btn sec2" id="si-chart">📈 График и цены</button><button class="btn sec2" id="si-steam">Steam Market</button></div>';
@@ -845,10 +845,35 @@ function bindSteamBlock(st) {
       $('#si-chart').onclick = function () { itemSheet(id); };
       $('#si-steam').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); };
       $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
-      if (x.marketable) loadSellBox(id, null, null);
+      if (x.marketable) { loadSellBox(id, null, function (k) { saveTarget(x, k); }); targetBox(x); }
       loadPrices(x.name);
     };
   });
+}
+
+// #8: цель продажи для предмета инвентаря Steam — «скажи, когда станет дороже X».
+function saveTarget(x, kop) {
+  return api('sellalert', { method: 'POST', body: { itemId: x.itemId, kop: kop } }).then(function (r) {
+    x.targetKop = r.targetKop; haptic('ok'); toast(kop ? '🎯 Сообщу, когда будет ' + uah(kop) : 'Цель убрана'); targetBox(x);
+  }).catch(function (e) { toast(e.message); });
+}
+function targetBox(x) {
+  var el = $('#tgtbox'); if (!el) return;
+  var base = x.priceKop || 0;
+  var h = '<div class="sec">🎯 Цель продажи</div><div class="card">';
+  if (x.targetKop) h += '<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-weight:700">Сообщу, когда цена дойдёт до ' + uah(x.targetKop) + '</div>' +
+    (base ? '<div class="mut" style="font-size:13px">сейчас ' + (x.live ? '' : '≈ ') + uah(base) + ' · ' + (x.targetKop > base ? 'нужно ещё +' + Math.round((x.targetKop - base) * 100 / base) + '%' : 'уже дошла — уведомление придёт при следующем обновлении цен') + '</div>' : '') + '</div>' +
+    '<button class="btn danger" id="tg-del" style="width:auto;margin:0;padding:8px 12px">Убрать</button></div>';
+  else {
+    h += '<div class="mut" style="font-size:13px;margin-bottom:8px">Нажми — и бот пришлёт одно уведомление, когда цена в Steam станет такой или выше.</div>';
+    if (base) h += '<div class="seg" id="tg-q" style="margin-bottom:8px">' + [5, 10, 20, 50].map(function (p) { return '<button data-p="' + p + '">+' + p + '%<div style="font-size:11px;opacity:.7">' + uahShort(Math.round(base * (100 + p) / 100)) + '</div></button>'; }).join('') + '</div>';
+    h += '<div style="display:flex;gap:8px"><input id="tg-in" inputmode="decimal" placeholder="своя цена, ' + esc(CUR.sign) + '" style="flex:1"><button class="btn" id="tg-ok" style="width:auto;margin:0;padding:10px 16px">OK</button></div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+  if ($('#tg-del')) $('#tg-del').onclick = function () { saveTarget(x, null); };
+  Array.prototype.forEach.call(el.querySelectorAll('#tg-q button'), function (b) { b.onclick = function () { saveTarget(x, Math.round(base * (100 + +b.getAttribute('data-p')) / 100)); }; });
+  if ($('#tg-ok')) $('#tg-ok').onclick = function () { var k = toKop($('#tg-in').value); if (!(k > 0)) return toast('Введи цену, например 120'); saveTarget(x, k); };
 }
 
 // Цены на всех площадках (самое дешёвое объявление). Нажатие — открыть сайт.
@@ -891,10 +916,12 @@ function loadSellBox(itemId, costKop, onUse) {
     if (x.belowCost) h += '<div style="color:var(--amber);font-size:13px;margin-top:6px">⚠️ Это ниже твоей цены покупки. Без убытка — от ' + uah(x.breakEvenKop) + '.</div>';
     h += '<div class="mut" style="font-size:12px;margin-top:6px">' + (x.basis === 'live' ? 'По самому дешёвому лоту Steam (' + ago(r.liveAt) + ') и продажам за сутки/неделю.' : 'Живой цены Steam сейчас нет — по средним продажам за сутки и неделю.') +
       (CUR.code !== 'UAH' ? ' Если кошелёк Steam в другой валюте, Steam покажет свою сумму — ориентируйся на «чуть выше / ниже рынка».' : '') + '</div>';
+    h += '<div style="margin-top:6px"><a id="sb-calc" style="font-size:13px;color:var(--link);cursor:pointer">🧮 А сколько придёт на других площадках?</a></div>';
     if (onUse) h += '<button class="btn sec2" id="sb-use" style="margin-top:8px">🎯 Уведомить, когда цена дойдёт до ' + uah(x.priceKop) + '</button>';
     h += '</div>';
     el.innerHTML = h;
     if (onUse && $('#sb-use')) $('#sb-use').onclick = function () { onUse(x.priceKop); };
+    if ($('#sb-calc')) $('#sb-calc').onclick = function () { calcSheet(x.priceKop); };
   }).catch(function () { var el = $('#sellbox'); if (el) el.innerHTML = ''; });
 }
 
@@ -948,7 +975,7 @@ function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.g
 function toKop(v) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * CUR.per); }
 function buyForm(pre) {
   var h = '<h2>Записать покупку</h2><div class="sub">Бот ничего не покупает сам — это учёт твоих реальных сделок.</div>';
-  h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Начни вводить название…" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';
+  h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Название — можно по-русски: «ак красная линия»" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';
   h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт., ' + CUR.sign + '</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? units(pre.priceKop) : '') + '" placeholder="0 — бесплатно"></label></div>';
   h += '<label class="f"><span>Где куплено</span><select id="bpl">' + platformOptions(pre.platform || 'skinport') + '</select></label>';
   h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего, ' + CUR.sign + '</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
@@ -1189,6 +1216,37 @@ function termsSheet() {
       secHtml(t.terms) + '<h2 style="margin-top:18px">🛡 Конфиденциальность</h2>' + secHtml(t.privacy);
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
+// ---------- #14: калькулятор комиссий ----------
+function calcSheet(preKop) {
+  var mode = 'sell', timer = null;
+  var h = '<h2>🧮 Калькулятор комиссий</h2><div class="sub">Комиссии площадок и вывода (вывод — из твоих настроек)</div>' +
+    '<div class="seg" id="cm"><button data-m="sell" class="on">Продаю за</button><button data-m="get">Хочу получить</button></div>' +
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input id="ck" inputmode="decimal" placeholder="например 100" style="flex:1;font-size:20px;font-weight:700" value="' + (preKop ? units(preKop) : '') + '"><span style="font-weight:700;font-size:18px">' + esc(CUR.sign) + '</span></div>' +
+    '<div id="cr"><div class="note">Введи цену — покажу, сколько придёт на каждой площадке.</div></div>';
+  sheet(h);
+  var run = function () {
+    var k = toKop($('#ck').value);
+    if (!(k >= 3)) { $('#cr').innerHTML = '<div class="note">Введи цену — покажу, сколько придёт на каждой площадке.</div>'; return; }
+    api('calc?kop=' + k + '&mode=' + mode).then(function (r) {
+      var best = r.rows.filter(function (x) { return x.wallet === 'cash'; })[0];
+      var out = '<div class="card" style="padding:2px 14px">' + r.rows.map(function (x) {
+        var main = mode === 'sell' ? uah(x.getKop) : uah(x.listKop);
+        var sub = (mode === 'sell' ? 'придёт' : 'выставить за') + ' · комиссия ' + esc(x.feeText) + (x.note ? ' · ' + esc(x.note) : '');
+        return '<div class="kv" style="align-items:center"><span style="display:flex;align-items:center;gap:10px"><span class="ic site sm' + (x.icon ? '' : ' noimg') + '"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + '</span><span>' + esc(x.name) +
+          '<div class="mut" style="font-size:11px;font-weight:400">' + sub + '</div></span></span><span class="v' + (x === best ? ' pos' : '') + '" style="white-space:nowrap;font-weight:700">' + main + '</span></div>';
+      }).join('') + '</div>';
+      out += '<div class="note">' + (mode === 'sell' ? 'Сверху — где придёт больше всего.' : 'Сверху — где можно выставить дешевле всех и всё равно получить свою сумму.') +
+        ' Steam — точный расчёт (5% Steam + 10% CS2), но деньги остаются на балансе Steam. Комиссии сайтов — по открытым данным, перед продажей проверь на сайте.' +
+        (r.withdrawBp ? '' : ' Комиссию банка/крипты при выводе можно задать в Ещё → Настройки.') + '</div>';
+      $('#cr').innerHTML = out;
+    }).catch(function (e) { $('#cr').innerHTML = '<div class="note">⚠️ ' + esc(e.message) + '</div>'; });
+  };
+  $('#ck').oninput = function () { clearTimeout(timer); timer = setTimeout(run, 350); };
+  Array.prototype.forEach.call(document.querySelectorAll('#cm button'), function (b) {
+    b.onclick = function () { mode = b.getAttribute('data-m'); Array.prototype.forEach.call(document.querySelectorAll('#cm button'), function (x) { x.classList.toggle('on', x === b); }); haptic(); run(); };
+  });
+  if (preKop) run(); else setTimeout(function () { try { $('#ck').focus(); } catch (e) {} }, 300);
+}
 // ---------- Обратная связь и поддержка ----------
 function reportLink() { return '<div style="text-align:center;margin:14px 0 4px"><a id="rep" class="mut" style="font-size:14px;cursor:pointer">⚠️ Цена неверная? Сообщить об ошибке</a></div>'; }
 var REASONS = [['price', 'Цена неверная'], ['gone', 'Предмета уже нет / купили'], ['link', 'Ссылка не работает'], ['idea', 'Рекомендация странная'], ['other', 'Другое']];
@@ -1231,11 +1289,12 @@ function more() {
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
+    '<div class="row" id="m-calc"><div class="ic">🧮</div><div class="m"><div class="n">Калькулятор комиссий</div><div class="d">Сколько придёт после продажи на каждой площадке — и за сколько выставить</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-don"><div class="ic">💛</div><div class="m"><div class="n">Поддержать проект</div><div class="d">Звёздами Telegram — добровольно, бот остаётся бесплатным</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
-  $('#m-don').onclick = donateSheet; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
+  $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
   $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }

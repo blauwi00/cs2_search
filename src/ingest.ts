@@ -20,6 +20,7 @@ import { ideasToTrack, checkStmts, cleanSnippet, newsImage, type IdeaRow } from 
 import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
+import { jobSellAlerts } from './core/sellalerts.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
@@ -83,7 +84,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
 
   const watched = new Map((await db.allWatchedNames(d)).map((i) => [i.market_hash_name, i]));
   const fx = await db.loadLatestFx(d);
-  const result = { ok: true, stored: 0, unknown: 0, errors: 0 };
+  const result: { ok: boolean; stored: number; unknown: number; errors: number; sellAlerts?: number } = { ok: true, stored: 0, unknown: 0, errors: 0 };
 
   const writeQuotes = async (source: 'steam' | 'skinport', pairs: { itemId: number; q: Quote; eval: 0 | 1 | 2 }[]) => {
     if (pairs.length === 0) return;
@@ -134,6 +135,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       await writeQuotes('steam', pairs);
       if (okCount > 0) await db.sourceOk(d, 'steam', now, entries.length);
       else if (entries.length > 0) await db.sourceFail(d, 'steam', rateLimited ? 'rate_limited' : 'degraded', rateLimited ? 'HTTP 429 у сборщика GitHub' : 'сборщик не получил данных', now, entries.length);
+      result.sellAlerts = (await jobSellAlerts({ db: d, now })).sent;
     } else if (body.kind === 'skinport_items') {
       if (body.error) {
         await db.sourceFail(d, 'skinport', 'degraded', `сборщик: ${String(body.error).slice(0, 200)}`, now, 1);
@@ -202,6 +204,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       }
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
       result.stored = stmts.length;
+      // #8: новые цены Steam — проверяем цели продажи сразу (без отдельной задачи по расписанию).
+      result.sellAlerts = (await jobSellAlerts({ db: d, now })).sent;
     } else if (body.kind === 'steam_inventory') {
       const b = body as { tid?: unknown; steamId?: unknown; vanity?: unknown; status?: unknown };
       const tid = Number(b.tid);

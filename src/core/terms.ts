@@ -84,6 +84,7 @@ export function deleteUserStmts(d: D1Database, tid: number): D1PreparedStatement
     q('DELETE FROM steam_login WHERE telegram_id = ?'),
     q('DELETE FROM outbox WHERE telegram_id = ?'),
     q('DELETE FROM feedback WHERE telegram_id = ?'),
+    q('DELETE FROM sell_alerts WHERE telegram_id = ?'),
     q("DELETE FROM cards WHERE id = (SELECT json_extract(value, '$.id') FROM user_settings WHERE telegram_id = ? AND key = 'share_card')"),
     q('UPDATE donations SET name = NULL WHERE telegram_id = ?'),
     q('DELETE FROM hidden_signals WHERE telegram_id = ?'),

@@ -270,7 +270,7 @@ console.log(`Площадки: Market.CSGO ${markets.csgomarket.size}, Waxpeer $
 // 2г. Рекомендации по всему рынку. Кандидаты (грубый отбор в гривнах по курсу НБУ, точный расчёт делает Worker):
 // (а) где купить дешевле, чем продать на другой площадке после её комиссии; (б) Skinport ниже своей рекомендованной цены;
 // (в) самые популярные — для тренда и проверки Steam. Потом — реальные продажи Skinport за 7/30 дней.
-const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.05, lisskins: 0.05, steamavg: 0.15 };
+const FEE = { skinport: 0.08, csgomarket: 0.05, waxpeer: 0.06, lisskins: 0.05, steamavg: 0.15 };
 const RATE = { skinport: fx.EUR || 0, csgomarket: fx.USD || 0, waxpeer: fx.USD || 0, lisskins: fx.USD || 0, steamavg: fx.USD || 0 };
 let scan = [];
 try {

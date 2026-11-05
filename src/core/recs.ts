@@ -23,7 +23,8 @@ export const MARKETS: Record<Market, { name: string; sellFeeBp: number; wallet: 
   steam: { name: 'Steam', sellFeeBp: 1500, wallet: 'steam_wallet', url: (n) => `https://steamcommunity.com/market/listings/730/${encodeURIComponent(n)}` },
   skinport: { name: 'Skinport', sellFeeBp: 800, wallet: 'cash', url: (n) => `https://skinport.com/market?search=${encodeURIComponent(n)}&sort=price&order=asc` },
   csgomarket: { name: 'Market.CSGO', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://market.csgo.com/?search=${encodeURIComponent(n)}` },
-  waxpeer: { name: 'Waxpeer', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://waxpeer.com/?search=${encodeURIComponent(n)}&sort=ASC&order=price` },
+  // Waxpeer: 6% продавцу (CSDB, июль 2026; раньше было 5%).
+  waxpeer: { name: 'Waxpeer', sellFeeBp: 600, wallet: 'cash', url: (n) => `https://waxpeer.com/?search=${encodeURIComponent(n)}&sort=ASC&order=price` },
   lisskins: { name: 'LIS-SKINS', sellFeeBp: 500, wallet: 'cash', url: (n) => `https://lis-skins.com/market/csgo/?query=${encodeURIComponent(n)}` },
 };
 /** Прямые страницы предмета (#4). Skinport — точный адрес из его API (item_page), он хранится в market_quotes.url.

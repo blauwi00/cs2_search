@@ -62,3 +62,17 @@ test('картинки для «Поделиться»: только CDN Steam, 
     assert.equal((await handleImgProxy(new URL('https://w/img?u=' + encodeURIComponent(bad)), ctx, f)).status, 400, bad);
   }
 });
+
+test('#14: калькулятор комиссий — продажа и обратный расчёт сходятся', async () => {
+  const { calcFees } = await import('../src/core/calc.ts');
+  const sell = calcFees(10000, 'sell', 0);
+  const steam = sell.find((x) => x.key === 'steam')!;
+  assert.equal(steam.getKop, 8697, 'Steam: из 100 грн придёт 86,97 (8697 + 434 + 869 = 10000)');
+  assert.equal(sell.find((x) => x.key === 'csfloat')!.getKop, 9800);
+  assert.equal(sell[0].getKop >= sell[sell.length - 1].getKop, true);
+  const get = calcFees(9800, 'get', 0);
+  assert.equal(get.find((x) => x.key === 'csfloat')!.listKop, 10000);
+  assert.equal(calcFees(10000, 'sell', 300).find((x) => x.key === 'csfloat')!.getKop, 9506, '2% площадки + 3% вывода');
+  const back = calcFees(steam.getKop, 'get', 0).find((x) => x.key === 'steam')!;
+  assert.ok(back.listKop <= 10000 && back.listKop >= 9999);
+});

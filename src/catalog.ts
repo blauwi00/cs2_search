@@ -1,3 +1,5 @@
+import { translateQuery } from './core/ruslang.ts';
+
 // Поиск предметов по каталогу названий (его присылает сборщик со Skinport раз в сутки).
 // Строка каталога: "нормализованное\tоригинальное". Поиск — нативный indexOf по тексту куска,
 // без разбора всех 20 тыс. строк в JS: так он укладывается в лимит CPU бесплатного Worker.
@@ -47,7 +49,18 @@ export function searchChunks(texts: string[], query: string, limit = 15): string
 
 export async function searchCatalog(db: D1Database, query: string, limit = 15): Promise<string[]> {
   const r = await db.prepare('SELECT names FROM catalog_chunks ORDER BY chunk').all<{ names: string }>();
-  return searchChunks(r.results.map((x) => x.names), query, limit);
+  return searchSmart(r.results.map((x) => x.names), query, limit);
+}
+
+/** #13: сначала как есть; если в запросе русские/сленговые слова — по переводу; незнакомые русские слова — пробуем без них. */
+export function searchSmart(texts: string[], query: string, limit = 15): string[] {
+  const t = translateQuery(query);
+  if (t.query === norm(query)) return searchChunks(texts, query, limit);
+  const hits = searchChunks(texts, t.query, limit);
+  if (hits.length) return hits;
+  // «нож керамбит» → у ножей в названии нет слова knife; незнакомые русские слова — тоже пробуем без них.
+  const rest = t.query.split(' ').filter((w) => !t.unknown.includes(w) && w !== 'knife' && w !== 'gloves').join(' ');
+  return rest && rest !== t.query ? searchChunks(texts, rest, limit) : [];
 }
 
 export async function catalogInfo(db: D1Database): Promise<{ count: number; updatedAt: number | null }> {

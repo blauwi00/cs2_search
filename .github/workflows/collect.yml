@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+  # Сразу после правок сборщика — один прогон, чтобы проверить его.
+  push:
+    branches: [main]
+    paths: ['.github/scripts/collect.mjs', '.github/scripts/patchnotes.mjs', '.github/workflows/collect.yml']
 concurrency:
   group: collect-prices
   cancel-in-progress: false

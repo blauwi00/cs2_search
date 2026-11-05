@@ -22,7 +22,7 @@ def search(q, n, max_dur):
         d = (x.get('duration') or 0) / 1000
         if not x.get('url') or (d and d > max_dur * 3): continue  # длинные режем до max_dur, но совсем длинные (музыка) не берём
         res.append(x)
-        if len(res) >= n * 3: break
+        if len(res) >= n * 5: break
     return res
 
 # Классы AudioSet, которые подходят каждому тегу (для проверки «ушами»).
@@ -68,14 +68,15 @@ for q in req['queries']:
                 f"silenceremove=start_periods=1:start_threshold=-50dB,atrim=0:{req.get('maxDur', 4)},afade=t=out:st={max(0.05, req.get('maxDur', 4) - 0.15)}:d=0.15,loudnorm=I=-16:TP=-1.5",
                 '-ar', '44100', '-ac', '2', wav], check=True)
             heard = hear(wav)
-            ok = any(re.search(WANT.get(tag, tag), l.lower()) and pr > 0.05 for l, pr in heard)
+            # «уши» должны услышать то, что искали, среди трёх главных звуков файла; иначе файл не берём
+            ok = any(re.search(WANT.get(tag, tag), l.lower()) and pr > 0.1 for l, pr in heard[:3])
             speechy = re.search(BAD, heard[0][0].lower()) and heard[0][1] > 0.3
             dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', wav], capture_output=True, text=True).stdout or 0)
             entry = {'file': f'{name}.wav', 'tag': tag, 'query': q['q'], 'title': x.get('title'), 'creator': x.get('creator'), 'license': x.get('license'),
                      'license_url': x.get('license_url'), 'source': x.get('foreign_landing_url'), 'provider': x.get('provider'), 'duration': round(dur, 2),
                      'heard': [[l, round(p, 3)] for l, p in heard], 'match': bool(ok), 'speech_or_music': bool(speechy)}
-            if speechy or dur < 0.08:
-                os.remove(wav); print('отброшен (речь/музыка/пусто):', name, heard[:2]); continue
+            if speechy or dur < 0.08 or not ok:
+                os.remove(wav); print('отброшен (не тот звук/речь/музыка):', name, heard[:2]); continue
             index.append(entry); got += 1
             print(('✅' if ok else '〰️'), name, dur, 's', heard[:3])
         except Exception as e:
@@ -88,4 +89,12 @@ with open(f'{out}/LICENSES.md', 'w') as f:
     f.write('# Звуки (Openverse, CC0 — общественное достояние)\n\n')
     for e in index: f.write(f"- `{e['file']}` — «{e['title']}» ({e['creator']}), {e['license']} — {e['source']}\n")
 import shutil; shutil.rmtree(f'{out}/raw', ignore_errors=True)
+# Прослушка: все звуки подряд (по тегам), между ними 0,6 с тишины.
+if index:
+    lst = f'{out}/_list.txt'
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', '0.6', f'{out}/_gap.wav'], check=True)
+    with open(lst, 'w') as f:
+        for e in index: f.write(f"file '{e['file']}'\nfile '_gap.wav'\n")
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', lst, '-c:a', 'libmp3lame', '-q:a', '4', f'{out}/preview.mp3'], check=True)
+    os.remove(lst); os.remove(f'{out}/_gap.wav')
 print('Готово:', len(index), 'звуков')

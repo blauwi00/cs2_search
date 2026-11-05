@@ -407,12 +407,70 @@ try {
   console.error('Новости CS2:', e.message);
 }
 
+// 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.
+let batch = [];
+let strikes = 0;
+const flush = async () => {
+  if (!batch.length) return;
+  const r = await toWorker('/ingest', { kind: 'steam', fetchedAt: now(), items: batch });
+  console.log(`Steam: отправлено ${batch.length}`, r);
+  batch = [];
+};
+for (const name of items) {
+  if (Date.now() - started > TIME_BUDGET_MS) { console.log('Время запуска вышло, остальное — в следующий раз'); break; }
+  const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
+  let entry;
+  try {
+    const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
+    if (res.status === 429) {
+      entry = { name, ok: false, status: 429 };
+      strikes++;
+      console.log(`Steam 429 (${strikes})`);
+      if (strikes >= 2) { batch.push(entry); break; }
+      await sleep(60_000);
+    } else if (!res.ok) {
+      entry = { name, ok: false, status: res.status };
+    } else {
+      entry = { name, ok: true, body: await readJson(res) };
+      strikes = 0;
+    }
+  } catch (e) {
+    entry = { name, ok: false, error: e.message };
+  }
+  batch.push(entry);
+  if (batch.length >= STEAM_CHUNK) await flush();
+  await sleep(STEAM_GAP_MS);
+}
+await flush();
+
+// 4. Steam для лучших кандидатов рекомендаций (если Steam не ограничил нас выше). Проверенные раньше Worker помнит 3 часа,
+// поэтому за несколько запусков покрываются все кандидаты.
+if (scan.length) {
+  const rot = Math.floor(Date.now() / 600_000) % 4; // смещение по запускам
+  const act = (e) => Math.max(e.s7?.volume ?? 0, ...Object.values(e.offers).map((o) => o.q || 0));
+  const order = scan.filter((e) => act(e) >= 7).sort((a, b) => act(b) - act(a));
+  const pick = order.slice(rot * SCAN_STEAM, rot * SCAN_STEAM + SCAN_STEAM);
+  for (const e of strikes >= 2 ? [] : pick) {
+    if (Date.now() - started > TIME_BUDGET_MS + 60_000) break;
+    try {
+      const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: e.name });
+      const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
+      if (res.status === 429) { console.log('Steam 429 при проверке рекомендаций — стоп'); break; }
+      if (res.ok) { const b = await readJson(res); if (b?.success) e.steam = { lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }; }
+    } catch { /* пропускаем предмет */ }
+    await sleep(STEAM_GAP_MS);
+  }
+  try {
+    console.log('Рекомендации:', await toWorker('/ingest', { kind: 'scan', fetchedAt: now(), items: scan }));
+  } catch (e) { console.error('Рекомендации:', e.message); }
+}
 // 2з. «Разгон баланса»: дешёвые ликвидные предметы для покупки внутри Steam (только если разделом кто-то пользуется).
 // Кандидаты — из открытого прайса средних продаж (без запросов к Steam), затем по ~10 за запуск — живая цена Steam
 // (priceoverview: самое дешёвое объявление, медиана и число продаж за сутки) и для самых перспективных — ордер покупателя
 // (itemordershistogram). Паузы между запросами; при 429 — остановка до следующего запуска. Ничего не покупается.
-let steamBlocked = false;
-if (rally?.active && steamAvg.size && fx.USD) {
+// Идёт ПОСЛЕ основного опроса Steam (списки наблюдения важнее) и только если Steam нас ещё не ограничил.
+let steamBlocked = strikes >= 2;
+if (rally?.active && steamAvg.size && fx.USD && !steamBlocked && Date.now() - started < TIME_BUDGET_MS + 60_000) {
   try {
     const maxCents = Math.ceil(((rally.maxItemKop ?? 600) / 100 / fx.USD) * 100 * 1.15);
     const pop = new Map(allItems.filter((x) => x && x.market_hash_name).map((x) => [x.market_hash_name, Number(x.quantity) || 0]));
@@ -475,61 +533,4 @@ if (rally?.active && steamAvg.size && fx.USD) {
   }
 }
 
-// 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.
-let batch = [];
-let strikes = steamBlocked ? 2 : 0;
-const flush = async () => {
-  if (!batch.length) return;
-  const r = await toWorker('/ingest', { kind: 'steam', fetchedAt: now(), items: batch });
-  console.log(`Steam: отправлено ${batch.length}`, r);
-  batch = [];
-};
-for (const name of steamBlocked ? [] : items) {
-  if (Date.now() - started > TIME_BUDGET_MS) { console.log('Время запуска вышло, остальное — в следующий раз'); break; }
-  const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
-  let entry;
-  try {
-    const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
-    if (res.status === 429) {
-      entry = { name, ok: false, status: 429 };
-      strikes++;
-      console.log(`Steam 429 (${strikes})`);
-      if (strikes >= 2) { batch.push(entry); break; }
-      await sleep(60_000);
-    } else if (!res.ok) {
-      entry = { name, ok: false, status: res.status };
-    } else {
-      entry = { name, ok: true, body: await readJson(res) };
-      strikes = 0;
-    }
-  } catch (e) {
-    entry = { name, ok: false, error: e.message };
-  }
-  batch.push(entry);
-  if (batch.length >= STEAM_CHUNK) await flush();
-  await sleep(STEAM_GAP_MS);
-}
-await flush();
-
-// 4. Steam для лучших кандидатов рекомендаций (если Steam не ограничил нас выше). Проверенные раньше Worker помнит 3 часа,
-// поэтому за несколько запусков покрываются все кандидаты.
-if (scan.length) {
-  const rot = Math.floor(Date.now() / 600_000) % 4; // смещение по запускам
-  const act = (e) => Math.max(e.s7?.volume ?? 0, ...Object.values(e.offers).map((o) => o.q || 0));
-  const order = scan.filter((e) => act(e) >= 7).sort((a, b) => act(b) - act(a));
-  const pick = order.slice(rot * SCAN_STEAM, rot * SCAN_STEAM + SCAN_STEAM);
-  for (const e of strikes >= 2 ? [] : pick) {
-    if (Date.now() - started > TIME_BUDGET_MS + 60_000) break;
-    try {
-      const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: e.name });
-      const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
-      if (res.status === 429) { console.log('Steam 429 при проверке рекомендаций — стоп'); break; }
-      if (res.ok) { const b = await readJson(res); if (b?.success) e.steam = { lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }; }
-    } catch { /* пропускаем предмет */ }
-    await sleep(STEAM_GAP_MS);
-  }
-  try {
-    console.log('Рекомендации:', await toWorker('/ingest', { kind: 'scan', fetchedAt: now(), items: scan }));
-  } catch (e) { console.error('Рекомендации:', e.message); }
-}
 console.log(`Готово за ${Math.round((Date.now() - started) / 1000)} с`);

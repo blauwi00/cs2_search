@@ -11,15 +11,16 @@ UA = {'User-Agent': 'cenolov-video-bot/1.0 (github actions)'}
 
 def search(q, n, max_dur):
     url = 'https://api.openverse.org/v1/audio/'
-    params = {'q': q, 'license': 'cc0', 'page_size': 40, 'mature': 'false'}
+    params = {'q': q, 'license': 'cc0', 'page_size': 20, 'mature': 'false'}  # без ключа API — не больше 20 и 1 запрос/с
     for attempt in range(3):
+        time.sleep(1.2)
         r = requests.get(url, params=params, headers=UA, timeout=30)
         if r.status_code == 429: time.sleep(10); continue
         r.raise_for_status(); break
     res = []
     for x in r.json().get('results', []):
         d = (x.get('duration') or 0) / 1000
-        if not x.get('url') or (d and d > max_dur * 1000 / 1000 and d > max_dur): continue
+        if not x.get('url') or (d and d > max_dur * 3): continue  # длинные режем до max_dur, но совсем длинные (музыка) не берём
         res.append(x)
         if len(res) >= n * 3: break
     return res

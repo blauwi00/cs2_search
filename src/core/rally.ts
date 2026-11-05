@@ -244,3 +244,40 @@ export function checkChain(i: ChainInput): { feasible: boolean; finalKop: number
   }
   return { feasible: reasons.length === 0, finalKop, profitKop: profit, days, reasons };
 }
+
+// ---------- Проверка схемы на истории (бэктест) ----------
+// Только на ценах, которые бот сам собрал: самое дешёвое объявление Steam по дням (минимум и среднее за день).
+// Сигнал в день D строится ТОЛЬКО по данным до D включительно; результат — по цене через 7 дней (без «заглядывания в будущее»).
+export interface DayPrice { day: string; min: number; avg: number }
+export interface BacktestTrade { name: string; day: string; buyKop: number; targetKop: number; predictedNetKop: number; sellDay: string; sellKop: number; netKop: number; profitKop: number; win: boolean }
+
+export function backtestItem(name: string, series: DayPrice[], s: RallySettings = RALLY_DEFAULTS): BacktestTrade[] {
+  const out: BacktestTrade[] = [];
+  const byDay = new Map(series.map((x) => [x.day, x]));
+  const addDays = (day: string, n: number) => new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+  let busyUntil = '';
+  for (let i = 7; i < series.length; i++) {
+    const d = series[i];
+    if (d.day < busyUntil) continue;                          // одна позиция по предмету за раз
+    const prev = series.slice(Math.max(0, i - 30), i);         // только прошлое
+    const last7 = prev.slice(-7);
+    if (last7.length < 5) continue;
+    const avg7 = last7.reduce((a, x) => a + x.avg, 0) / last7.length;
+    const avg30 = prev.reduce((a, x) => a + x.avg, 0) / prev.length;
+    const dev = Math.max(...last7.map((x) => Math.abs(x.avg - avg7) / avg7));
+    if (dev > 0.1) continue;                                   // как «низкий риск»: цена ровная
+    const target = Math.floor(Math.min(avg7, avg30)) - 1;
+    const buy = d.min;                                         // допущение: удалось купить по минимуму дня
+    if (buy > s.maxItemKop || buy < 3) continue;
+    const pred = steamNetKop(target);
+    if (pred == null || pred - buy < s.minProfitKop || ((pred - buy) * 10000) / buy < s.minRoiBp) continue;
+    const sellDay = addDays(d.day, 7);
+    const later = byDay.get(sellDay) ?? series.find((x) => x.day > sellDay && x.day <= addDays(sellDay, 3));
+    if (!later) continue;                                      // нет данных о продаже — сделку не считаем
+    const sell = Math.max(3, Math.floor(later.avg) - 1);       // продаём по средней цене того дня, на 1 коп. ниже
+    const net = steamNetKop(sell) ?? 0;
+    out.push({ name, day: d.day, buyKop: buy, targetKop: target, predictedNetKop: pred, sellDay: later.day, sellKop: sell, netKop: net, profitKop: net - buy, win: net > buy });
+    busyUntil = later.day;
+  }
+  return out;
+}

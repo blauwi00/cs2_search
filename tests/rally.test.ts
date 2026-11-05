@@ -182,3 +182,17 @@ test('симуляция бота: покупает сам по правилам
   assert.equal(bad.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get(), undefined, 'убыток — поста нет');
   assert.match((bad.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref = 'fail'").get(ADMIN) as any).text, /не сработала/);
 });
+
+test('бэктест на истории: сигнал только по прошлым данным, результат — через 7 дней; без данных о продаже сделка не считается', async () => {
+  const { backtestItem } = await import('../src/core/rally.ts');
+  const day = (i: number) => new Date(Date.UTC(2026, 9, 1 + i)).toISOString().slice(0, 10);
+  const flat = Array.from({ length: 20 }, (_, i) => ({ day: day(i), min: 690, avg: 700 }));
+  assert.equal(backtestItem('A', flat).length, 0, 'нет дешёвого объявления — нет сделки');
+  const dip = flat.map((x, i) => (i === 10 ? { ...x, min: 450 } : x));
+  const t = backtestItem('A', dip);
+  assert.equal(t.length, 1); assert.equal(t[0].day, day(10)); assert.equal(t[0].sellDay, day(17));
+  assert.equal(t[0].sellKop, 699); assert.equal(t[0].netKop, 609); assert.equal(t[0].win, true);
+  const crash = dip.map((x, i) => (i >= 11 ? { ...x, min: 400, avg: 480 } : x));
+  assert.equal(backtestItem('A', crash)[0].win, false, 'через 7 дней цена упала — убыток');
+  assert.equal(backtestItem('A', dip.slice(0, 15)).length, 0, 'нет данных через 7 дней — не считаем');
+});

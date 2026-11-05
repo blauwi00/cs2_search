@@ -29,7 +29,7 @@ export default {
     if (url.hostname !== OFFICIAL_HOST && (url.pathname === '/app' || url.pathname === '/telegram')) ctx.waitUntil(rememberSelfHost(env.DB, url.hostname).catch(() => undefined));
     if (url.pathname === '/telegram') return handleWebhook(req, env, nowSec());
     if (url.pathname.startsWith('/admin/')) return handleAdmin(req, env, nowSec());
-    if (url.pathname === '/ingest' || url.pathname === '/ingest/items') return handleIngest(req, env, nowSec());
+    if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest') return handleIngest(req, env, nowSec());
     if (url.pathname === '/app' && req.method === 'GET') {
       return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
     }

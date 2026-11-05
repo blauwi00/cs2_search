@@ -21,6 +21,7 @@ import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
+import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -78,6 +79,24 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         return c < 0 && now - pass > 7 * 86400 ? 0 : c;
       })(),
     });
+  }
+  // Бэктест «Разгона» на собственной истории цен Steam (только для сборщика/владельца по секрету).
+  if (req.method === 'GET' && url.pathname === '/ingest/backtest') {
+    const maxKop = Math.min(100000, Math.max(100, Number(url.searchParams.get('max')) || 600));
+    const rows = (await d.prepare(`SELECT i.market_hash_name AS name, day, MIN(mn) AS min, CAST(AVG(av) AS INTEGER) AS avg FROM (
+        SELECT item_id, day, min_minor AS mn, avg_minor AS av FROM price_daily WHERE source = 'steam' AND price_type = 'lowest_listing' AND currency = 'UAH' AND min_minor IS NOT NULL
+        UNION ALL
+        SELECT item_id, date(observed_at, 'unixepoch') AS day, MIN(price_kop) AS mn, AVG(price_kop) AS av FROM price_snapshots
+          WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL GROUP BY item_id, day
+      ) x JOIN items i ON i.id = x.item_id GROUP BY name, day ORDER BY name, day`).all<{ name: string; day: string; min: number; avg: number }>()).results;
+    const by = new Map<string, DayPrice[]>();
+    for (const r of rows) { const a = by.get(r.name) ?? []; a.push({ day: r.day, min: r.min, avg: r.avg }); by.set(r.name, a); }
+    const s = { ...RALLY_DEFAULTS, maxItemKop: maxKop };
+    const trades = [...by].flatMap(([n, ser]) => backtestItem(n, ser, s)).sort((a, b) => a.day.localeCompare(b.day));
+    const days = [...new Set(rows.map((r) => r.day))].sort();
+    const cheap = [...by.values()].filter((ser) => ser.some((x) => x.min <= maxKop)).length;
+    return json({ ok: true, items: by.size, itemsUnderMax: cheap, days: days.length, from: days[0] ?? null, to: days[days.length - 1] ?? null, maxKop,
+      trades: trades.length, wins: trades.filter((t) => t.win).length, profitKop: trades.reduce((a, t) => a + t.profitKop, 0), sample: trades.slice(0, 20) });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
   if (Number(req.headers.get('content-length') ?? '0') > MAX_INGEST_BYTES) return json({ ok: false, error: 'too_large' }, 413);

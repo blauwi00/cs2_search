@@ -1,0 +1,22 @@
+name: rally-backtest
+# Проверка схемы «Разгон баланса» на истории цен, которую собрал бот (запрос к Worker по секрету, ответ — в логе).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/backtest/**']
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Подождать выкладку Worker
+        run: sleep 150
+      - name: Бэктест
+        env:
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: |
+          for m in 600 1500 5000; do
+            echo "=== лимит на покупку: $((m/100)) ₴ ==="
+            curl -sS -H "X-Ingest-Secret: $INGEST_SECRET" "https://cs2-search.blauwi925.workers.dev/ingest/backtest?max=$m"; echo
+          done

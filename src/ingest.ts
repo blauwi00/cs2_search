@@ -72,6 +72,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       sitePriceNames: await sitePriceNames(d, now),
       // «Разгон баланса»: нужен ли проход по дешёвым предметам Steam и какие проверить первыми.
       rally: await rallyInfo(d),
+      // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
+      steamPauseUntil: Number(await getMeta(d, 'steam_pause_until')) || 0,
       // Картинки для всего каталога: с какого места продолжать (раз в неделю — новый проход, чтобы подхватить новые предметы).
       imgCursor: await (async () => {
         const c = Number(await getMeta(d, 'img_cursor')) || 0;
@@ -302,6 +304,14 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         await setMetaStmt(d, 'img_cursor', String(cur)).run();
         if (cur === -1) await setMetaStmt(d, 'img_pass_at', String(now)).run();
       }
+    } else if (body.kind === 'steam_limit') {
+      // 429 → пауза 30 мин, при повторах 1 ч, 2 ч, 3 ч; спокойный запуск — сброс.
+      const limited = (body as { limited?: unknown }).limited === true;
+      const level = Number(await getMeta(d, 'steam_backoff')) || 0;
+      const next = limited ? Math.min(level + 1, 4) : 0;
+      const pause = [0, 30, 60, 120, 180][next] * 60;
+      await d.batch([setMetaStmt(d, 'steam_backoff', String(next)), setMetaStmt(d, 'steam_pause_until', String(limited ? now + pause : 0))]);
+      result.stored = next;
     } else if (body.kind === 'rally_scan') {
       const fresh = parseRallyItems(body.items, fx.get('USD') ?? null, at);
       const old = await loadRallyScan(d);

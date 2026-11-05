@@ -40,7 +40,15 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+
+// Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
+// После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
+const STEAM_MAX_REQ = 24;
+const steamPaused = steamPauseUntil > now();
+let steamReq = 0, steamLimited = false;
+const steamCan = (reserve = 0) => !steamPaused && !steamLimited && steamReq + reserve < STEAM_MAX_REQ;
+if (steamPaused) console.log(`Steam: пауза после ограничений до ${new Date(steamPauseUntil * 1000).toISOString()} — запросов к Steam не делаем`);
 // Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
 if (card && card.id) {
   const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
@@ -178,13 +186,14 @@ try {
 // До 3 инвентарей за запуск, с паузами. Закрытый инвентарь → просим пользователя открыть его в настройках приватности Steam.
 let dopplerPrices = null;
 for (const s of inventorySync) {
-  if (Date.now() - started > 2 * 60_000) break;
+  if (Date.now() - started > 2 * 60_000 || !steamCan(14)) break;
   const base = { kind: 'steam_inventory', fetchedAt: now(), tid: s.tid, steamId: s.steamId, vanity: s.vanity };
   try {
     let id = s.steamId;
     if (!id && s.vanity) {
       const r = await fetch(`https://steamcommunity.com/id/${encodeURIComponent(s.vanity)}/?xml=1`, { headers: { 'User-Agent': UA } });
-      if (r.status === 429) { await toWorker('/ingest', { ...base, status: 'rate_limited' }); break; }
+      steamReq++;
+      if (r.status === 429) { steamLimited = true; await toWorker('/ingest', { ...base, status: 'rate_limited' }); break; }
       const m = (await r.text()).match(/<steamID64>(7656119\d{10})<\/steamID64>/);
       if (!m) { console.log('Инвентарь: профиль не найден', s.vanity); await toWorker('/ingest', { ...base, status: 'not_found' }); continue; }
       id = m[1];
@@ -196,7 +205,8 @@ for (const s of inventorySync) {
       const q = new URLSearchParams({ l: 'english', count: '2000' });
       if (start) q.set('start_assetid', start);
       const r = await fetch(`https://steamcommunity.com/inventory/${id}/730/2?${q}`, { headers: { 'User-Agent': UA } });
-      if (r.status === 429) { status = 'rate_limited'; break; }
+      steamReq++;
+      if (r.status === 429) { status = 'rate_limited'; steamLimited = true; break; }
       if (r.status === 403 || r.status === 401) { status = 'private'; break; }
       if (!r.ok) { status = r.status === 404 ? 'not_found' : 'error'; break; }
       const j = await r.json().catch(() => null);
@@ -418,16 +428,18 @@ const flush = async () => {
 };
 for (const name of items) {
   if (Date.now() - started > TIME_BUDGET_MS) { console.log('Время запуска вышло, остальное — в следующий раз'); break; }
+  if (!steamCan(10)) break; // ~10 запросов оставляем «Разгону» и проверке рекомендаций
   const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
   let entry;
   try {
     const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
+    steamReq++;
     if (res.status === 429) {
+      // Не долбим Steam повторно: стоп до следующего запуска, дальше — пауза (её назначит Worker).
       entry = { name, ok: false, status: 429 };
-      strikes++;
-      console.log(`Steam 429 (${strikes})`);
-      if (strikes >= 2) { batch.push(entry); break; }
-      await sleep(60_000);
+      strikes = 2; steamLimited = true;
+      console.log('Steam 429 — стоп, пауза');
+      batch.push(entry); break;
     } else if (!res.ok) {
       entry = { name, ok: false, status: res.status };
     } else {
@@ -451,11 +463,12 @@ if (scan.length) {
   const order = scan.filter((e) => act(e) >= 7).sort((a, b) => act(b) - act(a));
   const pick = order.slice(rot * SCAN_STEAM, rot * SCAN_STEAM + SCAN_STEAM);
   for (const e of strikes >= 2 ? [] : pick) {
-    if (Date.now() - started > TIME_BUDGET_MS + 60_000) break;
+    if (Date.now() - started > TIME_BUDGET_MS + 60_000 || !steamCan(6)) break;
     try {
       const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: e.name });
       const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
-      if (res.status === 429) { console.log('Steam 429 при проверке рекомендаций — стоп'); break; }
+      steamReq++;
+      if (res.status === 429) { steamLimited = true; console.log('Steam 429 при проверке рекомендаций — стоп'); break; }
       if (res.ok) { const b = await readJson(res); if (b?.success) e.steam = { lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }; }
     } catch { /* пропускаем предмет */ }
     await sleep(STEAM_GAP_MS);
@@ -469,7 +482,7 @@ if (scan.length) {
 // (priceoverview: самое дешёвое объявление, медиана и число продаж за сутки) и для самых перспективных — ордер покупателя
 // (itemordershistogram). Паузы между запросами; при 429 — остановка до следующего запуска. Ничего не покупается.
 // Идёт ПОСЛЕ основного опроса Steam (списки наблюдения важнее) и только если Steam нас ещё не ограничил.
-let steamBlocked = strikes >= 2;
+let steamBlocked = strikes >= 2 || !steamCan();
 if (rally?.active && steamAvg.size && fx.USD && !steamBlocked && Date.now() - started < TIME_BUDGET_MS + 60_000) {
   try {
     const maxCents = Math.ceil(((rally.maxItemKop ?? 600) / 100 / fx.USD) * 100 * 1.15);
@@ -487,8 +500,10 @@ if (rally?.active && steamAvg.size && fx.USD && !steamBlocked && Date.now() - st
     const out = [], newIds = [];
     let orderCalls = 0;
     const steamGet = async (url, json = true) => {
+      if (!steamCan()) { steamBlocked = true; throw new Error('лимит запросов за запуск'); }
       const res = await fetch(url, { headers: { 'User-Agent': UA } });
-      if (res.status === 429) { steamBlocked = true; throw new Error('429'); }
+      steamReq++;
+      if (res.status === 429) { steamBlocked = true; steamLimited = true; throw new Error('429'); }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return json ? readJson(res) : res.text();
     };
@@ -533,4 +548,8 @@ if (rally?.active && steamAvg.size && fx.USD && !steamBlocked && Date.now() - st
   }
 }
 
+// Отчёт о Steam: Worker назначит паузу, если был 429, и снимет её после спокойного запуска.
+if (!steamPaused) {
+  try { console.log(`Steam: запросов ${steamReq}${steamLimited ? ', получили 429' : ''}`, await toWorker('/ingest', { kind: 'steam_limit', fetchedAt: now(), limited: steamLimited, requests: steamReq })); } catch (e) { console.error('Steam-отчёт:', e.message); }
+}
 console.log(`Готово за ${Math.round((Date.now() - started) / 1000)} с`);

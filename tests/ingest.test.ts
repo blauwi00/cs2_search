@@ -105,3 +105,15 @@ test('картинки всего каталога: пачкой до 1000, ку
   const g2 = await (await handleIngest(new Request('https://w.dev/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, T + 8 * 86400)).json() as { imgCursor: number };
   assert.equal(g2.imgCursor, 0, 'через неделю — новый проход');
 });
+
+test('бережём Steam: после 429 — пауза, растущая при повторах; спокойный запуск — сброс', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { handleIngest } = await import('../src/ingest.ts');
+  const d = migratedDb(); const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+  const T = 1_793_000_000;
+  const post = (limited: boolean, at: number) => handleIngest(new Request('https://w.dev/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'steam_limit', fetchedAt: at, limited, requests: 5 }) }), env, at);
+  const pause = async (at: number) => ((await (await handleIngest(new Request('https://w.dev/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, at)).json()) as any).steamPauseUntil;
+  await post(true, T); assert.equal(await pause(T), T + 30 * 60);
+  await post(true, T + 1800); assert.equal(await pause(T + 1800), T + 1800 + 60 * 60);
+  await post(false, T + 7200); assert.equal(await pause(T + 7200), 0);
+});

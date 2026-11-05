@@ -110,3 +110,21 @@ test('картинка инвентаря: принимаем только JPEG,
   const res = await handleCard(new URL(b.url), env);
   assert.equal(res.status, 200); assert.equal(res.headers.get('Content-Type'), 'image/jpeg');
 });
+
+test('#18 панель владельца: только владельцу; сводка, действия с паузой Steam и проверкой разгона', async () => {
+  const { D, env } = setup();
+  const { ADMIN } = await import('./helpers.ts');
+  const sign = (id: number) => signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id, first_name: 'E' }) }, 'TEST_TOKEN');
+  const call = async (id: number, path: string, body?: object) => (await handleAppApi(new Request('https://w/app/api/' + path, { method: body ? 'POST' : 'GET', headers: { 'X-Init-Data': await sign(id), 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as Promise<Record<string, any>>;
+  const user = await call(5555, 'owner');
+  assert.equal(user.ok, false); assert.equal(user.admin, undefined, 'обычному пользователю — без признака владельца');
+  await D.prepare("INSERT INTO meta (key, value) VALUES ('steam_pause_until', ?), ('agent_at', ?)").bind(String(NOW + 1800), JSON.stringify({ at: NOW - 120, requests: 12, limited: false })).run();
+  const o = await call(ADMIN, 'owner');
+  assert.equal(o.ok, true); assert.equal(o.admin, true);
+  assert.equal(o.steam.pauseUntil, NOW + 1800); assert.equal(o.steam.agent.requests, 12);
+  assert.equal(o.rally.on, true); assert.equal(o.rally.need, 10);
+  assert.equal((await call(ADMIN, 'owner/action', { action: 'steam_unpause' })).ok, true);
+  assert.equal((await call(ADMIN, 'owner')).steam.pauseUntil, 0);
+  await call(ADMIN, 'owner/action', { action: 'rally_bot_off' });
+  assert.equal((await call(ADMIN, 'owner')).rally.on, false);
+});

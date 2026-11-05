@@ -31,7 +31,7 @@ import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '..
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
-import { botUsername, getMeta } from '../core/channel.ts';
+import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { recStats } from '../core/insights.ts';
 import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
 import { steamNetKop } from '../core/fees.ts';
@@ -183,7 +183,8 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   const rates = await loadRates(d0);
   const cur = await userCur(d0, user.id, rates);
   let text = renderMoney(await res.text(), cur);
-  if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},` + (text.length > 2 ? text.slice(1) : '}');
+  const adm = user.id === Number(env.ADMIN_TELEGRAM_ID) ? '"admin":true,' : '';
+  if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},${adm}` + (text.length > 2 ? text.slice(1) : '}');
   return new Response(text, { status: res.status, headers: res.headers });
 }
 
@@ -857,7 +858,48 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const s = await db.getSettings(d, tid);
       return json({ ok: true, display: displayValue(m, s), value });
     }
-    if ((path === 'status' || path === 'jobs/enable') && !isAdmin) return bad('admin_only', 403);
+    if ((path === 'status' || path === 'jobs/enable' || path.startsWith('owner')) && !isAdmin) return bad('admin_only', 403);
+    // #18: панель владельца — всё о боте в одном месте, с iPhone.
+    if (path === 'owner' && method === 'GET') {
+      const day = now - 86400, week = now - 7 * 86400;
+      const one = <T>(sql: string, ...b: unknown[]) => d.prepare(sql).bind(...b).first<T>();
+      const [users, steamN, watchN, rallyN, refs, don, donLast, fb, sources, jobs, errs, metaRows, bot] = await Promise.all([
+        one<{ n: number; d1: number | null; d7: number | null }>('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS d1, SUM(created_at >= ?) AS d7 FROM users', day, week),
+        one<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE steam_id IS NOT NULL OR steam_vanity IS NOT NULL'),
+        one<{ u: number; i: number }>('SELECT COUNT(DISTINCT telegram_id) AS u, COUNT(DISTINCT item_id) AS i FROM watchlist WHERE active = 1'),
+        one<{ n: number }>("SELECT COUNT(*) AS n FROM user_settings WHERE key = 'rally_on' AND value = '1'"),
+        d.prepare(`SELECT COALESCE(s.value, 'без метки') AS ref, COUNT(*) AS n FROM users u LEFT JOIN user_settings s ON s.telegram_id = u.telegram_id AND s.key = 'ref' GROUP BY 1 ORDER BY n DESC LIMIT 6`).all<{ ref: string; n: number }>(),
+        one<{ n: number; s: number; s30: number }>('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS s, COALESCE(SUM(CASE WHEN created_at >= ? THEN stars END), 0) AS s30 FROM donations', now - 30 * 86400),
+        d.prepare('SELECT stars, name, created_at FROM donations ORDER BY id DESC LIMIT 5').all<{ stars: number; name: string | null; created_at: number }>(),
+        d.prepare('SELECT telegram_id, item, reason, comment, context, created_at FROM feedback ORDER BY id DESC LIMIT 10').all<Record<string, unknown>>(),
+        db.listSourceStatus(d), listJobs(d), db.recentErrors(d, 8),
+        d.prepare(`SELECT key, value FROM meta WHERE key IN ('steam_pause_until', 'steam_backoff', 'agent_at', 'rally_bot', 'rally_bot_started', 'rally_post', 'channel_title', 'channel_id', 'channel_pending', 'img_cursor', 'site_prices_at', 'copies')`).all<{ key: string; value: string }>(),
+        d.prepare("SELECT * FROM rally_trades WHERE telegram_id <= 0 AND telegram_id >= -9 AND mode = 'sim'").all<RallyTrade>(),
+      ]);
+      const m = Object.fromEntries(metaRows.results.map((r) => [r.key, r.value]));
+      const js = (v: string | undefined) => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
+      const bs = botStats(bot.results);
+      const col = sources.find((x) => x.source === 'collector');
+      return json({
+        ok: true,
+        users: { total: users?.n ?? 0, d1: users?.d1 ?? 0, d7: users?.d7 ?? 0, steam: steamN?.n ?? 0, watchUsers: watchN?.u ?? 0, watchItems: watchN?.i ?? 0, rally: rallyN?.n ?? 0, refs: refs.results },
+        steam: { pauseUntil: Number(m.steam_pause_until) || 0, backoff: Number(m.steam_backoff) || 0, agent: js(m.agent_at), collectorOk: col?.last_ok_at ?? null,
+          sources: sources.map((x) => ({ source: x.source, status: x.status, lastOk: x.last_ok_at, error: x.status !== 'ok' ? x.last_error : null })) },
+        rally: { ...bs, best: undefined, on: m.rally_bot !== 'off', since: Number(m.rally_bot_started) || null, post: m.rally_post ?? null, need: BOT_MIN_CLOSED },
+        money: { stars: don?.s ?? 0, count: don?.n ?? 0, stars30: don?.s30 ?? 0, last: donLast.results },
+        feedback: fb.results,
+        channel: { title: m.channel_title ?? null, connected: !!m.channel_id, pending: !!m.channel_pending },
+        jobs: jobs.filter((j) => j.enabled !== 1 || j.fail_count > 0).map((j) => ({ name: j.name, enabled: j.enabled === 1, fails: j.fail_count, error: j.last_error })),
+        errors: errs, copies: Object.keys(js(m.copies) ?? {}).length, images: m.img_cursor === '-1' ? 'готово' : m.img_cursor ?? '—',
+      });
+    }
+    if (path === 'owner/action' && method === 'POST') {
+      const a = String(body.action ?? '');
+      if (a === 'steam_unpause') await d.batch([setMetaStmt(d, 'steam_pause_until', '0'), setMetaStmt(d, 'steam_backoff', '0')]);
+      else if (a === 'rally_bot_on' || a === 'rally_bot_off') await setMetaStmt(d, 'rally_bot', a === 'rally_bot_on' ? 'on' : 'off').run();
+      else return bad('unknown_action');
+      return json({ ok: true });
+    }
     if (path === 'status' && method === 'GET') {
       const [jobs, sources, c, fx, errs, cat] = await Promise.all([listJobs(d), db.listSourceStatus(d), db.counters(d, now), db.loadLatestFx(d), db.recentErrors(d, 5), catalogInfo(d)]);
       const external = env.COLLECTOR === 'github' ? new Set(['steam', 'skinport_items', 'skinport_sales']) : new Set<string>();

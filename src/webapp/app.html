@@ -246,6 +246,7 @@ function api(path, opt) {
       if (r.status === 403) throw new Error('Нет доступа. Открой приложение кнопкой в своём боте.');
       if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
       if (j.cur && j.cur.per > 0) CUR = j.cur;
+      if (j.admin) state.isAdmin = true;
       return j;
     });
   });
@@ -1406,6 +1407,44 @@ function bindRally(r) {
     };
   });
 }
+// ---------- #18: панель владельца ----------
+function ownerPanel() {
+  sheet('<div class="skel"></div><div class="skel" style="height:200px"></div><div class="skel"></div>');
+  api('owner').then(function (o) {
+    var now = Date.now() / 1000, u = o.users, st = o.steam, ra = o.rally, ag = st.agent;
+    var dot = function (ok) { return ok ? '🟢' : '🔴'; };
+    var h = '<h2>🛠 Панель владельца</h2><div class="sub">Всё о боте в одном месте</div>';
+    h += '<div class="grid2">' + stat('Пользователей', u.total, '+' + u.d1 + ' за сутки · +' + u.d7 + ' за неделю') + stat('Пожертвования', o.money.stars + ' ⭐', o.money.count + ' шт. · ' + o.money.stars30 + ' ⭐ за 30 дн.') + '</div>';
+    h += '<div class="sec">Сбор цен</div><div class="card">' +
+      kv(dot(st.collectorOk && now - st.collectorOk < 45 * 60) + ' Сборщик GitHub', st.collectorOk ? ago(st.collectorOk) : 'нет данных') +
+      kv((st.pauseUntil > now ? '🟡' : '🟢') + ' Steam с GitHub', st.pauseUntil > now ? 'пауза ещё ' + Math.round((st.pauseUntil - now) / 60) + ' мин (Steam ограничил)' : 'без паузы') +
+      kv(dot(ag && now - ag.at < 30 * 60) + ' Домашний агент', ag ? ago(ag.at) + ' · запросов ' + ag.requests + (ag.limited ? ' · Steam ограничил' : '') : 'не подключён') +
+      st.sources.filter(function (x) { return x.source !== 'collector'; }).map(function (x) { return kv((x.status === 'ok' ? '🟢 ' : '🟡 ') + esc(SRC[x.source] || x.source), x.lastOk ? ago(x.lastOk) : '—'); }).join('') +
+      kv('Картинки каталога', esc(String(o.images))) + '</div>';
+    if (st.pauseUntil > now) h += '<button class="btn sec2" id="ow-unpause">Снять паузу Steam (попробовать сейчас)</button>';
+    h += '<div class="sec">Проверка «Разгона» ботом</div><div class="card">' +
+      kv('Статус', ra.on ? (ra.post === 'done' ? '✅ сработала, пост опубликован' : ra.post === 'fail' ? '⚠️ не сработала' : '⏳ идёт') : '⏸ выключена') +
+      kv('Закрыто сделок', ra.closed + ' из ' + ra.need) + kv('В плюсе', ra.wins) + kv('Итог', '<span class="' + cls(ra.realizedKop) + '">' + uah(ra.realizedKop, true) + '</span>') +
+      kv('Открыто сейчас', ra.open) + (ra.since ? kv('Идёт с', dateRu(ra.since)) : '') + '</div>' +
+      '<button class="btn sec2" id="ow-bot">' + (ra.on ? '⏸ Остановить проверку' : '▶️ Запустить проверку') + '</button>';
+    h += '<div class="sec">Аудитория</div><div class="card">' + kv('Подключили Steam', u.steam) + kv('Со списком наблюдения', u.watchUsers + ' (' + u.watchItems + ' предметов)') + kv('Открывали «Разгон»', u.rally) +
+      kv('Канал', o.channel.connected ? esc(o.channel.title || 'подключён') + (o.channel.pending ? ' · пост ждёт картинку' : '') : 'не подключён') + kv('Копии бота (чужие)', o.copies) + '</div>';
+    if (u.refs.length) h += '<details class="more"><summary><span class="chev">›</span> Откуда пришли</summary><div class="card">' + u.refs.map(function (x) { return kv(esc(x.ref), x.n); }).join('') + '</div></details>';
+    h += '<details class="more"' + (o.feedback.length ? ' open' : '') + '><summary><span class="chev">›</span> Сообщения об ошибках (' + o.feedback.length + ')</summary><div class="card" style="font-size:13px">' +
+      (o.feedback.length ? o.feedback.map(function (f) { return '<div style="padding:6px 0;border-bottom:1px solid var(--sep)"><b>' + esc(f.item || 'без предмета') + '</b> · ' + esc(f.reason) + ' · ' + ago(f.created_at) + (f.comment ? '<div>' + esc(f.comment) + '</div>' : '') + '<div class="mut">от ' + f.telegram_id + (f.context ? ' · ' + esc(f.context) : '') + '</div></div>'; }).join('') : '<span class="mut">Пока нет</span>') + '</div></details>';
+    if (o.money.last.length) h += '<details class="more"><summary><span class="chev">›</span> Последние пожертвования</summary><div class="card">' + o.money.last.map(function (x) { return kv(esc(x.name || 'Аноним'), x.stars + ' ⭐ · ' + ago(x.created_at)); }).join('') + '</div></details>';
+    h += '<details class="more"' + (o.jobs.length || o.errors.length ? '' : '') + '><summary><span class="chev">›</span> Ошибки и задачи (' + (o.jobs.length + o.errors.length) + ')</summary><div class="card" style="font-size:13px">' +
+      o.jobs.map(function (j) { return kv((j.enabled ? '🟡 ' : '🔴 ') + esc(j.name), (j.enabled ? 'сбоев ' + j.fails : 'выключена') + (j.error ? '<div class="mut" style="font-size:12px;font-weight:400;white-space:normal">' + esc(String(j.error).slice(0, 120)) + '</div>' : '')); }).join('') +
+      o.errors.map(function (e) { return '<div style="padding:5px 0;border-bottom:1px solid var(--sep)"><span class="mut">' + ago(e.at) + ' · ' + esc(e.source || '') + '</span><div>' + esc(String(e.message).slice(0, 160)) + '</div></div>'; }).join('') +
+      (!o.jobs.length && !o.errors.length ? '<span class="mut">Всё спокойно</span>' : '') + '</div></details>';
+    h += '<button class="btn sec2" id="ow-status">🩺 Подробное состояние системы</button>';
+    $('#sc').innerHTML = h;
+    var act = function (a, msg) { api('owner/action', { method: 'POST', body: { action: a } }).then(function () { haptic('ok'); toast(msg); ownerPanel(); }).catch(function (e) { toast(e.message); }); };
+    if ($('#ow-unpause')) $('#ow-unpause').onclick = function () { act('steam_unpause', 'Пауза снята — следующий запуск сборщика попробует Steam'); };
+    $('#ow-bot').onclick = function () { act(ra.on ? 'rally_bot_off' : 'rally_bot_on', ra.on ? 'Проверка остановлена' : 'Проверка запущена'); };
+    $('#ow-status').onclick = function () { closeSheet(); setTimeout(status, 250); };
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
 // ---------- #14: калькулятор комиссий ----------
 function calcSheet(preKop) {
   var mode = 'sell', timer = null;
@@ -1474,7 +1513,8 @@ function donateSheet() {
   });
 }
 function more() {
-  view.innerHTML = '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
+  view.innerHTML = (state.isAdmin ? '<div class="row" id="m-own"><div class="ic">🛠</div><div class="m"><div class="n">Панель владельца</div><div class="d">Пользователи, Steam и домашний агент, проверка разгона, донаты, ошибки</div></div><div class="mut">›</div></div>' : '') +
+    '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
@@ -1484,6 +1524,7 @@ function more() {
     '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
+  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); ownerPanel(); };
   $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); };
   $('#m-set').onclick = settings; $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };

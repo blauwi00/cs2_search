@@ -1,0 +1,18 @@
+# Проверка сборки Worker без деплоя: если сборка в Cloudflare падает, здесь виден лог ошибки.
+name: build-check
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'migrations/**', 'wrangler.jsonc', 'package.json', '.github/workflows/buildcheck.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx wrangler d1 migrations apply DB --local
+      - run: npx wrangler deploy --dry-run --outdir dist

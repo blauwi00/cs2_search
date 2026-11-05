@@ -89,6 +89,9 @@ with open(f'{out}/LICENSES.md', 'w') as f:
     f.write('# Звуки (Openverse, CC0 — общественное достояние)\n\n')
     for e in index: f.write(f"- `{e['file']}` — «{e['title']}» ({e['creator']}), {e['license']} — {e['source']}\n")
 import shutil; shutil.rmtree(f'{out}/raw', ignore_errors=True)
+keep = {e['file'] for e in index}
+for f in os.listdir(out):
+    if f.endswith('.wav') and f not in keep: os.remove(f'{out}/{f}')  # недоделанные/с ошибкой
 # Прослушка: все звуки подряд (по тегам), между ними 0,6 с тишины.
 if index:
     lst = f'{out}/_list.txt'

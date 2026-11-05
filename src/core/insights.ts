@@ -129,7 +129,7 @@ export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: n
   return lines.join('\n');
 }
 
-export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number; image?: string | null }
+export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number; image?: string | null; title_ru?: string | null; summary_ru?: string | null }
 
 const NEWS_IMG_OK = /^https:\/\/[a-z0-9.-]*steamstatic\.com\/[^\s"'\]\[<>]{1,400}\.(png|jpe?g|gif|webp)$/i;
 /** Первая картинка из текста новости Steam ({STEAM_CLAN_IMAGE}/… или прямая ссылка на steamstatic). */
@@ -150,7 +150,26 @@ export function cleanSnippet(raw: unknown): string | null {
   return t.length > 300 ? t.slice(0, 297).replace(/\s+\S*$/, '') + '…' : t;
 }
 
+/** Краткое содержание на русском (если сборщик уже перевёл): важное для рынка — первым, затем по разделам. */
+export function newsRuLines(n: NewsItem): string[] | null {
+  let s: { market?: string[]; sections?: { name: string | null; items: string[] }[]; more?: number } | null = null;
+  try { s = n.summary_ru ? JSON.parse(n.summary_ru) : null; } catch { s = null; }
+  if (!s || (!s.market?.length && !s.sections?.length)) return null;
+  const out: string[] = [];
+  if (s.market?.length) out.push('💰 <b>Важно для рынка</b>', ...s.market.map((x) => `• ${esc(x)}`), '');
+  for (const sec of s.sections ?? []) out.push(...(sec.name ? [`<b>${esc(sec.name)}</b>`] : []), ...sec.items.map((x) => `• ${esc(x)}`), '');
+  if (s.more) out.push(`<i>…и ещё ${s.more} изменений — полный список по кнопке ниже.</i>`);
+  return out;
+}
+
 export function newsPost(n: NewsItem): string {
+  const ru = newsRuLines(n);
+  if (ru) return [
+    header('🛠', 'Обновление CS2', n.published_at), '',
+    `<b>${esc(n.title_ru || n.title)}</b>`, '',
+    ...ru, '',
+    '<i>Кратко и в переводе. После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
   return [
     header('🛠', 'Обновление CS2', n.published_at), '',
     `<b>${esc(n.title)}</b>`,

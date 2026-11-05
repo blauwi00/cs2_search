@@ -48,7 +48,8 @@ export function setRefStmt(d: D1Database, links: RefLinks): D1PreparedStatement 
 /** Иконка сайта (favicon) через открытый сервис Google — без запросов к самим площадкам. */
 export const siteIcon = (url: string) => `https://www.google.com/s2/favicons?sz=128&domain=${new URL(url).hostname}`;
 
-export const HIDDEN_ON_HOME = new Set<SiteKey>(['waxpeer']);
+/** Скрытые с главной площадки. Waxpeer вернули: пусть видят его низкую оценку и будут осторожнее. */
+export const HIDDEN_ON_HOME = new Set<SiteKey>([]);
 export function sitesFor(links: RefLinks): { key: SiteKey; name: string; url: string; desc: string; ref: boolean; icon: string; rating: number | null }[] {
   // Waxpeer убран с главной (рейтинг 2.6, много жалоб на задержки); его цены в карточках предметов остаются.
   return SITES.filter((s) => !HIDDEN_ON_HOME.has(s.key)).map((s) => ({ key: s.key, name: s.name, rating: s.rating, desc: s.desc, url: links[s.key] ?? s.url, ref: !!links[s.key], icon: siteIcon(s.url) }));

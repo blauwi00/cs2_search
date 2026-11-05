@@ -338,7 +338,7 @@ function siteIc(x) {
 function rateHtml(x) {
   if (x.key === 'steam') return '<div class="sr off">официальный</div>';
   if (x.rating == null) return '<div class="sr off">нет оценки</div>';
-  return '<div class="sr ' + (x.rating >= 4.5 ? 'hi' : x.rating >= 3.5 ? 'mid' : 'lo') + '">★ ' + x.rating.toFixed(1) + '</div>';
+  return '<div class="sr ' + (x.rating >= 4.5 ? 'hi' : x.rating >= 3.5 ? 'mid' : 'lo') + '">' + (x.rating < 3.5 ? '⚠️ ' : '') + '★ ' + x.rating.toFixed(1) + '</div>';
 }
 function setupCard(su) {
   if (!su) return '';
@@ -397,7 +397,7 @@ function home() {
     h += '<div class="sec">Площадки</div><div class="sgrid">' + sites.map(function (x) {
       return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">🤝</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div>' + rateHtml(x) + '</div>';
     }).join('') + '</div>';
-    h += '<div class="note">★ — оценка на Trustpilot из 5 (по сводке CSDB, июль 2026). Это отзывы людей, а не гарантия. Ниже 3.5 — много жалоб, будь осторожнее.</div>';
+    h += '<div class="note">★ — оценка на Trustpilot из 5 (по сводке CSDB, июль 2026). Это отзывы людей, а не гарантия. ⚠️ ниже 3.5 — много жалоб, будь осторожнее.</div>';
     if (sites.some(function (x) { return x.ref; })) h += '<div class="note">🤝 — партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;

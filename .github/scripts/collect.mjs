@@ -5,6 +5,7 @@
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { decodeCertificate } from './inspect.mjs';
+import { russianSummary } from './patchnotes.mjs';
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -43,7 +44,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
@@ -421,6 +422,17 @@ if (!HOME) try {
   const j = await r.json();
   const news = (j?.appnews?.newsitems ?? []).map((n) => ({ gid: String(n.gid), title: n.title, url: n.url, date: n.date, contents: n.contents }));
   if (news.length) console.log('Новости CS2:', await toWorker('/ingest', { kind: 'news', fetchedAt: now(), items: news }));
+  // Краткое содержание на русском — для новых обновлений, которых ещё нет на русском (Worker говорит, каких именно).
+  if (newsNeedRu.length) {
+    const full = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=0&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });
+    const fj = full.ok ? await full.json() : null;
+    for (const n of (fj?.appnews?.newsitems ?? []).filter((x) => newsNeedRu.includes(String(x.gid))).slice(0, 2)) {
+      try {
+        const r = await russianSummary({ title: n.title, contents: n.contents }, sleep);
+        console.log('Новость на русском:', n.title, await toWorker('/ingest', { kind: 'news_ru', fetchedAt: now(), gid: String(n.gid), titleRu: r.titleRu, summary: r.summary }));
+      } catch (e) { console.error('Перевод новости:', e.message); }
+    }
+  }
 } catch (e) {
   console.error('Новости CS2:', e.message);
 }

@@ -71,6 +71,10 @@ test('обновления CS2: первые новости только зап�
   await ingest(env, { kind: 'news', items: [news('1', DAY1 - 86400), { ...news('2', DAY1), url: 'https://evil.example/x' }] }, DAY1);
   assert.deepEqual(d.db.prepare('SELECT gid, posted_at IS NOT NULL AS seeded FROM news').all().map((r: any) => [r.gid, r.seeded]), [['1', 1]], 'чужая ссылка отброшена, первое — без публикации');
   await ingest(env, { kind: 'news', items: [news('3', DAY1)] }, DAY1);
+  // Краткое содержание на русском (его присылает сборщик) — пост ждёт его до 45 минут.
+  const items = await (await handleIngest(new Request('https://w.example.dev/ingest/items', { headers: { 'X-Ingest-Secret': SECRET } }), env, DAY1)).json() as any;
+  assert.deepEqual(items.newsNeedRu, ['3']);
+  await ingest(env, { kind: 'news_ru', gid: '3', titleRu: 'Обновление Counter-Strike 2', summary: { market: ['Добавлен кейс Gallery 2'], sections: [{ name: 'Карты', items: ['Mirage: исправлена позиция у A'] }], more: 4 } }, DAY1);
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   await db.storeFx(D, [EUR, USD], DAY1);
   const sent: { method: string; body: Record<string, any> }[] = [];
@@ -84,7 +88,8 @@ test('обновления CS2: первые новости только зап�
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
   const newsPosts = posts.filter((p) => /Обновление CS2/.test(p.body.text));
   assert.equal(newsPosts.length, 1, 'новость — один раз');
-  assert.match(newsPosts[0].body.text, /Counter-Strike 2 Update 3/);
+  assert.match(newsPosts[0].body.text, /Обновление Counter-Strike 2/);
+  assert.match(newsPosts[0].body.text, /Важно для рынка[\s\S]*Gallery 2[\s\S]*Карты[\s\S]*Mirage[\s\S]*ещё 4 изменений/);
   assert.equal(newsPosts[0].body.reply_markup.inline_keyboard[0][0].url, 'https://store.steampowered.com/news/app/730/view/3');
   void ADMIN;
 });
@@ -105,7 +110,7 @@ test('картинки в канале: обложка новости из Steam
   const p = (await composeChannelPost(D, 'ideas', DAY1))!;
   assert.equal(p.image, img);
   // Новость с картинкой уходит в канал с превью над текстом; пост без картинки — превью выключено.
-  const news = (gid: string, contents: string) => ({ gid, title: `Update ${gid}`, url: `https://store.steampowered.com/news/app/730/view/${gid}`, date: DAY1, contents });
+  const news = (gid: string, contents: string) => ({ gid, title: `Update ${gid}`, url: `https://store.steampowered.com/news/app/730/view/${gid}`, date: DAY1 - 3600, contents });
   await ingest(env, { kind: 'news', items: [news('1', 'x')] }, DAY1);
   await ingest(env, { kind: 'news', items: [news('2', '{STEAM_CLAN_IMAGE}/1/cover.jpg Fixed')] }, DAY1);
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
@@ -123,4 +128,31 @@ test('картинки в канале: обложка новости из Steam
   if (idea) assert.equal(idea.body.link_preview_options.url, img);
   const admin = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id !== -1001234);
   if (admin) assert.deepEqual(admin.body.link_preview_options, { is_disabled: true });
+});
+
+
+test('обновление CS2 вышло по-английски (перевода не было 45 мин) — потом отдельный пост «кратко на русском», один раз', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  const news = (gid: string, date: number) => ({ gid, title: 'Counter-Strike 2 Update', url: `https://store.steampowered.com/news/app/730/view/${gid}`, date, contents: '[p]Fixed things[/p]' });
+  await ingest(env, { kind: 'news', items: [news('1', DAY1 - 86400)] }, DAY1);
+  await ingest(env, { kind: 'news', items: [news('5', DAY1 - 3600)] }, DAY1);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  await db.storeFx(D, [EUR, USD], DAY1);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+  ]);
+  await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`);
+  await runCycle(env, { now: DAY1, fetcher });
+  // первый цикл тратит бюджет на остальные задачи — даём каналу ещё запуск, пока перевода нет
+  await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`);
+  await runCycle(env, { now: DAY1 + 300, fetcher });
+  await ingest(env, { kind: 'news_ru', gid: '5', titleRu: 'Обновление Counter-Strike 2', summary: { market: [], sections: [{ name: 'Геймплей', items: ['Исправлена ошибка с гранатами'] }], more: 0 } }, DAY1 + 600);
+  for (const t of [DAY1 + 700, DAY1 + 1100, DAY1 + 1500]) { await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`); await runCycle(env, { now: t, fetcher }); }
+  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234 && /Обновление CS2/.test(s.body.text));
+  assert.equal(posts.length, 2, 'английский + один русский');
+  assert.match(posts[1].body.text, /кратко на русском[\s\S]*Геймплей[\s\S]*гранатами/);
 });

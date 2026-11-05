@@ -26,7 +26,7 @@ import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
 import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
-import { ensureTodayIdeas, newsPost, type NewsItem } from './insights.ts';
+import { ensureTodayIdeas, newsPost, newsRuLines, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
 
@@ -816,10 +816,19 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     return;
   }
   // 1. Обновление CS2 — не старше 3 суток, по одному за запуск.
-  const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? ORDER BY published_at LIMIT 1').bind(ctx.now - 3 * 86400).first<NewsItem>();
-  if (n) {
+  // Ждём краткое содержание на русском до 45 минут после выхода обновления; дольше — публикуем как есть.
+  const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1')
+    .bind(ctx.now - 3 * 86400, ctx.now - 45 * 60).first<NewsItem>();
+  // Обновление уже вышло без перевода (по-английски), а перевод пришёл позже — отдельным постом «кратко на русском», один раз.
+  const late = n ? null : await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NOT NULL AND posted_at >= ? AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1')
+    .bind(ctx.now - 2 * 86400, ctx.now - 2 * 86400).first<NewsItem & { posted_at: number }>();
+  if (late && newsRuLines(late)) {
+    writes.push(ctx.db.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(ctx.now, late.gid));
+    await post(newsPost(late).replace('Обновление CS2', 'Обновление CS2 — кратко на русском'), [[{ text: '📰 Полный список в Steam', url: late.url }], ...botButton(user)], late.image ?? null);
+  } else if (n) {
+    if (newsRuLines(n)) writes.push(ctx.db.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
     writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
-    await post(newsPost(n), [[{ text: '📰 Читать в Steam', url: n.url }], ...botButton(user)], n.image ?? null);
+    await post(newsPost(n), [[{ text: newsRuLines(n) ? '📰 Полный список в Steam' : '📰 Читать в Steam', url: n.url }], ...botButton(user)], n.image ?? null);
   } else {
     // 2. Посты по расписанию.
     const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;

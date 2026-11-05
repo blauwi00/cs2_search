@@ -72,6 +72,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       sitePriceNames: await sitePriceNames(d, now),
       // «Разгон баланса»: нужен ли проход по дешёвым предметам Steam и какие проверить первыми.
       rally: await rallyInfo(d),
+      // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
+      newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
       steamPauseUntil: Number(await getMeta(d, 'steam_pause_until')) || 0,
       // Картинки для всего каталога: с какого места продолжать (раз в неделю — новый проход, чтобы подхватить новые предметы).
@@ -304,6 +306,19 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         await setMetaStmt(d, 'img_cursor', String(cur)).run();
         if (cur === -1) await setMetaStmt(d, 'img_pass_at', String(now)).run();
       }
+    } else if (body.kind === 'news_ru') {
+      const b = body as { gid?: unknown; titleRu?: unknown; summary?: unknown };
+      const str = (x: unknown, max: number) => (typeof x === 'string' && x.trim() ? x.trim().slice(0, max) : null);
+      const list = (x: unknown, n: number) => (Array.isArray(x) ? x.map((y) => str(y, 400)).filter((y): y is string => !!y).slice(0, n) : []);
+      const sm = b.summary && typeof b.summary === 'object' ? b.summary as { market?: unknown; sections?: unknown; more?: unknown } : null;
+      const clean = sm ? {
+        market: list(sm.market, 4),
+        sections: (Array.isArray(sm.sections) ? sm.sections : []).slice(0, 8).map((x: any) => ({ name: str(x?.name, 40), items: list(x?.items, 4) })).filter((x) => x.items.length),
+        more: Number.isSafeInteger(sm.more) && (sm.more as number) >= 0 ? sm.more : 0,
+      } : null;
+      if (typeof b.gid !== 'string' || !/^\d{1,25}$/.test(b.gid) || !clean || (!clean.market.length && !clean.sections.length)) return json({ ok: false, error: 'bad_news_ru' }, 400);
+      await d.prepare('UPDATE news SET title_ru = ?, summary_ru = ? WHERE gid = ?').bind(str(b.titleRu, 200), JSON.stringify(clean), b.gid).run();
+      result.stored = 1;
     } else if (body.kind === 'agent_ping') {
       // Домашний агент (цены Steam с компьютера владельца) жив — показываем в /stats и панели.
       await setMetaStmt(d, 'agent_at', JSON.stringify({ at: now, requests: Number((body as { requests?: unknown }).requests) || 0, limited: (body as { limited?: unknown }).limited === true })).run();
@@ -398,8 +413,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         const url2 = typeof r?.url === 'string' && /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net|www\.counter-strike\.net)\//.test(r.url) ? r.url : null;
         const date = Number(r?.date);
         if (!gid || !title || !url2 || !Number.isInteger(date) || date > now + 3600) continue;
-        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now, newsImage(r.contents)));
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now, newsImage(r.contents), seeded ? null : now));
       }
       if (stmts.length) await d.batch(stmts);
       result.stored = stmts.length;

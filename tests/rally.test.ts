@@ -152,11 +152,12 @@ test('разгон: сборщик → кандидаты в приложени�
   assert.match(texts, /Можно продавать/); assert.match(texts, /новая возможность/);
 });
 
-test('симуляция бота: покупает сам по правилам, продаёт по факту; пост в канал — только если итог в плюсе', async () => {
+test('проверка ботом: 10 счетов берут разные предметы, продают по факту; пост — только если ≥ 5 из 10 в плюсе', async () => {
   const { migratedDb, testEnv, ADMIN } = await import('./helpers.ts');
   const { handleIngest } = await import('../src/ingest.ts');
   const db = await import('../src/storage/db.ts');
-  const run = async (sellMedian: string) => {
+  const names = Array.from({ length: 10 }, (_, i) => `Case ${i}`);
+  const run = async (sellFor: (i: number) => string) => {
     const d = migratedDb(); const D = d as unknown as D1Database;
     const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
     await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
@@ -164,23 +165,22 @@ test('симуляция бота: покупает сам по правилам
     const ingest = (items: object[], at: number) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'rally_scan', fetchedAt: at, items }) }), env, at);
     const sa = { d1: 0.1755, d7: 0.1765, d30: 0.1775, d90: 0.175 };
     const it = (name: string, low: string, med: string) => ({ name, sa, steam: { lowest_price: low, median_price: med, volume: '1,234' } });
-    assert.equal((await (await handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, NOW)).json() as any).rally.active, true, 'симуляция бота включает сбор данных');
-    await ingest([it('Revolution Case', '4,50₴', '7,00₴'), it('Fever Case', '4,40₴', '7,00₴')], NOW);
-    await ingest([it('Revolution Case', '4,50₴', '7,00₴'), it('Fever Case', '4,40₴', '7,00₴')], NOW + 600);
-    const bought = d.db.prepare("SELECT name, buy_kop FROM rally_trades WHERE telegram_id = 0 ORDER BY id").all() as any[];
-    assert.deepEqual(bought.map((x) => x.name).sort(), ['Fever Case', 'Revolution Case']);
-    await ingest([it('Revolution Case', sellMedian, sellMedian), it('Fever Case', sellMedian, sellMedian)], NOW + 8 * 86400);
+    assert.equal((await (await handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, NOW)).json() as any).rally.active, true);
+    await ingest(names.map((n) => it(n, '4,50₴', '7,00₴')), NOW);
+    const accs = d.db.prepare("SELECT telegram_id, name FROM rally_trades WHERE telegram_id <= 0").all() as any[];
+    assert.equal(accs.length, 10); assert.equal(new Set(accs.map((x) => x.telegram_id)).size, 10); assert.equal(new Set(accs.map((x) => x.name)).size, 10, 'разные предметы');
+    await ingest(names.map((n, i) => it(n, sellFor(i), sellFor(i))), NOW + 8 * 86400);
     return d;
   };
-  const good = await run('6,90₴');
-  assert.equal(good.db.prepare("SELECT COUNT(*) AS n FROM rally_trades WHERE telegram_id = 0 AND status = 'sold'").get().n, 2);
+  const good = await run((i) => (i < 7 ? '6,90₴' : '4,60₴'));   // 7 из 10 в плюсе
   const pend = JSON.parse((good.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get() as any).value);
-  assert.match(pend.text, /Разгон баланса/); assert.match(pend.text, /симуляци/); assert.match(pend.text, /не обещание заработка/);
-  assert.equal(JSON.parse((good.db.prepare("SELECT value FROM meta WHERE key = 'card_request'").get() as any).value).slot, 'rally');
-  assert.match((good.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref LIKE 'post:%'").get(ADMIN) as any).text, /сработала/);
-  const bad = await run('4,60₴'); // продали дешевле — после комиссии убыток
-  assert.equal(bad.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get(), undefined, 'убыток — поста нет');
-  assert.match((bad.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref = 'fail'").get(ADMIN) as any).text, /не сработала/);
+  assert.match(pend.text, /в плюсе 7 из 10 сделок/); assert.match(pend.text, /не обещание заработка/); assert.match(pend.text, /3 из 10 сделок не дали прибыли/);
+  const card = JSON.parse((good.db.prepare("SELECT value FROM meta WHERE key = 'card_request'").get() as any).value);
+  assert.equal(card.slot, 'rally'); assert.equal(card.big, '7 из 10');
+  assert.match((good.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref LIKE 'post:%'").get(ADMIN) as any).text, /7 из 10/);
+  const bad = await run((i) => (i < 4 ? '6,90₴' : '4,60₴'));    // 4 из 10 — не сработало
+  assert.equal(bad.db.prepare("SELECT value FROM meta WHERE key = 'channel_pending'").get(), undefined, 'поста нет');
+  assert.match((bad.db.prepare("SELECT text FROM outbox WHERE telegram_id = ? AND ref = 'fail'").get(ADMIN) as any).text, /4 из 10/);
 });
 
 test('бэктест на истории: сигнал только по прошлым данным, результат — через 7 дней; без данных о продаже сделка не считается', async () => {
@@ -195,4 +195,21 @@ test('бэктест на истории: сигнал только по про�
   const crash = dip.map((x, i) => (i >= 11 ? { ...x, min: 400, avg: 480 } : x));
   assert.equal(backtestItem('A', crash)[0].win, false, 'через 7 дней цена упала — убыток');
   assert.equal(backtestItem('A', dip.slice(0, 15)).length, 0, 'нет данных через 7 дней — не считаем');
+});
+
+test('бэктест через Worker: SQL работает, история дешёвых предметов копится из прохода «Разгона»', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { handleIngest } = await import('../src/ingest.ts');
+  const db = await import('../src/storage/db.ts');
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+  await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+  d.db.exec(`INSERT INTO meta (key, value) VALUES ('rally_bot', 'off')`);
+  const sa = { d1: 0.1755, d7: 0.1765, d30: 0.1775, d90: 0.175 };
+  for (let i = 0; i < 20; i++) {
+    const at = NOW + i * 86400;
+    await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ kind: 'rally_scan', fetchedAt: at, items: [{ name: 'Case X', sa, steam: { lowest_price: i === 10 ? '4,50₴' : '6,90₴', median_price: '7,00₴', volume: '900' } }] }) }), env, at);
+  }
+  const r = await (await handleIngest(new Request('https://w/ingest/backtest?max=600', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, NOW + 20 * 86400)).json() as any;
+  assert.equal(r.ok, true); assert.equal(r.days, 20); assert.equal(r.trades, 1); assert.equal(r.wins, 1);
 });

@@ -139,7 +139,7 @@ export function evaluate(e: RallyEntry, s: RallySettings, now: number, track: Tr
   };
 }
 
-export function findCandidates(entries: RallyEntry[], s: RallySettings, now: number, track?: Track): { list: RallyCandidate[]; hidden: number; rejected: Record<string, number>; message: string | null } {
+export function findCandidates(entries: RallyEntry[], s: RallySettings, now: number, track?: Track, limit = 5): { list: RallyCandidate[]; hidden: number; rejected: Record<string, number>; message: string | null } {
   const ok: RallyCandidate[] = [];
   const rejected: Record<string, number> = {};
   for (const e of entries) {
@@ -147,7 +147,7 @@ export function findCandidates(entries: RallyEntry[], s: RallySettings, now: num
     if (r.c) ok.push(r.c); else if (r.reject) rejected[r.reject] = (rejected[r.reject] ?? 0) + 1;
   }
   const allowed = ok.filter((c) => c.risk !== 'unknown' && RISK_ORDER[c.risk] <= RISK_ORDER[s.risk]);
-  const list = allowed.sort((x, y) => RISK_ORDER[x.risk] - RISK_ORDER[y.risk] || y.profitKop - x.profitKop).slice(0, 5);
+  const list = allowed.sort((x, y) => RISK_ORDER[x.risk] - RISK_ORDER[y.risk] || y.profitKop - x.profitKop).slice(0, limit);
   return { list, hidden: ok.length - allowed.length, rejected, message: list.length ? null : NO_DEALS_TEXT };
 }
 

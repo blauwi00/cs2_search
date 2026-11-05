@@ -83,12 +83,15 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
   // Бэктест «Разгона» на собственной истории цен Steam (только для сборщика/владельца по секрету).
   if (req.method === 'GET' && url.pathname === '/ingest/backtest') {
     const maxKop = Math.min(100000, Math.max(100, Number(url.searchParams.get('max')) || 600));
-    const rows = (await d.prepare(`SELECT i.market_hash_name AS name, day, MIN(mn) AS min, CAST(AVG(av) AS INTEGER) AS avg FROM (
+    const rows = (await d.prepare(`SELECT name, day, MIN(mn) AS min, CAST(AVG(av) AS INTEGER) AS avg FROM (
+        SELECT name, day, min_kop AS mn, sum_kop / n AS av FROM rally_history
+        UNION ALL
+        SELECT i.market_hash_name AS name, day, mn, av FROM (
         SELECT item_id, day, min_minor AS mn, avg_minor AS av FROM price_daily WHERE source = 'steam' AND price_type = 'lowest_listing' AND currency = 'UAH' AND min_minor IS NOT NULL
         UNION ALL
         SELECT item_id, date(observed_at, 'unixepoch') AS day, MIN(price_kop) AS mn, AVG(price_kop) AS av FROM price_snapshots
           WHERE source = 'steam' AND price_type = 'lowest_listing' AND price_kop IS NOT NULL GROUP BY item_id, day
-      ) x JOIN items i ON i.id = x.item_id GROUP BY name, day ORDER BY name, day`).all<{ name: string; day: string; min: number; avg: number }>()).results;
+      ) x JOIN items i ON i.id = x.item_id) GROUP BY name, day ORDER BY name, day`).all<{ name: string; day: string; min: number; avg: number }>()).results;
     const by = new Map<string, DayPrice[]>();
     for (const r of rows) { const a = by.get(r.name) ?? []; a.push({ day: r.day, min: r.min, avg: r.avg }); by.set(r.name, a); }
     const s = { ...RALLY_DEFAULTS, maxItemKop: maxKop };
@@ -306,6 +309,9 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const ids = (Array.isArray((body as { nameids?: unknown }).nameids) ? (body as { nameids: unknown[] }).nameids : []).slice(0, 20) as { name?: unknown; id?: unknown }[];
       await d.batch([
         d.prepare('INSERT INTO rally_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at').bind(JSON.stringify(merged), at),
+        ...fresh.filter((e) => e.steam?.lowest).map((e) => d.prepare(`INSERT INTO rally_history (name, day, min_kop, sum_kop, n, volume) VALUES (?, ?, ?, ?, 1, ?)
+          ON CONFLICT(name, day) DO UPDATE SET min_kop = MIN(min_kop, excluded.min_kop), sum_kop = sum_kop + excluded.sum_kop, n = n + 1, volume = excluded.volume`)
+          .bind(e.name, new Date(at * 1000).toISOString().slice(0, 10), e.steam!.lowest, e.steam!.lowest, e.steam!.volume)),
         ...ids.filter((x) => typeof x?.name === 'string' && (x.name as string).length <= 200 && Number.isSafeInteger(x.id) && (x.id as number) > 0)
           .map((x) => d.prepare('INSERT INTO item_nameids (name, nameid, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET nameid = excluded.nameid, at = excluded.at').bind(x.name, x.id, now)),
       ]);

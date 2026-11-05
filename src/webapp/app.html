@@ -1284,12 +1284,12 @@ function rallyOpps(r) {
   if (r.walletWarn) h += '<div class="card" style="color:var(--amber);font-size:13px">⚠️ Цены Steam здесь — в гривнах (кошелёк ' + esc(s.walletCur) + '). У тебя в боте выбрана валюта ' + esc(r.walletWarn) + ': если кошелёк Steam в другой валюте, цены в нём будут другими.</div>';
   if (r.bot) {
     var b = r.bot;
-    h += '<details class="more"><summary><span class="chev">›</span> 🤖 Бот проверяет схему сам: ' + uahShort(b.cap.balanceKop + b.cap.inItemsKop) + ' из ' + uahShort(b.cap.startKop) + ' · сделок ' + b.cap.closedCount + '</summary><div class="card" style="font-size:13px">' +
-      '<div class="mut" style="margin-bottom:6px">Виртуальные 30 ₴, те же правила (6 ₴, резерв 18 ₴, низкий риск). Продажа — по фактической цене Steam после разблокировки.' + (b.since ? ' Идёт с ' + dateRu(b.since) + '.' : '') + '</div>' +
-      kv('Итог закрытых', '<span class="' + cls(b.cap.realizedKop) + '">' + uah(b.cap.realizedKop, true) + '</span>') +
+    h += '<details class="more"><summary><span class="chev">›</span> 🤖 Проверка схемы ботом: ' + (b.closed ? 'в плюсе ' + b.wins + ' из ' + b.closed : 'идёт') + '</summary><div class="card" style="font-size:13px">' +
+      '<div class="mut" style="margin-bottom:6px">10 виртуальных счетов по 30 ₴, те же правила (6 ₴, резерв 18 ₴, низкий риск), разные предметы. Продажа — по фактической цене Steam после 7 дней блокировки. Вывод — после ' + b.need + ' закрытых сделок.' + (b.since ? ' Идёт с ' + dateRu(b.since) + '.' : '') + '</div>' +
+      kv('Закрыто сделок', b.closed + ' из ' + b.need) + kv('В плюсе', b.wins) + kv('Итог', '<span class="' + cls(b.realizedKop) + '">' + uah(b.realizedKop, true) + '</span>') +
       b.open.map(function (t) { return kv('🔒 ' + esc(t.name), 'куплено ' + uahShort(t.buy_kop) + ' · до ' + dateRu(t.unlock_at)); }).join('') +
-      b.closed.map(function (t) { var p = t.sold_net_kop - t.buy_kop * t.qty; return kv('✓ ' + esc(t.name), uahShort(t.buy_kop) + ' → ' + uahShort(t.sold_price_kop) + ' · <span class="' + cls(p) + '">' + uah(p, true) + '</span>'); }).join('') +
-      (!b.open.length && !b.closed.length ? '<div class="mut">Пока ни одной сделки: подходящих безопасных возможностей не было.</div>' : '') + '</div></details>';
+      b.last.map(function (t) { var p = t.sold_net_kop - t.buy_kop * t.qty; return kv((p > 0 ? '✅ ' : '❌ ') + esc(t.name), uahShort(t.buy_kop) + ' → ' + uahShort(t.sold_price_kop) + ' · <span class="' + cls(p) + '">' + uah(p, true) + '</span>'); }).join('') +
+      (!b.open.length && !b.last.length ? '<div class="mut">Пока ни одной сделки: подходящих безопасных возможностей не было.</div>' : '') + '</div></details>';
   }
   h += '<div class="mut" style="font-size:12px;margin:0 2px 8px">Данные Steam: ' + (r.dataAt ? 'обновлено ' + ago(r.dataAt) + ' · свежих предметов ' + r.checked : 'ещё не собраны — сборщик начнёт проверку в ближайшие 10–20 минут') + '</div>';
   if (!c.list.length) {

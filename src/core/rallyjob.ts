@@ -77,66 +77,89 @@ const outboxStmt = (d: D1Database, tid: number, kind: string, ref: string, text:
   d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, ?)`)
     .bind(tid, kind, ref, text, JSON.stringify(kb), at, now);
 
-/** Виртуальный счёт самого бота: он торгует по схеме «Разгона» с настройками по умолчанию (30 ₴, 6 ₴, резерв 18 ₴, 2 позиции, только низкий риск). */
-export const BOT_TID = 0;
 const fmtUah = (k: number, sign = false) => `${sign && k > 0 ? '+' : k < 0 ? '−' : ''}${(Math.abs(k) / 100).toFixed(2).replace('.', ',')} ₴`;
 
-/** Пост о новой функции — ТОЛЬКО если симуляция бота дала результат: ≥ 2 закрытых сделок и итог в плюсе. Иначе — честный отчёт владельцу. */
-export function rallyPostText(cap: ReturnType<typeof capital>, closed: RallyTrade[], bot: string | null): string {
-  const lines = closed.slice(0, 4).map((t) => `• ${esc(t.name)}: купил за ${fmtUah(t.buy_kop * t.qty)} → продал за ${fmtUah(t.sold_price_kop! * t.qty)} → пришло ${fmtUah(t.sold_net_kop!)} (${fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true)})`);
+/** Пост о новой функции — ТОЛЬКО если проверка сработала (≥ 10 закрытых сделок, ≥ 5 в плюсе, общий итог в плюсе). */
+export function rallyPostText(st: BotStats): string {
+  const lines = st.best.map((t) => `• ${esc(t.name)}: ${fmtUah(t.buy_kop * t.qty)} → ${fmtUah(t.sold_price_kop! * t.qty)}, пришло ${fmtUah(t.sold_net_kop!)} (${fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true)})`);
   return [
     '🚀 <b>Новое в боте: «Разгон баланса» Steam</b>', '',
-    `Мы проверили схему на себе — в симуляции, на виртуальных ${fmtUah(cap.startKop)}. Бот сам выбирал сделки внутри Steam, ждал 7 дней блокировки и «продавал» по <b>реальным</b> ценам Steam на тот момент, с настоящей комиссией.`, '',
-    `<b>Итог: ${fmtUah(cap.startKop)} → ${fmtUah(cap.balanceKop + cap.inItemsKop)}</b> (${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} ${cap.closedCount === 1 ? 'сделку' : cap.closedCount < 5 ? 'сделки' : 'сделок'})`,
-    ...lines, '',
+    `Прежде чем показать вам, бот проверил схему сам: ${st.accounts} виртуальных счетов по ${fmtUah(st.startKop)}, сделки внутри Steam, 7 дней блокировки, продажа по <b>реальным</b> ценам Steam на тот момент и настоящая комиссия.`, '',
+    `<b>Результат: в плюсе ${st.wins} из ${st.closed} сделок</b>, общий итог ${fmtUah(st.realizedKop, true)}.`,
+    ...(lines.length ? ['Лучшие:', ...lines] : []), '',
     'Что умеет раздел:',
     '• ищет дешёвые ликвидные предметы ниже обычной цены — до 5 кандидатов, только с подтверждёнными данными;',
     '• считает точную комиссию Steam и 7 дней блокировки, показывает риск;',
     '• лимиты: 6 ₴ на покупку, резерв 18 ₴, максимум 2 позиции (всё настраивается);',
-    '• симуляция — сначала тренируйся на виртуальных деньгах.', '',
-    '<i>Это симуляция, а не обещание заработка: рынок за 7 дней может измениться, бывают и убыточные сделки. Бот ничего не покупает сам.</i>',
-    bot ? `
-Открыть: приложение бота → «Разгон баланса»` : '',
+    '• симуляция — сначала потренируйся на виртуальных деньгах.', '',
+    `<i>Это симуляция, а не обещание заработка: ${st.closed - st.wins} из ${st.closed} сделок не дали прибыли, рынок за 7 дней может измениться. Бот ничего не покупает сам.</i>`,
+    'Открыть: приложение бота → «Разгон баланса»',
   ].filter((x) => x !== '').join('\n').replace('\n<i>', '\n\n<i>');
+}
+
+/** 10 параллельных виртуальных счетов бота (telegram_id 0, −1 … −9): каждый по 30 ₴ и по тем же правилам,
+ *  но берёт РАЗНЫЕ предметы — так 10 независимых сделок закрываются примерно за одну блокировку (7–8 дней), а не за месяц. */
+export const BOT_ACCOUNTS = Array.from({ length: 10 }, (_, i) => -i);
+export const BOT_MIN_CLOSED = 10;   // вывод о схеме — не раньше 10 закрытых сделок
+export const BOT_MIN_WINS = 5;      // «работает» — минимум половина сделок в плюсе и общий итог в плюсе
+
+export interface BotStats { closed: number; wins: number; realizedKop: number; startKop: number; open: number; accounts: number; best: RallyTrade[] }
+export function botStats(trades: RallyTrade[]): BotStats {
+  const sold = trades.filter((t) => t.status === 'sold' && t.parent_id == null);
+  const accounts = new Set(trades.map((t) => (t as RallyTrade & { telegram_id?: number }).telegram_id)).size;
+  return {
+    closed: sold.length, wins: sold.filter((t) => (t.sold_net_kop ?? 0) > t.buy_kop * t.qty).length,
+    realizedKop: sold.reduce((a, t) => a + (t.sold_net_kop ?? 0) - t.buy_kop * t.qty, 0), startKop: RALLY_DEFAULTS.simStartKop,
+    open: trades.filter((t) => t.status === 'open').length, accounts,
+    best: [...sold].sort((a, b) => ((b.sold_net_kop ?? 0) - b.buy_kop * b.qty) - ((a.sold_net_kop ?? 0) - a.buy_kop * a.qty)).slice(0, 3),
+  };
 }
 
 async function botSim(d: D1Database, entries: RallyEntry[], now: number, adminId: number | null, writes: D1PreparedStatement[]): Promise<void> {
   if ((await getMeta(d, 'rally_bot')) === 'off') return;
-  const trades = (await d.prepare('SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = ?').bind(BOT_TID, 'sim').all<RallyTrade>()).results;
+  const all = (await d.prepare(`SELECT * FROM rally_trades WHERE telegram_id <= 0 AND telegram_id >= -9 AND mode = 'sim'`).all<RallyTrade & { telegram_id: number }>()).results;
   const s = RALLY_DEFAULTS;
-  const cap = capital(trades, s, 'sim', now);
   const startedAt = Number(await getMeta(d, 'rally_bot_started')) || 0;
   if (!startedAt) writes.push(setMetaStmt(d, 'rally_bot_started', String(now)));
-  // Покупка: лучший кандидат с низким риском, которого ещё нет в портфеле, если позволяют лимиты.
-  const { list } = findCandidates(entries, s, now, await rallyTrack(d, null));
-  const pick = list.find((c) => !trades.some((t) => t.status === 'open' && t.name === c.name));
-  if (pick && !buyBlockers(cap, s, pick.buyKop).length) {
+  // Покупки: каждому счёту со свободным местом — лучший кандидат с низким риском, которого нет ни у одного счёта бота.
+  const { list } = findCandidates(entries, s, now, await rallyTrack(d, null), 50);
+  const held = new Set(all.filter((t) => t.status === 'open').map((t) => t.name));
+  const bought: string[] = [];
+  for (const acc of BOT_ACCOUNTS) {
+    const mine = all.filter((t) => t.telegram_id === acc);
+    const cap = capital(mine, s, 'sim', now);
+    const pick = list.find((c) => !held.has(c.name));
+    if (!pick || buyBlockers(cap, s, pick.buyKop).length) continue;
+    held.add(pick.name);
     writes.push(d.prepare(`INSERT INTO rally_trades (telegram_id, mode, name, img, qty, buy_kop, bought_at, unlock_at, target_kop, predicted_net_kop, risk) VALUES (?, 'sim', ?, ?, 1, ?, ?, ?, ?, ?, ?)`)
-      .bind(BOT_TID, pick.name, pick.img, pick.buyKop, now, pick.unlockAt, pick.targetKop, pick.netKop, pick.risk));
-    if (adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `buy:${pick.name}:${now}`, `🤖 <b>Симуляция бота: виртуальная покупка</b>\n${esc(pick.name)} за ${fmtUah(pick.buyKop)} → план ${fmtUah(pick.targetKop)}, прогноз ${fmtUah(pick.profitKop, true)} · риск ${RISK_RU[pick.risk]}`, [], now, now));
+      .bind(acc, pick.name, pick.img, pick.buyKop, now, pick.unlockAt, pick.targetKop, pick.netKop, pick.risk));
+    bought.push(`${esc(pick.name)} за ${fmtUah(pick.buyKop)} → прогноз ${fmtUah(pick.profitKop, true)}`);
   }
-  // Итог: пост в канал — только если схема сработала. Один раз.
+  if (bought.length && adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `buy:${now}`, `🤖 <b>Симуляция бота: виртуальные покупки</b>\n${bought.map((x) => '• ' + x).join('\n')}\nРезультат — после 7 дней блокировки, по фактическим ценам Steam.`, [], now, now));
+
+  // Вывод о схеме: не раньше 10 закрытых сделок. Пост — только если сработала: ≥ 5 из 10 в плюсе и общий итог в плюсе.
+  const st = botStats(all);
   const state = await getMeta(d, 'rally_post');
-  if (state === 'done') return;
-  const closed = trades.filter((t) => t.status === 'sold').sort((a, b) => (b.sold_at ?? 0) - (a.sold_at ?? 0));
-  if (closed.length >= 2) {
-    if (cap.realizedKop > 0 && !(await getMeta(d, 'channel_pending')) && (await getMeta(d, 'channel_id'))) {
-      const day = new Date(now * 1000).toISOString().slice(0, 10);
-      const id = `rally-${day}`;
-      const text = rallyPostText(cap, closed, await getMeta(d, 'bot_username'));
-      const card = { id, slot: 'rally', date: day.split('-').reverse().join('.'), title: 'Разгон баланса', subtitle: 'симуляция бота · реальные цены Steam',
-        big: fmtUah(cap.realizedKop, true), bigLabel: `${fmtUah(cap.startKop)} → ${fmtUah(cap.balanceKop + cap.inItemsKop)} за ${cap.closedCount} сделки`,
-        deals: closed.slice(0, 3).map((t) => ({ name: t.name, img: t.img, buy: 'Steam', buyPrice: fmtUah(t.buy_kop * t.qty), sell: 'Steam, через 7 дней', sellPrice: fmtUah(t.sold_price_kop! * t.qty), profit: fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true), roi: `${Math.round(((t.sold_net_kop! - t.buy_kop * t.qty) * 100) / (t.buy_kop * t.qty))}%` })),
-        note: 'симуляция, не обещание заработка' };
-      writes.push(setMetaStmt(d, 'channel_pending', JSON.stringify({ id, text, image: null, at: now })), setMetaStmt(d, 'card_request', JSON.stringify(card)), setMetaStmt(d, 'rally_post', 'done'));
-      if (adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `post:${day}`, `✅ <b>Схема сработала в симуляции</b>: ${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} сделки. Пост о «Разгоне баланса» с картинкой уйдёт в канал в ближайшие ~10–25 минут.`, [], now, now));
-    } else if (cap.realizedKop <= 0 && state !== 'fail' && adminId) {
-      writes.push(setMetaStmt(d, 'rally_post', 'fail'));
-      writes.push(outboxStmt(d, adminId, 'rally_bot', 'fail', `⚠️ <b>Симуляция бота: схема пока не сработала</b> — ${fmtUah(cap.realizedKop, true)} за ${cap.closedCount} сделки. Пост в канал не публикую. Симуляция продолжается: если итог станет плюсовым, пост выйдет сам.`, [], now, now));
+  if (state === 'done' || st.closed < BOT_MIN_CLOSED) {
+    if (startedAt && now - startedAt > 3 * 86400 && !all.length && !(await getMeta(d, 'rally_bot_empty')) && adminId) {
+      writes.push(setMetaStmt(d, 'rally_bot_empty', String(now)));
+      writes.push(outboxStmt(d, adminId, 'rally_bot', 'empty', '🤖 <b>Симуляция бота</b>: за 3 дня безопасных сделок по правилам «Разгона» (6 ₴, резерв 18 ₴, низкий риск) не нашлось. Это честный результат: на дешёвых предметах Steam выгодные расхождения редки.', [], now, now));
     }
-  } else if (startedAt && now - startedAt > 3 * 86400 && !trades.length && !(await getMeta(d, 'rally_bot_empty')) && adminId) {
-    writes.push(setMetaStmt(d, 'rally_bot_empty', String(now)));
-    writes.push(outboxStmt(d, adminId, 'rally_bot', 'empty', '🤖 <b>Симуляция бота</b>: за 3 дня безопасных сделок по правилам «Разгона» (6 ₴, резерв 18 ₴, низкий риск) не нашлось. Это честный результат: на дешёвых предметах Steam выгодные расхождения редки.', [], now, now));
+    return;
+  }
+  const works = st.wins >= BOT_MIN_WINS && st.realizedKop > 0;
+  if (works && !(await getMeta(d, 'channel_pending')) && (await getMeta(d, 'channel_id'))) {
+    const day = new Date(now * 1000).toISOString().slice(0, 10);
+    const id = `rally-${day}`;
+    const card = { id, slot: 'rally', date: day.split('-').reverse().join('.'), title: 'Разгон баланса', subtitle: 'проверка ботом на реальных ценах Steam',
+      big: `${st.wins} из ${st.closed}`, bigLabel: `сделок в плюсе · итог ${fmtUah(st.realizedKop, true)}`,
+      deals: st.best.map((t) => ({ name: t.name, img: t.img, buy: 'Steam', buyPrice: fmtUah(t.buy_kop * t.qty), sell: 'Steam', sellPrice: fmtUah(t.sold_price_kop! * t.qty), profit: fmtUah(t.sold_net_kop! - t.buy_kop * t.qty, true), roi: '' })),
+      note: 'симуляция, не обещание заработка' };
+    writes.push(setMetaStmt(d, 'channel_pending', JSON.stringify({ id, text: rallyPostText(st), image: null, at: now })), setMetaStmt(d, 'card_request', JSON.stringify(card)), setMetaStmt(d, 'rally_post', 'done'));
+    if (adminId) writes.push(outboxStmt(d, adminId, 'rally_bot', `post:${day}`, `✅ <b>Схема сработала в симуляции</b>: в плюсе ${st.wins} из ${st.closed} сделок, итог ${fmtUah(st.realizedKop, true)}. Пост о «Разгоне баланса» с картинкой уйдёт в канал в ближайшие ~10–25 минут.`, [], now, now));
+  } else if (!works && state !== 'fail' && adminId) {
+    writes.push(setMetaStmt(d, 'rally_post', 'fail'));
+    writes.push(outboxStmt(d, adminId, 'rally_bot', 'fail', `⚠️ <b>Симуляция бота: схема не сработала</b> — в плюсе ${st.wins} из ${st.closed} сделок, итог ${fmtUah(st.realizedKop, true)}. Пост в канал не публикую. Симуляция продолжается.`, [], now, now));
   }
 }
 

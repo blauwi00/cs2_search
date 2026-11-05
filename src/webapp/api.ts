@@ -38,7 +38,7 @@ import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
 import { findCandidates, capital, buyBlockers, checkChain, RALLY_KEYS, RALLY_DEFAULTS, UNLOCK_SEC, type RallyTrade, type RallySettings } from '../core/rally.ts';
-import { loadRallyScan, rallySettingsFor, rallyTrack } from '../core/rallyjob.ts';
+import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, BOT_MIN_CLOSED } from '../core/rallyjob.ts';
 import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
@@ -740,8 +740,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         dataAt: scan.at, checked: freshCount,
         // Симуляция самого бота по той же схеме — для честности: видно, как она работает на живых ценах.
         bot: await (async () => {
-          const bt = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id = 0 AND mode = 'sim' ORDER BY id DESC LIMIT 50").all<RallyTrade>()).results;
-          return { cap: capital(bt, RALLY_DEFAULTS, 'sim', now), open: bt.filter((x) => x.status === 'open').slice(0, 2), closed: bt.filter((x) => x.status === 'sold').slice(0, 5), since: Number(await getMeta(d, 'rally_bot_started')) || null };
+          const bt = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id <= 0 AND telegram_id >= -9 AND mode = 'sim' ORDER BY id DESC LIMIT 200").all<RallyTrade>()).results;
+          const st = botStats(bt);
+          return { closed: st.closed, wins: st.wins, realizedKop: st.realizedKop, need: BOT_MIN_CLOSED, open: bt.filter((x) => x.status === 'open').slice(0, 10), last: bt.filter((x) => x.status === 'sold').slice(0, 10), since: Number(await getMeta(d, 'rally_bot_started')) || null };
         })(),
         positions: t.filter((x) => x.status === 'open').map((x) => ({ ...x, itemId: ids.get(x.name) ?? null })),
         history: t.filter((x) => x.status !== 'open').slice(0, 60),

@@ -89,3 +89,19 @@ test('сборщик молчит дольше 45 минут — одно тех
   await runCycle(e, { now: NOW + 4000, fetcher, force: ['health'] });
   assert.equal(sent.filter((s) => String(s.body.text ?? '').includes('Сборщик цен')).length, 1);
 });
+
+test('картинки всего каталога: пачкой до 1000, курсор прохода сохраняется', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { handleIngest } = await import('../src/ingest.ts');
+  const d = migratedDb(); const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
+  const T = 1_793_000_000;
+  const post = (body: object) => handleIngest(new Request('https://w.dev/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify(body) }), env, T);
+  const items = [{ name: '★ Karambit | Doppler (Factory New)', url: 'https://community.akamai.steamstatic.com/economy/image/abc' }, { name: 'Bad', url: 'https://evil.example/x.png' }];
+  const r = await (await post({ kind: 'images', fetchedAt: T, cursor: 1000, items })).json() as { stored: number };
+  assert.equal(r.stored, 1);
+  const g = await (await handleIngest(new Request('https://w.dev/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, T)).json() as { imgCursor: number };
+  assert.equal(g.imgCursor, 1000);
+  await post({ kind: 'images', fetchedAt: T, cursor: -1, items: [] });
+  const g2 = await (await handleIngest(new Request('https://w.dev/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, T + 8 * 86400)).json() as { imgCursor: number };
+  assert.equal(g2.imgCursor, 0, 'через неделю — новый проход');
+});

@@ -344,7 +344,8 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'search' && method === 'GET') {
       const q = (url.searchParams.get('q') ?? '').slice(0, 80);
       const cat = await catalogInfo(d);
-      return json({ ok: true, results: q.length >= 2 ? await searchCatalog(d, q, 20) : [], catalog: cat });
+      const results = q.length >= 2 ? await searchCatalog(d, q, 20) : [];
+      return json({ ok: true, results, images: Object.fromEntries(await imagesFor(d, results)), catalog: cat });
     }
     if (path === 'watch' && method === 'GET') {
       const w = await db.listWatch(d, tid);

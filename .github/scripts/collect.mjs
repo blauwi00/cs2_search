@@ -40,7 +40,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [] } = await toWorker('/ingest/items');
 // Картинку поста рисует отдельный шаг (render-card.mjs) — здесь только сохраняем заказ.
 if (card && card.id) {
   const { mkdirSync, writeFileSync, appendFileSync } = await import('node:fs');
@@ -131,6 +131,18 @@ try {
   console.log(`Каталог: картинок ${images.size}, наклеек ${stickerNames.size}, брелков ${charmNames.size}, фаз Doppler ${phases.size}`);
   const send = missingImages.filter((n) => images.has(n)).map((n) => ({ name: n, url: images.get(n) }));
   if (send.length) console.log('Картинки для наблюдения:', await toWorker('/ingest', { kind: 'images', fetchedAt: now(), items: send.slice(0, 500) }));
+  // Картинки для ВСЕХ предметов (поиск, ножи, перчатки, кейсы…): по 1000 за запрос (лимит CPU Worker), до 6000 за запуск.
+  // Докуда дошли, помнит Worker (imgCursor; -1 — весь каталог отправлен, раз в неделю проход повторяется).
+  const all = [...images].filter(([n]) => n.length <= 200).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  let at = imgCursor ?? 0, pushed = 0;
+  while (at >= 0 && at < all.length && pushed < 6000) {
+    const part = all.slice(at, at + 1000);
+    const next = at + part.length >= all.length ? -1 : at + part.length;
+    const r = await toWorker('/ingest', { kind: 'images', fetchedAt: now(), cursor: next, items: part.map(([name, url]) => ({ name, url })) });
+    if (!r?.ok) break;
+    pushed += part.length; at = next;
+  }
+  console.log(`Картинки каталога: отправлено ${pushed}, ${at < 0 ? 'весь каталог готов' : `дальше с ${at} из ${all.length}`}`);
 } catch (e) {
   console.error('Каталог:', e.message);
 }

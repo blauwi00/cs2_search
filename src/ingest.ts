@@ -68,6 +68,12 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       card: await pendingCard(d),
       // Цены со всех площадок — раз в 6 часов для предметов из списков, инвентарей и идей.
       sitePriceNames: await sitePriceNames(d, now),
+      // Картинки для всего каталога: с какого места продолжать (раз в неделю — новый проход, чтобы подхватить новые предметы).
+      imgCursor: await (async () => {
+        const c = Number(await getMeta(d, 'img_cursor')) || 0;
+        const pass = Number(await getMeta(d, 'img_pass_at')) || 0;
+        return c < 0 && now - pass > 7 * 86400 ? 0 : c;
+      })(),
     });
   }
   if (req.method !== 'POST' || url.pathname !== '/ingest') return json({ ok: false, error: 'not_found' }, 404);
@@ -257,14 +263,20 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       }
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
     } else if (body.kind === 'images') {
-      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as { name?: unknown; url?: unknown }[];
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 1000) as { name?: unknown; url?: unknown }[];
       const stmts: D1PreparedStatement[] = [];
       for (const r of rows) {
         const u = safeImg(r?.url);
         if (typeof r?.name === 'string' && r.name.length <= 200 && u) stmts.push(d.prepare('INSERT INTO item_images (name, url) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET url = excluded.url').bind(r.name, u));
       }
-      if (stmts.length) await d.batch(stmts);
+      for (let i = 0; i < stmts.length; i += 100) await d.batch(stmts.slice(i, i + 100));
       result.stored = stmts.length;
+      // Проход по всему каталогу: сборщик сообщает, докуда дошёл (-1 — до конца).
+      const cur = Number((body as { cursor?: unknown }).cursor);
+      if (Number.isSafeInteger(cur) && cur >= -1) {
+        await setMetaStmt(d, 'img_cursor', String(cur)).run();
+        if (cur === -1) await setMetaStmt(d, 'img_pass_at', String(now)).run();
+      }
     } else if (body.kind === 'scan') {
       const fresh = parseScan(body.items, at);
       if (fresh.length === 0) return json({ ok: false, error: 'empty_scan' }, 400);

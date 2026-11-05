@@ -652,9 +652,9 @@ function bindSearch(input, out, onPick, mark) {
     if (q.length < 2) { out.innerHTML = ''; return; }
     timer = setTimeout(function () {
       api('search?q=' + encodeURIComponent(q)).then(function (r) {
-        if (!r.results.length) { out.innerHTML = '<div class="card mut">' + (r.catalog.count ? 'Ничего не найдено. Пиши по-английски, как в Steam.' : 'Каталог названий ещё загружается сборщиком (до 10–20 минут).') + '</div>'; return; }
+        if (!r.results.length) { out.innerHTML = '<div class="card mut">' + (r.catalog.count ? 'Ничего не найдено. Попробуй иначе: «ак азимов», «керамбит», «AWP Asiimov».' : 'Каталог названий ещё загружается сборщиком (до 10–20 минут).') + '</div>'; return; }
         out.innerHTML = '<div class="card" style="padding:4px 0">' + r.results.map(function (n, i) {
-          return '<div class="kv" style="padding:11px 14px;cursor:pointer" data-pick="' + i + '"><span>' + (ICON[guessCat(n)] || '') + ' ' + esc(n) + '</span><span class="v" style="color:var(--link)">' + (mark || '') + '</span></div>';
+          return '<div class="kv" style="padding:8px 14px;cursor:pointer;align-items:center" data-pick="' + i + '"><span style="display:flex;align-items:center;gap:10px;min-width:0">' + pic((r.images || {})[n], ICON[guessCat(n)] || '🎲') + '<span>' + esc(n) + '</span></span><span class="v" style="color:var(--link)">' + (mark || '') + '</span></div>';
         }).join('') + '</div>';
         Array.prototype.forEach.call(out.querySelectorAll('[data-pick]'), function (el) {
           el.onclick = function () { var n = r.results[+el.getAttribute('data-pick')]; input.value = ''; out.innerHTML = ''; onPick(n); };

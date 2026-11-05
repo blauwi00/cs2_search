@@ -1,0 +1,1013 @@
+{
+ "generated": "2026-11-05 01:12 UTC",
+ "sounds": [
+  {
+   "file": "coin-4b19c8f3.wav",
+   "tag": "coin",
+   "query": "coins cash register",
+   "title": "Getting my coins out of my wallet",
+   "creator": "florianreichelt",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/florianreichelt/sounds/447452",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Coin (dropping)",
+     0.643
+    ],
+    [
+     "Keys jangling",
+     0.101
+    ],
+    [
+     "Vehicle",
+     0.031
+    ],
+    [
+     "Speech",
+     0.03
+    ],
+    [
+     "Inside, small room",
+     0.024
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "coin-59345e05.wav",
+   "tag": "coin",
+   "query": "coins cash register",
+   "title": "WS210054.mp3",
+   "creator": "rnina01",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/rnina01/sounds/240720",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Coin (dropping)",
+     0.472
+    ],
+    [
+     "Music",
+     0.114
+    ],
+    [
+     "Keys jangling",
+     0.078
+    ],
+    [
+     "Speech",
+     0.026
+    ],
+    [
+     "Musical instrument",
+     0.02
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "coin-cb660941.wav",
+   "tag": "coin",
+   "query": "coins cash register",
+   "title": "flipping a big coin",
+   "creator": "florianreichelt",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/florianreichelt/sounds/447463",
+   "provider": "freesound",
+   "duration": 3.05,
+   "heard": [
+    [
+     "Coin (dropping)",
+     0.727
+    ],
+    [
+     "Typewriter",
+     0.036
+    ],
+    [
+     "Music",
+     0.028
+    ],
+    [
+     "Speech",
+     0.027
+    ],
+    [
+     "Inside, small room",
+     0.017
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "ding-b3ccac7f.wav",
+   "tag": "ding",
+   "query": "ding bell",
+   "title": "Ding Dong",
+   "creator": "MatthewWong",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/MatthewWong/sounds/361564",
+   "provider": "freesound",
+   "duration": 2.79,
+   "heard": [
+    [
+     "Doorbell",
+     0.662
+    ],
+    [
+     "Ding-dong",
+     0.238
+    ],
+    [
+     "Music",
+     0.109
+    ],
+    [
+     "Bell",
+     0.055
+    ],
+    [
+     "Inside, small room",
+     0.036
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "ding-24e32891.wav",
+   "tag": "ding",
+   "query": "ding bell",
+   "title": "toaster oven ding.wav",
+   "creator": "sethlind",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/sethlind/sounds/265012",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Clock",
+     0.506
+    ],
+    [
+     "Bell",
+     0.142
+    ],
+    [
+     "Tick-tock",
+     0.12
+    ],
+    [
+     "Music",
+     0.087
+    ],
+    [
+     "Bicycle bell",
+     0.059
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "ding-4ed73944.wav",
+   "tag": "ding",
+   "query": "ding bell",
+   "title": "Kitchen Timer — Done!",
+   "creator": "dland",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/dland/sounds/149506",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Bicycle bell",
+     0.564
+    ],
+    [
+     "Clock",
+     0.239
+    ],
+    [
+     "Alarm",
+     0.042
+    ],
+    [
+     "Inside, small room",
+     0.041
+    ],
+    [
+     "Bell",
+     0.028
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "ding-d9d8dbba.wav",
+   "tag": "ding",
+   "query": "ding bell",
+   "title": "bell003mono.wav",
+   "creator": "tec_studio",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/tec_studio/sounds/99625",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Ding",
+     0.381
+    ],
+    [
+     "Clang",
+     0.377
+    ],
+    [
+     "Bell",
+     0.115
+    ],
+    [
+     "Music",
+     0.076
+    ],
+    [
+     "Tubular bells",
+     0.033
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "impact-b354324e.wav",
+   "tag": "impact",
+   "query": "impact hit",
+   "title": "door wood impact hit kick open sudden explode.wav",
+   "creator": "kyles",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/kyles/sounds/452596",
+   "provider": "freesound",
+   "duration": 1.91,
+   "heard": [
+    [
+     "Door",
+     0.596
+    ],
+    [
+     "Sliding door",
+     0.259
+    ],
+    [
+     "Slam",
+     0.176
+    ],
+    [
+     "Knock",
+     0.131
+    ],
+    [
+     "Sound effect",
+     0.128
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "impact-608a1da4.wav",
+   "tag": "impact",
+   "query": "impact hit",
+   "title": "door_knock.wav",
+   "creator": "wjtaylor",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/wjtaylor/sounds/268500",
+   "provider": "freesound",
+   "duration": 2.06,
+   "heard": [
+    [
+     "Knock",
+     0.376
+    ],
+    [
+     "Music",
+     0.235
+    ],
+    [
+     "Inside, small room",
+     0.047
+    ],
+    [
+     "Chopping (food)",
+     0.045
+    ],
+    [
+     "Speech",
+     0.042
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "notify-adb6e260.wav",
+   "tag": "notify",
+   "query": "notification",
+   "title": "Chime Notification",
+   "creator": "Jofae",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Jofae/sounds/380482",
+   "provider": "freesound",
+   "duration": 0.32,
+   "heard": [
+    [
+     "Beep, bleep",
+     0.13
+    ],
+    [
+     "Music",
+     0.105
+    ],
+    [
+     "Buzzer",
+     0.041
+    ],
+    [
+     "Alarm",
+     0.039
+    ],
+    [
+     "Smoke detector, smoke alarm",
+     0.033
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "notify-545aa52d.wav",
+   "tag": "notify",
+   "query": "notification",
+   "title": "Bell Notification Long 1_4",
+   "creator": "Joao_Janz",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Joao_Janz/sounds/504812",
+   "provider": "freesound",
+   "duration": 2.93,
+   "heard": [
+    [
+     "Music",
+     0.288
+    ],
+    [
+     "Ding-dong",
+     0.187
+    ],
+    [
+     "Ding",
+     0.148
+    ],
+    [
+     "Musical instrument",
+     0.104
+    ],
+    [
+     "Doorbell",
+     0.101
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "pop-2ec9ff1e.wav",
+   "tag": "pop",
+   "query": "pop",
+   "title": "blip-plock-pop",
+   "creator": "onikage22",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/onikage22/sounds/240566",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Plop",
+     0.596
+    ],
+    [
+     "Music",
+     0.088
+    ],
+    [
+     "Speech",
+     0.029
+    ],
+    [
+     "Animal",
+     0.024
+    ],
+    [
+     "Silence",
+     0.022
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "pop-2ca2ac61.wav",
+   "tag": "pop",
+   "query": "pop",
+   "title": "Pop (made by DuffyBro)",
+   "creator": "DuffyBro",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/DuffyBro/sounds/319107",
+   "provider": "freesound",
+   "duration": 2.05,
+   "heard": [
+    [
+     "Plop",
+     0.75
+    ],
+    [
+     "Music",
+     0.077
+    ],
+    [
+     "Speech",
+     0.046
+    ],
+    [
+     "Inside, small room",
+     0.042
+    ],
+    [
+     "Animal",
+     0.02
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "pop-d800a4a6.wav",
+   "tag": "pop",
+   "query": "pop",
+   "title": "Pop!.aif",
+   "creator": "oldedgar",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/oldedgar/sounds/97978",
+   "provider": "freesound",
+   "duration": 3.03,
+   "heard": [
+    [
+     "Plop",
+     0.796
+    ],
+    [
+     "Music",
+     0.108
+    ],
+    [
+     "Speech",
+     0.101
+    ],
+    [
+     "Animal",
+     0.022
+    ],
+    [
+     "Sound effect",
+     0.019
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "pop-672c5344.wav",
+   "tag": "pop",
+   "query": "pop",
+   "title": "Pop or bloop",
+   "creator": "ScratchnSniff",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/ScratchnSniff/sounds/242113",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Plop",
+     0.776
+    ],
+    [
+     "Music",
+     0.109
+    ],
+    [
+     "Speech",
+     0.055
+    ],
+    [
+     "Sound effect",
+     0.032
+    ],
+    [
+     "Inside, small room",
+     0.016
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "riser-dcaacccd.wav",
+   "tag": "riser",
+   "query": "riser",
+   "title": "Scary Hits & Risers 001",
+   "creator": "Xinematix",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Xinematix/sounds/396161",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Music",
+     0.202
+    ],
+    [
+     "Whoosh, swoosh, swish",
+     0.104
+    ],
+    [
+     "Vehicle",
+     0.094
+    ],
+    [
+     "Sound effect",
+     0.037
+    ],
+    [
+     "Car",
+     0.033
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "riser-dd07153a.wav",
+   "tag": "riser",
+   "query": "riser",
+   "title": "Energy Riser",
+   "creator": "magnuswaker",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/magnuswaker/sounds/522095",
+   "provider": "freesound",
+   "duration": 1.88,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.118
+    ],
+    [
+     "Door",
+     0.095
+    ],
+    [
+     "Whack, thwack",
+     0.082
+    ],
+    [
+     "Sliding door",
+     0.076
+    ],
+    [
+     "Music",
+     0.074
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "swoosh-eab8a6e2.wav",
+   "tag": "swoosh",
+   "query": "swoosh transition",
+   "title": "Deep Whoosh #1",
+   "creator": "Kinoton",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Kinoton/sounds/351256",
+   "provider": "freesound",
+   "duration": 2.91,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.576
+    ],
+    [
+     "Sound effect",
+     0.225
+    ],
+    [
+     "Music",
+     0.088
+    ],
+    [
+     "Echo",
+     0.029
+    ],
+    [
+     "Bang",
+     0.026
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "swoosh-89e35018.wav",
+   "tag": "swoosh",
+   "query": "swoosh transition",
+   "title": "Woosh_Low_04.wav",
+   "creator": "moogy73",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/moogy73/sounds/425698",
+   "provider": "freesound",
+   "duration": 3.7,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.173
+    ],
+    [
+     "Music",
+     0.069
+    ],
+    [
+     "Sound effect",
+     0.049
+    ],
+    [
+     "Explosion",
+     0.046
+    ],
+    [
+     "Silence",
+     0.044
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "swoosh-cb134a30.wav",
+   "tag": "swoosh",
+   "query": "swoosh transition",
+   "title": "Whoosh Bamboo 4",
+   "creator": "Sadiquecat",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Sadiquecat/sounds/706679",
+   "provider": "freesound",
+   "duration": 0.72,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.233
+    ],
+    [
+     "Music",
+     0.083
+    ],
+    [
+     "Sound effect",
+     0.081
+    ],
+    [
+     "Speech",
+     0.025
+    ],
+    [
+     "Bang",
+     0.024
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "swoosh-92f6d53e.wav",
+   "tag": "swoosh",
+   "query": "swoosh transition",
+   "title": "Swoosh.wav",
+   "creator": "kasa90",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/kasa90/sounds/156559",
+   "provider": "freesound",
+   "duration": 3.65,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.348
+    ],
+    [
+     "Music",
+     0.152
+    ],
+    [
+     "Whack, thwack",
+     0.093
+    ],
+    [
+     "Whip",
+     0.071
+    ],
+    [
+     "Smash, crash",
+     0.063
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "typing-39e8de14.wav",
+   "tag": "typing",
+   "query": "keyboard typing",
+   "title": "Keyboard Typing Tapping.wav",
+   "creator": "Psykophobia",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Psykophobia/sounds/250390",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Computer keyboard",
+     0.885
+    ],
+    [
+     "Typing",
+     0.88
+    ],
+    [
+     "Typewriter",
+     0.055
+    ],
+    [
+     "Speech",
+     0.04
+    ],
+    [
+     "Music",
+     0.036
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "typing-911f6234.wav",
+   "tag": "typing",
+   "query": "keyboard typing",
+   "title": "Keyboard typing",
+   "creator": "FrostyFrost",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/FrostyFrost/sounds/348369",
+   "provider": "freesound",
+   "duration": 4.0,
+   "heard": [
+    [
+     "Typewriter",
+     0.786
+    ],
+    [
+     "Typing",
+     0.188
+    ],
+    [
+     "Computer keyboard",
+     0.121
+    ],
+    [
+     "Inside, small room",
+     0.057
+    ],
+    [
+     "Speech",
+     0.048
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "whoosh-eab8a6e2.wav",
+   "tag": "whoosh",
+   "query": "whoosh",
+   "title": "Deep Whoosh #1",
+   "creator": "Kinoton",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Kinoton/sounds/351256",
+   "provider": "freesound",
+   "duration": 2.91,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.576
+    ],
+    [
+     "Sound effect",
+     0.225
+    ],
+    [
+     "Music",
+     0.088
+    ],
+    [
+     "Echo",
+     0.029
+    ],
+    [
+     "Bang",
+     0.026
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "whoosh-96814a80.wav",
+   "tag": "whoosh",
+   "query": "whoosh",
+   "title": "Little Whoosh 3",
+   "creator": "ch_ase",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/ch_ase/sounds/423798",
+   "provider": "freesound",
+   "duration": 1.81,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.569
+    ],
+    [
+     "Whip",
+     0.192
+    ],
+    [
+     "Sound effect",
+     0.12
+    ],
+    [
+     "Echo",
+     0.053
+    ],
+    [
+     "Music",
+     0.049
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "whoosh-4fa53bb3.wav",
+   "tag": "whoosh",
+   "query": "whoosh",
+   "title": "whoosh+boom.wav",
+   "creator": "Capashen",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Capashen/sounds/118934",
+   "provider": "freesound",
+   "duration": 3.68,
+   "heard": [
+    [
+     "Music",
+     0.231
+    ],
+    [
+     "Whoosh, swoosh, swish",
+     0.185
+    ],
+    [
+     "Sound effect",
+     0.08
+    ],
+    [
+     "Timpani",
+     0.075
+    ],
+    [
+     "Bang",
+     0.038
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "whoosh-e22b3692.wav",
+   "tag": "whoosh",
+   "query": "whoosh",
+   "title": "Big Punch with whoosh",
+   "creator": "Paul368",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Paul368/sounds/322250",
+   "provider": "freesound",
+   "duration": 1.17,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.686
+    ],
+    [
+     "Whack, thwack",
+     0.113
+    ],
+    [
+     "Music",
+     0.077
+    ],
+    [
+     "Sound effect",
+     0.065
+    ],
+    [
+     "Thump, thud",
+     0.048
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  },
+  {
+   "file": "whoosh-cb134a30.wav",
+   "tag": "whoosh",
+   "query": "whoosh",
+   "title": "Whoosh Bamboo 4",
+   "creator": "Sadiquecat",
+   "license": "cc0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "source": "https://freesound.org/people/Sadiquecat/sounds/706679",
+   "provider": "freesound",
+   "duration": 0.72,
+   "heard": [
+    [
+     "Whoosh, swoosh, swish",
+     0.233
+    ],
+    [
+     "Music",
+     0.083
+    ],
+    [
+     "Sound effect",
+     0.081
+    ],
+    [
+     "Speech",
+     0.025
+    ],
+    [
+     "Bang",
+     0.024
+    ]
+   ],
+   "match": true,
+   "speech_or_music": false
+  }
+ ]
+}

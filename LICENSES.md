@@ -1,0 +1,30 @@
+# Звуки (Openverse, CC0 — общественное достояние)
+
+- `coin-4b19c8f3.wav` — «Getting my coins out of my wallet» (florianreichelt), cc0 — https://freesound.org/people/florianreichelt/sounds/447452
+- `coin-59345e05.wav` — «WS210054.mp3» (rnina01), cc0 — https://freesound.org/people/rnina01/sounds/240720
+- `coin-cb660941.wav` — «flipping a big coin» (florianreichelt), cc0 — https://freesound.org/people/florianreichelt/sounds/447463
+- `ding-b3ccac7f.wav` — «Ding Dong» (MatthewWong), cc0 — https://freesound.org/people/MatthewWong/sounds/361564
+- `ding-24e32891.wav` — «toaster oven ding.wav» (sethlind), cc0 — https://freesound.org/people/sethlind/sounds/265012
+- `ding-4ed73944.wav` — «Kitchen Timer — Done!» (dland), cc0 — https://freesound.org/people/dland/sounds/149506
+- `ding-d9d8dbba.wav` — «bell003mono.wav» (tec_studio), cc0 — https://freesound.org/people/tec_studio/sounds/99625
+- `impact-b354324e.wav` — «door wood impact hit kick open sudden explode.wav» (kyles), cc0 — https://freesound.org/people/kyles/sounds/452596
+- `impact-608a1da4.wav` — «door_knock.wav» (wjtaylor), cc0 — https://freesound.org/people/wjtaylor/sounds/268500
+- `notify-adb6e260.wav` — «Chime Notification» (Jofae), cc0 — https://freesound.org/people/Jofae/sounds/380482
+- `notify-545aa52d.wav` — «Bell Notification Long 1_4» (Joao_Janz), cc0 — https://freesound.org/people/Joao_Janz/sounds/504812
+- `pop-2ec9ff1e.wav` — «blip-plock-pop» (onikage22), cc0 — https://freesound.org/people/onikage22/sounds/240566
+- `pop-2ca2ac61.wav` — «Pop (made by DuffyBro)» (DuffyBro), cc0 — https://freesound.org/people/DuffyBro/sounds/319107
+- `pop-d800a4a6.wav` — «Pop!.aif» (oldedgar), cc0 — https://freesound.org/people/oldedgar/sounds/97978
+- `pop-672c5344.wav` — «Pop or bloop» (ScratchnSniff), cc0 — https://freesound.org/people/ScratchnSniff/sounds/242113
+- `riser-dcaacccd.wav` — «Scary Hits & Risers 001» (Xinematix), cc0 — https://freesound.org/people/Xinematix/sounds/396161
+- `riser-dd07153a.wav` — «Energy Riser» (magnuswaker), cc0 — https://freesound.org/people/magnuswaker/sounds/522095
+- `swoosh-eab8a6e2.wav` — «Deep Whoosh #1» (Kinoton), cc0 — https://freesound.org/people/Kinoton/sounds/351256
+- `swoosh-89e35018.wav` — «Woosh_Low_04.wav» (moogy73), cc0 — https://freesound.org/people/moogy73/sounds/425698
+- `swoosh-cb134a30.wav` — «Whoosh Bamboo 4» (Sadiquecat), cc0 — https://freesound.org/people/Sadiquecat/sounds/706679
+- `swoosh-92f6d53e.wav` — «Swoosh.wav» (kasa90), cc0 — https://freesound.org/people/kasa90/sounds/156559
+- `typing-39e8de14.wav` — «Keyboard Typing Tapping.wav» (Psykophobia), cc0 — https://freesound.org/people/Psykophobia/sounds/250390
+- `typing-911f6234.wav` — «Keyboard typing» (FrostyFrost), cc0 — https://freesound.org/people/FrostyFrost/sounds/348369
+- `whoosh-eab8a6e2.wav` — «Deep Whoosh #1» (Kinoton), cc0 — https://freesound.org/people/Kinoton/sounds/351256
+- `whoosh-96814a80.wav` — «Little Whoosh 3» (ch_ase), cc0 — https://freesound.org/people/ch_ase/sounds/423798
+- `whoosh-4fa53bb3.wav` — «whoosh+boom.wav» (Capashen), cc0 — https://freesound.org/people/Capashen/sounds/118934
+- `whoosh-e22b3692.wav` — «Big Punch with whoosh» (Paul368), cc0 — https://freesound.org/people/Paul368/sounds/322250
+- `whoosh-cb134a30.wav` — «Whoosh Bamboo 4» (Sadiquecat), cc0 — https://freesound.org/people/Sadiquecat/sounds/706679

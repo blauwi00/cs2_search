@@ -1,0 +1,18 @@
+# Разовая проверка: отвечает ли Worker и база (запускается push'ем этого файла).
+name: probe-worker
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/probe-worker.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - env:
+          W: https://cs2-search.blauwi925.workers.dev
+          S: ${{ secrets.INGEST_SECRET }}
+        run: |
+          curl -s -H "X-Ingest-Secret: $S" $W/ingest/items | head -c 300; echo
+          curl -s -H "X-Ingest-Secret: $S" $W/ingest/items | grep -o '"writes":{[^}]*}'; echo
+          curl -s -X POST -H "X-Ingest-Secret: $S" -H 'Content-Type: application/json' -d '{"kind":"news","items":[]}' $W/ingest | head -c 300; echo

@@ -310,7 +310,10 @@ Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
 });
 function go(t) {
   state.tab = t; closeSheet();
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); });
+  var bt = t === 'rally' ? 'deals' : t; // «Разгон» — часть «Рекомендаций»
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
+  // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
+  ['#ticker', '#ticker2'].forEach(function (id) { var el = $(id); if (el) el.style.display = t === 'home' ? '' : 'none'; });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
   ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally })[t]();
@@ -423,7 +426,7 @@ function home() {
       : '<div class="row" id="h-rally"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Осторожные сделки внутри Steam от 30 ₴ — сначала в симуляции</div></div><div class="mut">›</div></div>';
     if (s.inventory.lots) {
       var diff = s.inventory.valueKop - s.inventory.costKop;
-      h += '<div class="row" id="h-inv"><div class="ic">🎒</div><div class="m"><div class="n">Мои покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
+      h += '<div class="row" id="h-inv"><div class="ic">🤝</div><div class="m"><div class="n">Сделки: покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
     }
     if (s.today.sales) h += '<div class="mut" style="font-size:13px;margin:2px 2px 0">Сегодня продано: ' + s.today.sales + ' · Steam ' + uah(s.today.steamKop, true) + ' · деньгами ' + uah(s.today.cashKop, true) + '</div>';
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
@@ -518,17 +521,23 @@ function recSheet(r) {
   $('#r-bought').onclick = function () { buyForm({ name: r.name, priceKop: r.payKop, platform: plat }); };
   $('#r-watch').onclick = function () { api('watch', { method: 'POST', body: { name: r.name } }).then(function () { haptic('ok'); toast('Добавлено в «Рынок»'); }).catch(function (e) { toast(e.message); }); };
 }
+// Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
+function recSwitch(on) {
+  return '<div class="seg" id="recsw"><button data-v="recs" class="' + (on === 'recs' ? 'on' : '') + '">💡 Идеи</button><button data-v="rally" class="' + (on === 'rally' ? 'on' : '') + '">🚀 Разгон баланса</button></div>';
+}
+function bindRecSwitch() {
+  Array.prototype.forEach.call(document.querySelectorAll('#recsw button'), function (b) { b.onclick = function () { haptic(); go(b.getAttribute('data-v') === 'rally' ? 'rally' : 'deals'); }; });
+}
 function deals() {
   loading(6);
   Promise.all([api('recs'), api('deals?order=spread').catch(function () { return { deals: [] }; })]).then(function (res) {
     var r = res[0], mine = res[1].deals || [];
-    var h = '';
+    var h = recSwitch('recs');
     if (!r.fetchedAt) {
       h += '<div class="empty"><div class="e">⏳</div>Рынок ещё не проверен.<br>Бот проверяет цены каждые 10 минут — загляни чуть позже.</div>';
     } else {
       state.cache.recsAt = r.fetchedAt;
       h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale && state.isAdmin ? ' ⚠️ данные устарели' : '') + '</div>';
-      h += '<div class="row" id="r-rally" style="margin-bottom:6px"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Маленький бюджет, минимальный риск, симуляция</div></div><div class="mut">›</div></div>';
       h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
       h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
@@ -545,7 +554,7 @@ function deals() {
     };
     bindRecs(r.deals.concat(r.trends));
     bindDeals(mine);
-    if ($('#r-rally')) $('#r-rally').onclick = function () { haptic(); go('rally'); };
+    bindRecSwitch();
     if ($('#r-stats')) {
       $('#r-stats').onclick = function () { haptic(); recStatsSheet(); };
       api('recstats').then(function (s) { var n = s.plus + s.minus; if (n && $('#r-stats-d')) $('#r-stats-d').innerHTML = '<b class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + s.plus + ' из ' + n + '</b> в плюсе через сутки · за ' + s.days + ' дней'; }).catch(function () {});
@@ -820,7 +829,9 @@ function trades() {
           '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
       }).join('') : '<div class="empty"><div class="e">🧾</div>Пока пусто.</div>';
     }
+    h += '<div class="row" id="t-calc" style="margin-top:14px"><div class="ic">🧮</div><div class="m"><div class="n">Калькулятор комиссий</div><div class="d">Сколько придёт после продажи на каждой площадке</div></div><div class="mut">›</div></div>';
     view.innerHTML = h;
+    $('#t-calc').onclick = function () { haptic(); calcSheet(); };
     if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
     Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); trades(); }; });
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
@@ -847,7 +858,7 @@ function steamBlock(st) {
     (st.pending ? '⏳ Загружаю инвентарь — до ~10 минут' : st.syncedAt ? 'Обновлено ' + ago(st.syncedAt) : '') + '</div></div>' +
     '<button class="btn sec2" id="st-ref" style="width:auto;margin:0;padding:8px 12px">Обновить</button></div>';
   if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
-  if (st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
+  if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Сделки → Продажи» ›</div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
     h += '<button class="btn sec2" id="st-cur" style="margin:0 0 8px">💱 Валюта площадок' + (lsGet('cur_steam') ? ' · Steam в ' + esc(lsGet('cur_steam')) : '') + '</button>';
@@ -864,7 +875,7 @@ function steamBlock(st) {
 }
 function bindSteamBlock(st) {
   if ($('#st-cur')) $('#st-cur').onclick = function () { haptic(); siteCurSheet(function () { if (state.tab === 'inv') inventory(); }); };
-  if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); };
+  if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); state.invTab = 'sales'; go('trades'); };
   if (!st) return;
   if ($('#st-pv')) $('#st-pv').onclick = privacy;
   // Пока инвентарь загружается — сами проверяем каждые 30 секунд (только на этой вкладке и при открытом приложении).
@@ -1563,10 +1574,11 @@ function rally() {
   api('rally').then(function (r) {
     state.rally = r;
     var tabs = [['opps', 'Возможности'], ['real', 'Мои сделки'], ['sim', 'Симуляция'], ['hist', 'История'], ['set', 'Настройки']];
-    var h = '<div class="seg scroll" id="rtab">' + tabs.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (state.rallyTab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var h = recSwitch('rally') + '<div class="seg scroll" id="rtab">' + tabs.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (state.rallyTab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
     h += ({ opps: rallyOpps, real: function (x) { return rallyBook(x, 'real'); }, sim: function (x) { return rallyBook(x, 'sim'); }, hist: rallyHist, set: rallySet })[state.rallyTab](r);
     view.innerHTML = h;
     Array.prototype.forEach.call(document.querySelectorAll('#rtab button'), function (b) { b.onclick = function () { haptic(); state.rallyTab = b.getAttribute('data-t'); rally(); }; });
+    bindRecSwitch();
     bindRally(r);
   }).catch(fail);
 }
@@ -1835,15 +1847,13 @@ function more() {
     '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-calc"><div class="ic">🧮</div><div class="m"><div class="n">Калькулятор комиссий</div><div class="d">Сколько придёт после продажи на каждой площадке — и за сколько выставить</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-don"><div class="ic">💛</div><div class="m"><div class="n">Поддержать проект</div><div class="d">Звёздами Telegram — добровольно, бот остаётся бесплатным</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-sug"><div class="ic">💡</div><div class="m"><div class="n">Предложить пост в канал</div><div class="d">Новость, находка на рынке, идея — владелец решит, публиковать ли</div></div><div class="mut">›</div></div>' +
     '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-h"><div class="ic">🧾</div><div class="m"><div class="n">История сделок</div><div class="d">Реальный результат по кошелькам</div></div><div class="mut">›</div></div>' +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); ownerPanel(); };
-  $('#m-don').onclick = donateSheet; $('#m-calc').onclick = function () { calcSheet(); }; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); }; $('#m-sug').onclick = suggestSheet;
-  $('#m-set').onclick = settings; if ($('#m-st')) $('#m-st').onclick = status; $('#m-h').onclick = history; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
+  $('#m-don').onclick = donateSheet; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); }; $('#m-sug').onclick = suggestSheet;
+  $('#m-set').onclick = settings; if ($('#m-st')) $('#m-st').onclick = status; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
   $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
 }
 function settings() {

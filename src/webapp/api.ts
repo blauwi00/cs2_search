@@ -34,6 +34,7 @@ import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
+import { VISION_MODEL, VISION_PROMPT, parseVision, parsePriceMinor, candidates, matchName, type NamesRu } from '../core/screenread.ts';
 import { recStats } from '../core/insights.ts';
 import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
 import { steamNetKop } from '../core/fees.ts';
@@ -193,6 +194,44 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   return new Response(text, { status: res.status, headers: res.headers });
 }
 
+/**
+ * Записать продажу (или «ждёт оплаты») одного предмета: сначала из записанных покупок по порядку,
+ * остальное — новой записью с ценой покупки (0 — выпал). Суммы — за 1 шт., в копейках бота.
+ */
+async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; name: string; maxQty: number; qty: unknown; receivedKop: unknown; platform: unknown; buyKop: unknown; pending: boolean; note: string },
+  wallet: { per: number }, date: string, now: number): Promise<{ resultKop: number; recorded: boolean; error?: string }> {
+  const qty = Math.trunc(Number(r.qty));
+  const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
+  const platform = String(r.platform ?? '');
+  if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return { resultKop: 0, recorded: false, error: `${r.name}: выбери, где продал` };
+  if (!Number.isInteger(qty) || qty < 1 || qty > r.maxQty) return { resultKop: 0, recorded: false, error: `${r.name}: количество от 1 до ${r.maxQty}` };
+  if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, error: `${r.name}: впиши, сколько получил` };
+  const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
+  let left = qty, resultKop = 0;
+  const sale = (tradeId: number, q: number) => (r.pending
+    ? T.addPending(d, tid, { tradeId, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, now })
+    : T.addSale(d, tid, { tradeId, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, sellDate: date, now }));
+  try {
+    const pq = await T.pendingByTrade(d, tid);
+    for (const l of (await T.openTrades(d, tid)).filter((x) => x.item_id === r.itemId).sort((a, b) => a.id - b.id)) {
+      if (!left) break;
+      const q = Math.min(left, l.quantity - l.sold_quantity - (pq.get(l.id) ?? 0));
+      if (q <= 0) continue;
+      resultKop += got * q - (await sale(l.id, q)).costKop;
+      left -= q;
+    }
+    if (left) {
+      const buy = Number(r.buyKop);
+      if (r.buyKop === null || r.buyKop === undefined || r.buyKop === '' || !Number.isSafeInteger(buy) || buy < 0) {
+        return { resultKop, recorded: left < qty, error: `${r.name}: впиши, за сколько покупал (0 — если выпал)` };
+      }
+      const id = await T.addTrade(d, { tid, itemId: r.itemId, signalId: null, quantity: left, buyPriceKop: buy, buyFeeKop: 0, platform: buy === 0 ? 'gift' : 'other', buyDate: date, note: r.note, now });
+      resultKop += got * left - (await sale(id, left)).costKop;
+    }
+  } catch (e) { return { resultKop, recorded: false, error: `${r.name}: ${(e as Error).message}` }; }
+  return { resultKop, recorded: true };
+}
+
 async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: D1Database): Promise<Response> {
   const isAdmin = tid === Number(env.ADMIN_TELEGRAM_ID);
   const userDeals = async (limit: number, order: 'spread' | 'roi' | 'priority' = 'spread') => {
@@ -210,7 +249,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
   let body: Record<string, unknown> = {};
   if (method === 'POST') {
     const t = await req.text();
-    if (t.length > 16_000) return bad('too_large', 413);
+    if (t.length > (path === 'sales/scan' ? 1_500_000 : 16_000)) return bad('too_large', 413);
     try { body = t ? JSON.parse(t) : {}; } catch { return bad('bad_json'); }
   }
   try {
@@ -627,41 +666,10 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           skipped++;
           continue;
         }
-        const qty = Math.trunc(Number(r.qty ?? g.qty));
-        const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
-        const platform = String(r.platform ?? '');
-        if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') { errors.push(`${g.name}: выбери, где продал`); continue; }
-        if (!Number.isInteger(qty) || qty < 1 || qty > g.qty) { errors.push(`${g.name}: количество от 1 до ${g.qty}`); continue; }
-        if (!Number.isSafeInteger(got) || got <= 0) { errors.push(`${g.name}: впиши, сколько получил`); continue; }
-        const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
-        const pend = r.pending === true; // деньги ещё не пришли — «ждёт оплаты»
-        let left = qty;
-        try {
-          // Сначала — из записанных покупок (по порядку), остальное — новой записью с ценой покупки (0 — если выпал).
-          const pq = await T.pendingByTrade(d, tid);
-          for (const l of (await T.openTrades(d, tid)).filter((x) => x.item_id === g.item_id).sort((a, b) => a.id - b.id)) {
-            if (!left) break;
-            const q = Math.min(left, l.quantity - l.sold_quantity - (pq.get(l.id) ?? 0));
-            if (q <= 0) continue;
-            const s = pend
-              ? await T.addPending(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, now })
-              : await T.addSale(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, sellDate: date, now });
-            resultKop += got * q - s.costKop;
-            left -= q;
-          }
-          if (left) {
-            const buy = Number(r.buyKop);
-            if (!Number.isSafeInteger(buy) || buy < 0) { errors.push(`${g.name}: впиши, за сколько покупал (0 — если выпал)`); if (left === qty) continue; }
-            else {
-              const id = await T.addTrade(d, { tid, itemId: g.item_id, signalId: null, quantity: left, buyPriceKop: buy, buyFeeKop: 0, platform: buy === 0 ? 'gift' : 'other', buyDate: date, note: 'из «Пропало из инвентаря»', now });
-              const s = pend
-                ? await T.addPending(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, now })
-                : await T.addSale(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, sellDate: date, now });
-              resultKop += got * left - s.costKop;
-              left = 0;
-            }
-          }
-        } catch (e) { errors.push(`${g.name}: ${(e as Error).message}`); continue; }
+        const res = await recordSaleRow(d, tid, { itemId: g.item_id, name: g.name, maxQty: g.qty, qty: r.qty ?? g.qty, receivedKop: r.receivedKop, platform: r.platform, buyKop: r.buyKop, pending: r.pending === true, note: 'из «Пропало из инвентаря»' }, wallet, date, now);
+        if (res.error) { errors.push(res.error); if (!res.recorded) continue; }
+        resultKop += res.resultKop;
+        const platform = String(r.platform);
         await d.prepare(`UPDATE inv_gone SET status = 'sold' WHERE id = ?`).bind(g.id).run();
         sold++;
         lastSite = platform;
@@ -697,6 +705,61 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       } catch (e) {
         return bad((e as Error).message);
       }
+    }
+    // Скриншот сайта → список предметов с ценами (нейросеть Cloudflare только читает текст; сопоставление — по словарю игры и инвентарю).
+    if (path === 'sales/scan' && method === 'POST') {
+      if (!env.AI) return bad('Чтение скриншотов пока не подключено');
+      const img = typeof body.image === 'string' ? body.image : '';
+      if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > 1_400_000) return bad('Пришли картинку поменьше (до ~1 МБ)');
+      const used = Number((await d.prepare(`SELECT value FROM usage_counters WHERE day = ? AND counter = ?`).bind(new Date(now * 1000).toISOString().slice(0, 10), `scan_${tid}`).first<{ value: number }>())?.value ?? 0);
+      if (!isAdmin && used >= 30) return bad('На сегодня лимит — 30 скриншотов. Завтра можно снова.');
+      const ask = () => env.AI!.run(VISION_MODEL, { messages: [{ role: 'user', content: VISION_PROMPT }], image: img, max_tokens: 1800, temperature: 0 });
+      let out: unknown;
+      try {
+        out = await ask();
+      } catch (e) {
+        // Первый запуск модели Meta требует согласия с её лицензией — один раз на аккаунт.
+        if (/agree|licen[cs]e/i.test((e as Error).message)) {
+          try { await env.AI.run(VISION_MODEL, { prompt: 'agree' }); out = await ask(); } catch (e2) { return bad('Нейросеть недоступна: ' + (e2 as Error).message.slice(0, 120)); }
+        } else return bad('Нейросеть недоступна: ' + (e as Error).message.slice(0, 120));
+      }
+      await db.counterStmt(d, `scan_${tid}`, 1, now).run().catch(() => undefined);
+      const text = typeof out === 'string' ? out : String((out as { response?: unknown })?.response ?? '');
+      const rows = parseVision(text);
+      let dict: NamesRu | null = null;
+      try { dict = JSON.parse((await getMeta(d, 'names_ru')) ?? 'null'); } catch { dict = null; }
+      const known = [...new Set([
+        ...(await d.prepare('SELECT i.market_hash_name AS n FROM steam_inventory s JOIN items i ON i.id = s.item_id WHERE s.telegram_id = ?').bind(tid).all<{ n: string }>()).results.map((r) => r.n),
+        ...(await T.openTrades(d, tid)).map((l) => l.market_hash_name),
+      ])];
+      return json({
+        ok: true, raw: rows.length ? undefined : text.slice(0, 300), known,
+        items: rows.map((r) => {
+          const cands = candidates(r, dict);
+          return { text: [r.type, r.name, r.wear].filter(Boolean).join(' · '), name: matchName(cands, known), guess: cands[0] ?? null, priceMinor: parsePriceMinor(r.price), currency: /^[A-Z]{3}$/.test(r.currency) ? r.currency : null, float: r.float || null };
+        }),
+        fees: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.sellFeeBp])),
+        lots: Object.fromEntries((await T.openTrades(d, tid)).map((l) => [l.market_hash_name, 1])),
+        platforms: PLATFORMS.filter((x) => x !== 'gift').map((x) => ({ v: x, t: PLATFORM_RU[x] })),
+      });
+    }
+    // Пачка продаж по названиям (после чтения скриншота). До 5 строк за запрос — лимит запросов к базе.
+    if (path === 'sales/batch' && method === 'POST') {
+      const list = (Array.isArray(body.rows) ? body.rows : []).slice(0, 5) as Record<string, unknown>[];
+      if (!list.length) return bad('Нечего записывать');
+      const wallet = await walletCur();
+      const date = warsawDate(now);
+      let sold = 0, resultKop = 0;
+      const errors: string[] = [];
+      for (const r of list) {
+        const name = typeof r.name === 'string' ? r.name.trim().slice(0, 200) : '';
+        if (name.length < 3) { errors.push('Не выбран предмет'); continue; }
+        const item = await db.upsertItem(d, name, now);
+        const res = await recordSaleRow(d, tid, { itemId: item.id, name, maxQty: 1000, qty: r.qty ?? 1, receivedKop: r.receivedKop, platform: r.platform, buyKop: r.buyKop, pending: r.pending === true, note: 'со скриншота сайта' }, wallet, date, now);
+        if (res.error) errors.push(res.error);
+        if (res.recorded) { sold++; resultKop += res.resultKop; }
+      }
+      return json({ ok: true, sold, resultKop, errors });
     }
     if (seg[0] === 'sales' && seg[1] === 'pending' && seg[3] === 'confirm' && method === 'POST') {
       const rcv = body.receivedKop == null || body.receivedKop === '' ? null : Number(body.receivedKop);

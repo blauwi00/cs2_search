@@ -10,6 +10,8 @@
   // Steam и Skinport опрашивает GitHub Actions (.github/workflows/collect.yml), а не Worker.
   "vars": { "COLLECTOR": "github", "GH_REPO": "blauwi00/cs2_search" },
   "observability": { "enabled": true },
+  // Workers AI: чтение скриншотов сайтов (бесплатно 10 000 «нейронов» в сутки).
+  "ai": { "binding": "AI" },
   // Страница Mini App (src/webapp/app.html) встраивается в Worker как текст.
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
   // Cron: каждую минуту вызывается планировщик; он сам решает, какие источники пора опрашивать.

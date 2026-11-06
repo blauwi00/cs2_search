@@ -1208,6 +1208,7 @@ function saleRow(x, attr) {
 function salesTab() {
   api('trades').then(function (r) {
     var s = r.stats, h = '';
+    h += '<button class="btn sec2" id="scanbtn" style="margin:0 0 12px">📷 Распознать скриншоты с сайта</button><input type="file" id="scanfile" accept="image/*" multiple style="display:none">';
     if (r.pending.length) {
       var exp = r.pending.reduce(function (a, x) { return a + x.receivedKop; }, 0);
       h += '<div class="sec">⏳ Ждут оплаты · ' + r.pending.length + '</div><div class="mut" style="font-size:13px;margin:0 2px 8px">Выставлено или отправлено на сайт, деньги ещё не пришли — ожидается ≈ ' + uahShort(exp) + '. Нажми, когда придут.</div>';
@@ -1223,9 +1224,109 @@ function salesTab() {
     h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести. «Ждут оплаты» в прибыль не входят.</div>';
     if (!$('#salesbox')) return;
     $('#salesbox').innerHTML = h;
+    $('#scanbtn').onclick = function () { haptic(); $('#scanfile').value = ''; $('#scanfile').click(); };
+    $('#scanfile').onchange = function () { if (this.files && this.files.length) scanFiles([].slice.call(this.files, 0, 10)); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-pend]'), function (el) { el.onclick = function () { haptic(); pendingSheet(r.pending.filter(function (x) { return x.id === +el.getAttribute('data-pend'); })[0]); }; });
     Array.prototype.forEach.call(document.querySelectorAll('[data-sale]'), function (el) { el.onclick = function () { haptic(); soldSheet(r.sales.filter(function (x) { return x.id === +el.getAttribute('data-sale'); })[0]); }; });
   }).catch(function (e) { if ($('#salesbox')) $('#salesbox').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
+}
+// ---------- Скриншоты сайта → продажи ----------
+/** Уменьшаем картинку перед отправкой (ширина до 900px, JPEG): быстрее и в лимитах Cloudflare. */
+function shrinkImage(file) {
+  return new Promise(function (ok, fail) {
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () {
+      var k = Math.min(1, 900 / im.width), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      if (c.height > 2400) { c.height = 2400; }
+      c.getContext('2d').drawImage(im, 0, 0, Math.round(im.width * k), Math.round(im.height * k));
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.8));
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); fail(new Error('Не получилось открыть картинку')); };
+    im.src = url;
+  });
+}
+function scanFiles(files) {
+  var all = [], meta = null, seen = {}, i = 0, errs = [];
+  var step = function () {
+    if (i >= files.length) return all.length ? scanSheet(all, meta) : (closeSheet(), toast(errs[0] || 'Не нашёл предметов на скриншотах'));
+    sheet('<div style="text-align:center;padding:24px 0"><div style="font-size:40px">🔎</div><h2>Читаю скриншот ' + (i + 1) + ' из ' + files.length + '…</h2><div class="sub">Нейросеть Cloudflare переписывает названия и цены. Это занимает 5–20 секунд.</div></div>');
+    shrinkImage(files[i]).then(function (img) { return api('sales/scan', { method: 'POST', body: { image: img } }); }).then(function (r) {
+      meta = r;
+      r.items.forEach(function (x) { var k = (x.name || x.text) + '|' + x.priceMinor + '|' + (x.float || ''); if (!seen[k]) { seen[k] = 1; all.push(x); } });
+      if (!r.items.length) errs.push('На скриншоте ' + (i + 1) + ' не нашёл предметов');
+    }).catch(function (e) { errs.push(e.message); }).then(function () { i++; step(); });
+  };
+  step();
+}
+function scanSheet(items, m) {
+  var site = lsGet('scan_site') || lsGet('last_site') || 'skinport';
+  var curCnt = {}; items.forEach(function (x) { if (x.currency) curCnt[x.currency] = (curCnt[x.currency] || 0) + 1; });
+  var cur = Object.keys(curCnt).sort(function (a, b) { return curCnt[b] - curCnt[a]; })[0];
+  if (cur && FX[cur]) lsSet('cur_scan', cur);
+  var opts = function (sel) { return '<option value="">— не нашёл в инвентаре —</option>' + m.known.slice().sort().map(function (n) { return '<option' + (n === sel ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join(''); };
+  var h = '<h2>📷 Распознано: ' + items.length + '</h2><div class="sub">Проверь: нейросеть могла ошибиться. Сопоставлено с твоим инвентарём — ' + items.filter(function (x) { return x.name; }).length + ' из ' + items.length + '.</div>';
+  h += '<div class="grid2"><label class="f" style="margin:0"><span>Сайт</span><select id="ssite">' + m.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
+    '<label class="f" style="margin:0"><span>Валюта цен</span>' + curSelect('scur2', 'scan') + '</label></div>';
+  h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend2" style="width:auto"' + (lsGet('scan_pend') === '0' ? '' : ' checked') + '><span style="margin:0">⏳ Деньги ещё не пришли (выставлено / ждёт оплаты)</span></label>';
+  h += '<div class="note">«Получу за 1 шт.» = цена на сайте минус комиссия сайта при продаже. Поправь, если у тебя другая.</div>';
+  h += items.map(function (x, i) {
+    return '<div class="card" data-s="' + i + '"><label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" class="s-on" style="width:auto"' + (x.name ? ' checked' : '') + '> ' + esc(x.text) + (x.float ? ' <span class="mut" style="font-weight:400">· ' + esc(x.float) + '</span>' : '') + '</label>' +
+      '<label class="f" style="margin:8px 0 0"><span>Предмет</span><select class="s-n">' + opts(x.name) + '</select></label>' +
+      '<div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Цена на сайте</span><input class="s-p" inputmode="decimal" value="' + (x.priceMinor ? String(x.priceMinor / 100).replace('.', ',') : '') + '"></label>' +
+      '<label class="f" style="margin:0"><span>Получу за 1 шт.</span><input class="s-g" inputmode="decimal"></label></div>' +
+      '<div class="s-buyw" style="margin-top:8px"><div class="grid2"><label class="f" style="margin:0"><span>Покупал за 1 шт. (' + esc(CUR.sign) + ')</span><input class="s-b" inputmode="decimal" placeholder="0 — если выпал"></label><button class="btn sec2 s-zero" style="margin:auto 0 0">🎁 Выпал — 0</button></div></div></div>';
+  }).join('');
+  h += '<button class="btn" id="ssave2">Записать отмеченные</button>';
+  sheet(h);
+  var fee = function () { return (m.fees[$('#ssite').value] || 0) / 10000; };
+  var calc = function () {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-s]'), function (card) {
+      var g = card.querySelector('.s-g'); if (g.getAttribute('data-ed')) return;
+      var p = parseFloat(String(card.querySelector('.s-p').value).replace(',', '.'));
+      g.value = p > 0 ? String(Math.floor(p * (1 - fee()) * 100) / 100).replace('.', ',') : '';
+    });
+  };
+  var buyVis = function (card) { var n = card.querySelector('.s-n').value; card.querySelector('.s-buyw').style.display = n && m.lots[n] ? 'none' : ''; };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-s]'), function (card) {
+    buyVis(card);
+    card.querySelector('.s-n').onchange = function () { buyVis(card); if (this.value) card.querySelector('.s-on').checked = true; };
+    card.querySelector('.s-g').oninput = function () { this.setAttribute('data-ed', '1'); };
+    card.querySelector('.s-p').oninput = calc;
+    card.querySelector('.s-zero').onclick = function () { haptic(); card.querySelector('.s-b').value = '0'; };
+  });
+  $('#ssite').onchange = calc; calc();
+  $('#ssave2').onclick = function () {
+    var site = $('#ssite').value, c = $('#scur2').value, pend = $('#spend2').checked, rows = [];
+    var cards = document.querySelectorAll('[data-s]');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i]; if (!card.querySelector('.s-on').checked) continue;
+      var n = card.querySelector('.s-n').value, x = items[+card.getAttribute('data-s')];
+      if (!n) return toast(x.text + ': выбери предмет из инвентаря или сними галочку');
+      var g = toKopIn(card.querySelector('.s-g').value, c);
+      if (!(g > 0)) return toast(n + ': впиши, сколько получишь');
+      var bw = card.querySelector('.s-buyw'), b = bw.style.display === 'none' ? null : toKopIn(card.querySelector('.s-b').value, CUR.code);
+      if (bw.style.display !== 'none' && (b == null || isNaN(b) || b < 0)) return toast(n + ': впиши, за сколько покупал (0 — если выпал)');
+      rows.push({ name: n, qty: 1, receivedKop: g, platform: site, buyKop: b, pending: pend });
+    }
+    if (!rows.length) return toast('Ничего не отмечено');
+    lsSet('scan_site', site); lsSet('cur_scan', c); lsSet('scan_pend', pend ? '1' : '0');
+    $('#ssave2').disabled = true;
+    var tot = { sold: 0, resultKop: 0, errors: [] }, k = 0;
+    var next = function () {
+      if (k >= rows.length) {
+        haptic('ok');
+        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (pend ? '⏳' : '🎉') + '</div><h2>' + (pend ? 'Ждут оплаты: ' : 'Записано продаж: ') + tot.sold + '</h2>' +
+          (tot.sold ? '<div class="big-num ' + cls(tot.resultKop) + '">' + uah(tot.resultKop, true) + '</div><div class="sub">' + (pend ? 'ожидаемый результат' : 'результат') + '</div>' : '') +
+          (tot.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + tot.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>');
+        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; inventory(); };
+        return;
+      }
+      api('sales/batch', { method: 'POST', body: { rows: rows.slice(k, k + 5) } }).then(function (r) { tot.sold += r.sold; tot.resultKop += r.resultKop; tot.errors = tot.errors.concat(r.errors); })
+        .catch(function (e) { tot.errors.push(e.message); }).then(function () { k += 5; next(); });
+    };
+    next();
+  };
 }
 function pendingSheet(x) {
   var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</h2><div class="sub">⏳ Ждёт оплаты · ' + esc(x.platform) + ' · отмечено ' + ago(x.since) + '</div>';

@@ -434,14 +434,6 @@ function home() {
     renderTicker(s);
     var h = '';
     h += setupCard(s.setup);
-    // «Разгон баланса»: капитал, свободно сверх резерва, результат, активные позиции.
-    h += s.rally ? '<div class="row" id="h-rally"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса · ' + uahShort(s.rally.balanceKop) + '</div><div class="d">свободно ' + uahShort(s.rally.availableKop) + ' сверх резерва ' + uahShort(s.rally.reserveKop) + ' · итог <span class="' + cls(s.rally.realizedKop) + '">' + uah(s.rally.realizedKop, true) + '</span> · позиций ' + s.rally.openCount + '/' + s.rally.maxPositions + '</div></div><div class="mut">›</div></div>'
-      : '<div class="row" id="h-rally"><div class="ic">🚀</div><div class="m"><div class="n">Разгон баланса Steam</div><div class="d">Осторожные сделки внутри Steam от 30 ₴ — сначала в симуляции</div></div><div class="mut">›</div></div>';
-    if (s.inventory.lots) {
-      var diff = s.inventory.valueKop - s.inventory.costKop;
-      h += '<div class="row" id="h-inv"><div class="ic">🤝</div><div class="m"><div class="n">Сделки: покупки ≈ ' + uahShort(s.inventory.valueKop) + '</div><div class="d">' + s.inventory.lots + ' поз. · если продать в Steam сейчас</div></div><div class="r"><div class="big ' + cls(diff) + '">' + uah(diff, true) + '</div></div></div>';
-    }
-    if (s.today.sales) h += '<div class="mut" style="font-size:13px;margin:2px 2px 0">Сегодня продано: ' + s.today.sales + ' · Steam ' + uah(s.today.steamKop, true) + ' · деньгами ' + uah(s.today.cashKop, true) + '</div>';
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
     h += '<div class="sec">Площадки</div><div class="sgrid">' + sites.map(function (x) {
@@ -452,8 +444,6 @@ function home() {
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();
-    if ($('#h-rally')) $('#h-rally').onclick = function () { haptic(); go('rally'); };
-    if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('trades'); };
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
       el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };

@@ -95,7 +95,9 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
 export async function goneStmts(d: D1Database, tid: number, fresh: Map<number, number>, partial: boolean, now: number): Promise<D1PreparedStatement[]> {
   // Минус то, что уже записано как продажа после прошлого обновления (кнопка «Я продал» до «Обновить»).
   const old = (await d.prepare(`SELECT s.item_id, s.qty, COALESCE((SELECT SUM(ts.quantity) FROM trade_sales ts JOIN trades t ON t.id = ts.trade_id
-      WHERE t.telegram_id = s.telegram_id AND t.item_id = s.item_id AND ts.created_at >= COALESCE(u.inv_synced_at, 0)), 0) AS sold
+      WHERE t.telegram_id = s.telegram_id AND t.item_id = s.item_id AND ts.created_at >= COALESCE(u.inv_synced_at, 0)), 0)
+      + COALESCE((SELECT SUM(p.quantity) FROM pending_sales p JOIN trades t ON t.id = p.trade_id
+      WHERE p.telegram_id = s.telegram_id AND t.item_id = s.item_id AND p.created_at >= COALESCE(u.inv_synced_at, 0)), 0) AS sold
     FROM steam_inventory s JOIN users u ON u.telegram_id = s.telegram_id WHERE s.telegram_id = ?`).bind(tid).all<{ item_id: number; qty: number; sold: number }>()).results;
   const out: D1PreparedStatement[] = [];
   for (const o of old) {

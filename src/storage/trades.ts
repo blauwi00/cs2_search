@@ -72,10 +72,11 @@ export function salesWithCost(trades: TradeRow[], sales: SaleRow[]): SaleWithCos
 export interface NewSale { tradeId: number; quantity: number; sellPriceKop: number; receivedKop: number; platform: string; sellDate: string; now: number }
 
 /** Записывает продажу и обновляет лот одним batch. Возвращает себестоимость проданного. */
-export async function addSale(db: D1Database, tid: number, s: NewSale): Promise<{ costKop: number; closed: boolean }> {
+export async function addSale(db: D1Database, tid: number, s: NewSale, fromPending = false): Promise<{ costKop: number; closed: boolean }> {
   const t = await getTrade(db, tid, s.tradeId);
   if (!t) throw new Error('Лот не найден');
-  const left = t.quantity - t.sold_quantity;
+  // Штуки, которые «ждут оплаты», второй раз продать нельзя (кроме подтверждения самой ожидающей продажи).
+  const left = t.quantity - t.sold_quantity - (fromPending ? 0 : ((await pendingByTrade(db, tid)).get(t.id) ?? 0));
   if (s.quantity < 1 || s.quantity > left) throw new Error(`Можно продать от 1 до ${left} шт.`);
   const cost = saleCost(t, t.sold_quantity, s.quantity);
   const gross = s.sellPriceKop * s.quantity;
@@ -99,8 +100,8 @@ export async function setTradeTarget(db: D1Database, tid: number, id: number, ko
 /** Удаление ошибочной записи — только если по лоту ещё нет продаж (историю продаж не теряем). */
 export async function deleteTrade(db: D1Database, tid: number, id: number): Promise<boolean> {
   const r = await db.prepare(
-    `DELETE FROM trades WHERE telegram_id = ? AND id = ? AND sold_quantity = 0 AND NOT EXISTS (SELECT 1 FROM trade_sales WHERE trade_id = ?)`,
-  ).bind(tid, id, id).run();
+    `DELETE FROM trades WHERE telegram_id = ? AND id = ? AND sold_quantity = 0 AND NOT EXISTS (SELECT 1 FROM trade_sales WHERE trade_id = ?) AND NOT EXISTS (SELECT 1 FROM pending_sales WHERE trade_id = ?)`,
+  ).bind(tid, id, id, id).run();
   return (r.meta.changes ?? 0) > 0;
 }
 
@@ -109,4 +110,56 @@ export async function addWatchFromInventory(db: D1Database, tid: number, itemId:
     `INSERT INTO watchlist (telegram_id, item_id, created_at, source, priority) VALUES (?, ?, ?, 'inventory', 2)
      ON CONFLICT(telegram_id, item_id) DO UPDATE SET active = 1, priority = MAX(watchlist.priority, 2)`,
   ).bind(tid, itemId, now).run();
+}
+
+// ---------- Продажи «в ожидании оплаты» ----------
+
+export interface PendingRow { id: number; trade_id: number; quantity: number; sell_price_kop: number; received_kop: number; platform: string; created_at: number }
+
+/** Сколько штук лота уже «на продаже» (ждут оплаты). */
+export async function pendingByTrade(db: D1Database, tid: number): Promise<Map<number, number>> {
+  const r = (await db.prepare('SELECT trade_id, SUM(quantity) AS q FROM pending_sales WHERE telegram_id = ? GROUP BY trade_id').bind(tid).all<{ trade_id: number; q: number }>()).results;
+  return new Map(r.map((x) => [x.trade_id, x.q]));
+}
+
+export async function addPending(db: D1Database, tid: number, s: Omit<NewSale, 'sellDate'>): Promise<{ costKop: number }> {
+  const t = await getTrade(db, tid, s.tradeId);
+  if (!t) throw new Error('Лот не найден');
+  const left = t.quantity - t.sold_quantity - ((await pendingByTrade(db, tid)).get(t.id) ?? 0);
+  if (s.quantity < 1 || s.quantity > left) throw new Error(left ? `Можно отметить от 1 до ${left} шт.` : 'Всё уже отмечено как проданное или ждёт оплаты');
+  await db.prepare('INSERT INTO pending_sales (telegram_id, trade_id, quantity, sell_price_kop, received_kop, platform, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(tid, s.tradeId, s.quantity, s.sellPriceKop, s.receivedKop, s.platform, s.now).run();
+  return { costKop: saleCost(t, t.sold_quantity, s.quantity) };
+}
+
+export async function pendingFor(db: D1Database, tid: number): Promise<(PendingRow & { market_hash_name: string; buy_price_kop: number; buy_fee_kop: number; lot_qty: number })[]> {
+  return (await db.prepare(`SELECT p.*, i.market_hash_name, t.buy_price_kop, t.buy_fee_kop, t.quantity AS lot_qty FROM pending_sales p JOIN trades t ON t.id = p.trade_id JOIN items i ON i.id = t.item_id
+    WHERE p.telegram_id = ? ORDER BY p.created_at DESC LIMIT 200`).bind(tid).all<PendingRow & { market_hash_name: string; buy_price_kop: number; buy_fee_kop: number; lot_qty: number }>()).results;
+}
+
+/** Деньги пришли → обычная продажа (сумму можно поправить). */
+export async function confirmPending(db: D1Database, tid: number, id: number, receivedKop: number | null, date: string, now: number): Promise<{ costKop: number; receivedKop: number }> {
+  const p = await db.prepare('SELECT * FROM pending_sales WHERE id = ? AND telegram_id = ?').bind(id, tid).first<PendingRow>();
+  if (!p) throw new Error('Не найдено');
+  const got = receivedKop ?? p.received_kop;
+  const r = await addSale(db, tid, { tradeId: p.trade_id, quantity: p.quantity, sellPriceKop: p.sell_price_kop, receivedKop: got, platform: p.platform, sellDate: date, now }, true);
+  await db.prepare('DELETE FROM pending_sales WHERE id = ?').bind(id).run();
+  return { costKop: r.costKop, receivedKop: got };
+}
+
+export async function cancelPending(db: D1Database, tid: number, id: number): Promise<boolean> {
+  const r = await db.prepare('DELETE FROM pending_sales WHERE id = ? AND telegram_id = ?').bind(id, tid).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+/** Удалить ошибочную запись о продаже: штуки возвращаются в лот. */
+export async function deleteSale(db: D1Database, tid: number, saleId: number, now: number): Promise<boolean> {
+  const s = await db.prepare('SELECT s.id, s.trade_id, s.quantity FROM trade_sales s JOIN trades t ON t.id = s.trade_id WHERE s.id = ? AND t.telegram_id = ?')
+    .bind(saleId, tid).first<{ id: number; trade_id: number; quantity: number }>();
+  if (!s) return false;
+  await db.batch([
+    db.prepare('DELETE FROM trade_sales WHERE id = ?').bind(s.id),
+    db.prepare(`UPDATE trades SET sold_quantity = MAX(0, sold_quantity - ?), status = 'open', updated_at = ? WHERE id = ? AND telegram_id = ?`).bind(s.quantity, now, s.trade_id, tid),
+  ]);
+  return true;
 }

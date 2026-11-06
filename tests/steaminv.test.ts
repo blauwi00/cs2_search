@@ -132,3 +132,42 @@ test('пропало: без цены покупки и без записи — 
   assert.equal(sale.wallet, 'steam_wallet');
   assert.ok(sale.sell_price_kop >= 1149 && sale.sell_price_kop <= 1151, 'Steam: цена покупателя восстановлена из полученного (+15%)');
 });
+
+test('продажа «ждёт оплаты»: не в прибыли и не в покупках; «деньги пришли» → продажа; «не продалось» → обратно; удаление продажи', async () => {
+  const d = migratedDb();
+  const env = testEnv(d);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+  const call = async (path: string, method = 'GET', body?: unknown) => (await handleAppApi(new Request('https://w.dev/app/api/' + path, { method, headers: { 'X-Init-Data': init }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as Promise<Record<string, any>>;
+  const lot = (await call('inventory', 'POST', { name: 'AK-47 | Slate (Field-Tested)', qty: 2, priceKop: 10000, platform: 'steam', date: '2026-11-01' })).id;
+  const p = await call(`inventory/${lot}/sell`, 'POST', { qty: 1, priceKop: 13000, receivedKop: 12000, platform: 'csgomarket', pending: true });
+  assert.equal(p.pending, true);
+  assert.equal(p.resultKop, 2000);
+  let inv = await call('inventory');
+  assert.equal(inv.realizedKop, 0, 'не в прибыли');
+  assert.equal(inv.lots[0].openQty, 1, 'в покупках осталась 1');
+  let tr = await call('trades');
+  assert.equal(tr.pending.length, 1);
+  assert.equal(tr.pending[0].resultKop, 2000);
+  assert.equal(tr.pending[0].platform, 'Market.CSGO');
+  // Нельзя «продать» больше, чем осталось с учётом ожидающих
+  assert.equal((await call(`inventory/${lot}/sell`, 'POST', { qty: 2, priceKop: 13000, receivedKop: 24000, platform: 'csgomarket' })).ok, false);
+  // Деньги пришли, но меньше
+  const c = await call(`sales/pending/${tr.pending[0].id}/confirm`, 'POST', { receivedKop: 11500 });
+  assert.equal(c.resultKop, 1500);
+  inv = await call('inventory');
+  assert.equal(inv.realizedKop, 1500);
+  tr = await call('trades');
+  assert.equal(tr.pending.length, 0);
+  assert.equal(tr.sales.length, 1);
+  // Вторая штука: «ждёт», потом «не продалось» — вернулась в покупки
+  await call(`inventory/${lot}/sell`, 'POST', { qty: 1, priceKop: 13000, receivedKop: 12000, platform: 'waxpeer', pending: true });
+  assert.equal((await call('inventory')).lots.length, 0, 'всё продано или ждёт оплаты');
+  const pid = (await call('trades')).pending[0].id;
+  assert.equal((await call(`sales/pending/${pid}/cancel`, 'POST')).ok, true);
+  assert.equal((await call('inventory')).lots[0].openQty, 1);
+  // Ошибочная продажа удаляется, штука возвращается
+  assert.equal((await call(`sales/${tr.sales[0].id}`, 'DELETE')).ok, true);
+  inv = await call('inventory');
+  assert.equal(inv.realizedKop, 0);
+  assert.equal(inv.lots[0].openQty, 2);
+});

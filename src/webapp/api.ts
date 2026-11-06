@@ -521,7 +521,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
 
     // ---------- Инвентарь и сделки ----------
     if (path === 'inventory' && method === 'GET') {
-      const lots = await T.openTrades(d, tid);
+      // Что «ждёт оплаты» — уже не в покупках, а во вкладке «Продажи».
+      const pend = await T.pendingByTrade(d, tid);
+      const lots = (await T.openTrades(d, tid)).map((l) => ({ ...l, sold_quantity: l.sold_quantity + (pend.get(l.id) ?? 0) })).filter((l) => l.quantity > l.sold_quantity);
       const lotIds = [...new Set(lots.map((l) => l.item_id))].slice(0, 360);
       const [quotes, adv, imgs, avgs, fxm, wallet] = await Promise.all([
         quotesChunked(d, lotIds),
@@ -632,14 +634,18 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (!Number.isInteger(qty) || qty < 1 || qty > g.qty) { errors.push(`${g.name}: количество от 1 до ${g.qty}`); continue; }
         if (!Number.isSafeInteger(got) || got <= 0) { errors.push(`${g.name}: впиши, сколько получил`); continue; }
         const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
+        const pend = r.pending === true; // деньги ещё не пришли — «ждёт оплаты»
         let left = qty;
         try {
           // Сначала — из записанных покупок (по порядку), остальное — новой записью с ценой покупки (0 — если выпал).
+          const pq = await T.pendingByTrade(d, tid);
           for (const l of (await T.openTrades(d, tid)).filter((x) => x.item_id === g.item_id).sort((a, b) => a.id - b.id)) {
             if (!left) break;
-            const q = Math.min(left, l.quantity - l.sold_quantity);
+            const q = Math.min(left, l.quantity - l.sold_quantity - (pq.get(l.id) ?? 0));
             if (q <= 0) continue;
-            const s = await T.addSale(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, sellDate: date, now });
+            const s = pend
+              ? await T.addPending(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, now })
+              : await T.addSale(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, sellDate: date, now });
             resultKop += got * q - s.costKop;
             left -= q;
           }
@@ -648,7 +654,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
             if (!Number.isSafeInteger(buy) || buy < 0) { errors.push(`${g.name}: впиши, за сколько покупал (0 — если выпал)`); if (left === qty) continue; }
             else {
               const id = await T.addTrade(d, { tid, itemId: g.item_id, signalId: null, quantity: left, buyPriceKop: buy, buyFeeKop: 0, platform: buy === 0 ? 'gift' : 'other', buyDate: date, note: 'из «Пропало из инвентаря»', now });
-              const s = await T.addSale(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, sellDate: date, now });
+              const s = pend
+                ? await T.addPending(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, now })
+                : await T.addSale(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, sellDate: date, now });
               resultKop += got * left - s.costKop;
               left = 0;
             }
@@ -677,12 +685,32 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         received = p.sellerReceives * qty;
       }
       if (!Number.isSafeInteger(received) || received < 0) return bad('Неверная полученная сумма');
+      if (body.pending === true) {
+        try {
+          const r = await T.addPending(d, tid, { tradeId: id, quantity: qty, sellPriceKop: price, receivedKop: received, platform, now });
+          return json({ ok: true, pending: true, resultKop: received - r.costKop, costKop: r.costKop, receivedKop: received, wallet: walletFor(platform) });
+        } catch (e) { return bad((e as Error).message); }
+      }
       try {
         const r = await T.addSale(d, tid, { tradeId: id, quantity: qty, sellPriceKop: price, receivedKop: received, platform, sellDate: date, now });
         return json({ ok: true, resultKop: received - r.costKop, costKop: r.costKop, receivedKop: received, wallet: walletFor(platform), closed: r.closed });
       } catch (e) {
         return bad((e as Error).message);
       }
+    }
+    if (seg[0] === 'sales' && seg[1] === 'pending' && seg[3] === 'confirm' && method === 'POST') {
+      const rcv = body.receivedKop == null || body.receivedKop === '' ? null : Number(body.receivedKop);
+      if (rcv !== null && (!Number.isSafeInteger(rcv) || rcv < 0)) return bad('Неверная сумма');
+      try {
+        const r = await T.confirmPending(d, tid, Number(seg[2]), rcv, warsawDate(now), now);
+        return json({ ok: true, resultKop: r.receivedKop - r.costKop });
+      } catch (e) { return bad((e as Error).message); }
+    }
+    if (seg[0] === 'sales' && seg[1] === 'pending' && seg[3] === 'cancel' && method === 'POST') {
+      return json({ ok: await T.cancelPending(d, tid, Number(seg[2])) });
+    }
+    if (seg[0] === 'sales' && seg[1] && method === 'DELETE') {
+      return json({ ok: await T.deleteSale(d, tid, Number(seg[1]), now) });
     }
     if (seg[0] === 'inventory' && seg[1] && method === 'DELETE') {
       return json({ ok: await T.deleteTrade(d, tid, Number(seg[1])) });
@@ -700,13 +728,19 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const st = realizedStats(trades, sales);
       const byId = new Map(trades.map((t) => [t.id, t]));
       const last = sales.slice(-100).reverse();
-      const imgs = await imagesFor(d, [...new Set(last.map((s) => byId.get(s.trade_id)?.market_hash_name ?? ''))].filter(Boolean));
+      const pend = await T.pendingFor(d, tid);
+      const imgs = await imagesFor(d, [...new Set([...last.map((s) => byId.get(s.trade_id)?.market_hash_name ?? ''), ...pend.map((p) => p.market_hash_name)])].filter(Boolean));
       return json({
         ok: true, stats: st,
+        pending: pend.map((p) => {
+          const cost = Math.round((p.buy_price_kop * p.lot_qty + p.buy_fee_kop) * p.quantity / Math.max(1, p.lot_qty));
+          return { id: p.id, name: p.market_hash_name, img: imgs.get(p.market_hash_name) ?? null, qty: p.quantity, receivedKop: p.received_kop, costKop: cost, resultKop: p.received_kop - cost,
+            platform: PLATFORM_RU[p.platform] ?? p.platform, wallet: walletFor(p.platform), since: p.created_at };
+        }),
         sales: last.map((s) => {
           const name = byId.get(s.trade_id)?.market_hash_name ?? '';
           const pl = (s as unknown as { platform?: string }).platform ?? '';
-          return { name, img: imgs.get(name) ?? null, qty: s.quantity, receivedKop: s.received_kop, costKop: s.costKop,
+          return { id: (s as unknown as { id: number }).id, name, img: imgs.get(name) ?? null, qty: s.quantity, receivedKop: s.received_kop, costKop: s.costKop,
             resultKop: s.received_kop - s.costKop, wallet: s.wallet, date: s.sell_date, platform: PLATFORM_RU[pl] ?? pl };
         }),
         open: trades.filter((t) => openQty(t) > 0).length,

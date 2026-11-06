@@ -297,7 +297,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           const c = capital(tr, rs, 'real', now);
           return { balanceKop: c.balanceKop, availableKop: c.availableKop, reserveKop: rs.reserveKop, realizedKop: c.realizedKop, openCount: c.openCount, maxPositions: rs.maxPositions };
         })() : null,
-        recs: { fetchedAt: recs.fetchedAt, deals: recs.deals.slice(0, 6), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
+        recs: { fetchedAt: recs.fetchedAt, deals: await (async () => { const top = recs.deals.slice(0, 6); const im = top.length ? await imagesFor(d, top.map((x) => x.name)) : new Map<string, string>(); return top.map((x) => ({ ...x, img: im.get(x.name) ?? null })); })(), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
         sites: sitesFor(await loadRefLinks(d)),
         donors: await topDonors(d, 10),
         cronAlive: lastRun > 0 && now - lastRun < 300,

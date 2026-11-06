@@ -5,7 +5,7 @@
 <meta name="generator" content="cenolov-fp-7q3k9x2m">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>CS2 Market</title>
+<title>Ценолов</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 :root{
@@ -161,10 +161,75 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 .v-sell{background:color-mix(in srgb,var(--violet) 18%,var(--card))}
 .v-avoid{background:color-mix(in srgb,var(--red) 14%,var(--card))}
 .v-hold,.v-nodata{background:var(--card)}
+
+/* ===== Новый визуал: свои темы (по умолчанию «Радар»), свечение, анимации ===== */
+html.th{background:var(--bg2)}
+html.th body{background:radial-gradient(520px 420px at -10% -8%,color-mix(in srgb,var(--glow) 42%,transparent),transparent 70%),radial-gradient(420px 380px at 115% 18%,color-mix(in srgb,var(--glow) 22%,transparent),transparent 70%),var(--bg2);background-repeat:no-repeat;min-height:100vh}
+html.th .top{background:color-mix(in srgb,var(--bg2) 30%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+html.th .card,html.th .row,html.th .rc,html.th .stat{border:1px solid color-mix(in srgb,var(--accent) 9%,transparent)}
+html.th .btn:not(.sec2):not(.danger){background:var(--grad,var(--accent));box-shadow:0 6px 22px -8px color-mix(in srgb,var(--accent) 70%,transparent)}
+html.th .chip.on{background:var(--grad,var(--accent))}
+html.th .tab.on .t{text-shadow:0 0 14px color-mix(in srgb,var(--accent) 80%,transparent)}
+html.th .tabs{background:color-mix(in srgb,var(--bg2) 82%,transparent)}
+.logo{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;background:var(--grad,var(--accent));box-shadow:0 4px 16px -4px color-mix(in srgb,var(--accent) 80%,transparent)}
+.logo svg{display:block}
+.sweep{transform-origin:12px 12px;animation:swp 2.6s linear infinite}
+@keyframes swp{to{transform:rotate(360deg)}}
+.row,.rc,.stile,.chip,.btn,.tab,.stat,.hero,.tkc,.menubtn{transition:transform .12s ease,opacity .12s}
+.row:active,.rc:active,.chip:active,.btn:active,.stat:active,.hero:active,.menubtn:active{transform:scale(.97)}
+.tab:active .t{transform:scale(.85)}.tab .t{transition:transform .12s}
+#view.enter>*{animation:rise .42s cubic-bezier(.2,.9,.25,1) both}
+#view.enter>*:nth-child(2){animation-delay:.04s}#view.enter>*:nth-child(3){animation-delay:.08s}#view.enter>*:nth-child(4){animation-delay:.12s}#view.enter>*:nth-child(5){animation-delay:.16s}#view.enter>*:nth-child(n+6){animation-delay:.2s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.sheet.on #sc>*{animation:rise .35s .05s cubic-bezier(.2,.9,.25,1) both}
+.toast{border-radius:14px;font-weight:600;box-shadow:0 10px 30px -10px rgba(0,0,0,.6)}
+html.th .toast{background:var(--card);color:var(--text);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+/* Главная: «сводка» сверху */
+.hero{position:relative;overflow:hidden;border-radius:22px;padding:16px;margin:2px 0 12px;cursor:pointer;background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 16%,var(--card)),var(--card) 70%);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.09) 48%,transparent 60%);transform:translateX(-100%);animation:shn 4s 1.2s ease-in-out infinite;pointer-events:none}
+@keyframes shn{55%,100%{transform:translateX(100%)}}
+.hero .hl{font-size:13px;color:var(--hint);display:flex;align-items:center;gap:7px}
+.hero .hn{font-size:44px;font-weight:900;letter-spacing:-1.5px;line-height:1.05;margin-top:4px;font-variant-numeric:tabular-nums}
+.hero .hs{font-size:14px;margin-top:2px}
+.hero .hr{position:absolute;right:-26px;top:-26px;opacity:.5}
+.dot{width:8px;height:8px;border-radius:4px;background:var(--green);display:inline-block;animation:lv 1.4s ease-in-out infinite}
+.dot.warn{background:var(--amber)}.dot.bad{background:var(--red);animation:none}
+@keyframes lv{50%{opacity:.25}}
+/* Бегущая строка: карточки-чипсы */
+.ticker.chips2{font-size:13.5px;color:var(--text);padding:3px 0}
+.tk-in .tkc{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 10px 0 5px;margin-right:8px;border-radius:13px;background:var(--card);border:1px solid color-mix(in srgb,var(--accent) 12%,transparent);vertical-align:middle}
+.tkc .ti{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:radial-gradient(circle at 50% 40%,color-mix(in srgb,var(--accent) 25%,transparent),transparent 75%)}
+.tkc .ti img{width:26px;height:26px;object-fit:contain}
+.tkc .tn{font-weight:700;max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.tkc .tp{font-weight:800;font-size:12.5px;padding:3px 7px;border-radius:8px;color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)}
+.tk-in .tkc.info{padding:0 12px;color:var(--hint);font-weight:500}
+/* Топ поддержки: золото */
+.ticker.t2{height:28px;display:flex;align-items:center;border-radius:999px;margin:6px 0 0;flex:0 0 100%;background:rgba(255,207,77,.07);border:1px solid rgba(255,207,77,.2);opacity:1}
+.ticker.t2 .tk-in span{margin-right:22px}
+.gold{background:linear-gradient(90deg,#c9963a,#ffe7a0,#c9963a);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:gd 3s linear infinite}
+@keyframes gd{to{background-position:-200% 0}}
+.ticker.t2 b{color:#ffcf4d}
+/* Заставка */
+#splash{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:var(--bg2);transition:opacity .45s,transform .45s}
+#splash.out{opacity:0;transform:scale(1.06);pointer-events:none}
+#splash .sp{display:flex;flex-direction:column;align-items:center;gap:18px}
+#splash .nm{font-size:34px;font-weight:900;letter-spacing:-1px;animation:lgi .9s .25s cubic-bezier(.2,.9,.25,1) both}
+#splash .sb{color:var(--hint);font-size:14px;animation:rise .6s .7s both}
+@keyframes lgi{from{opacity:0;letter-spacing:12px;filter:blur(6px)}to{opacity:1;letter-spacing:-1px;filter:none}}
+.ring{transform-origin:60px 60px;animation:rng 2.2s ease-out infinite}
+@keyframes rng{from{transform:scale(.2);opacity:.9}to{transform:scale(1.1);opacity:0}}
+/* Выбор темы */
+.thg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tho{border-radius:16px;padding:12px;cursor:pointer;border:2px solid transparent;transition:transform .12s}
+.tho:active{transform:scale(.97)}.tho.on{border-color:var(--accent)}
+.tho .sws{display:flex;gap:4px;margin:8px 0 6px}.tho .sws i{flex:1;height:18px;border-radius:5px}
+.tho .tb{height:26px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:800}
+@media (prefers-reduced-motion:reduce){#view.enter>*,.sheet.on #sc>*,.hero:after,.sweep,.ring,.dot,.gold{animation:none!important}}
 </style>
 </head>
 <body>
-<div class="top"><h1 id="title">CS2 Market</h1><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
+<div class="top"><div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-t)" stroke-width="2.2"><circle cx="12" cy="12" r="8.5" stroke-opacity=".55"></circle><circle cx="12" cy="12" r="4" stroke-opacity=".35"></circle><g class="sweep"><path d="M12 12 L12 3.5" stroke-linecap="round"></path></g><circle cx="12" cy="12" r="1.6" fill="var(--accent-t)" stroke="none"></circle></svg></div><h1 id="title">Ценолов</h1><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker chips2" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
+<div id="splash" style="display:none" aria-hidden="true"><div class="sp"><svg width="120" height="120" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-opacity=".25"></circle><circle cx="60" cy="60" r="36" fill="none" stroke="var(--accent)" stroke-opacity=".18"></circle><circle class="ring" cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-width="2"></circle><g class="sweep" style="transform-origin:60px 60px"><path d="M60 60 L60 4 A56 56 0 0 1 108 32 Z" fill="var(--accent)" fill-opacity=".35"></path></g><circle cx="60" cy="60" r="4" fill="var(--accent)"></circle></svg><div class="nm">Ценолов</div><div class="sb">ищу выгодные цены…</div></div></div>
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
@@ -205,6 +270,37 @@ var FX = { UAH: 1 };
 var CUR_SIGN = { UAH: '₴', USD: '$', EUR: '€', PLN: 'zł', RUB: '₽', KZT: '₸', GBP: '£' };
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без памяти */ } }
+
+// ---------- Темы оформления: своя палитра вместо цветов Telegram. «tg» — как в Telegram. ----------
+var THEMES = {
+  radar: { name: 'Радар', bg2: '#060a12', bg: '#0b111c', card: '#0e1522', text: '#eef2fa', hint: '#8b98b3', link: '#5fe6cc', accent: '#38e1c0', at: '#04110e', green: '#3be59a', red: '#ff5d73', grad: 'linear-gradient(135deg,#38e1c0,#2f7bff)', glow: '#1c4fd6' },
+  orange: { name: 'CS2 оранж', bg2: '#0b0907', bg: '#120e0a', card: '#16120d', text: '#f6efe6', hint: '#a39684', link: '#ffb03a', accent: '#ff9124', at: '#1a0d02', green: '#55d38f', red: '#ff5b4d', grad: 'linear-gradient(135deg,#ffb03a,#ff6a1f)', glow: '#b8480e' },
+  neon: { name: 'Неон', bg2: '#08061a', bg: '#0e0b24', card: '#120e28', text: '#f1eeff', hint: '#9a92bf', link: '#c49bff', accent: '#b07bff', at: '#ffffff', green: '#45e6a8', red: '#ff5c82', grad: 'linear-gradient(135deg,#ff5fd2,#7c5cff)', glow: '#5b2dd6' },
+  lime: { name: 'Графит лайм', bg2: '#0b0d0c', bg: '#111413', card: '#151918', text: '#eef3ef', hint: '#94a09a', link: '#c8ff3d', accent: '#c8ff3d', at: '#0b1200', green: '#c8ff3d', red: '#ff6a5a', grad: 'linear-gradient(135deg,#c8ff3d,#5dffb4)', glow: '#3f6b10' },
+  tg: { name: 'Как в Telegram' }
+};
+var THEME_VARS = { bg2: '--bg2', bg: '--bg', card: '--card', text: '--text', hint: '--hint', link: '--link', accent: '--accent', at: '--accent-t', green: '--green', red: '--red', grad: '--grad', glow: '--glow' };
+function applyTheme(key) {
+  var t = THEMES[key] ? key : 'radar', th = THEMES[t], r = document.documentElement;
+  Object.keys(THEME_VARS).forEach(function (k) { if (th[k]) r.style.setProperty(THEME_VARS[k], th[k]); else r.style.removeProperty(THEME_VARS[k]); });
+  r.classList.toggle('th', t !== 'tg');
+  try {
+    if (tg && tg.setHeaderColor) { if (t === 'tg') { tg.setHeaderColor('secondary_bg_color'); tg.setBackgroundColor('secondary_bg_color'); } else { tg.setHeaderColor(th.bg2); tg.setBackgroundColor(th.bg2); if (tg.setBottomBarColor) tg.setBottomBarColor(th.bg2); } }
+  } catch (e) { /* старый Telegram — цвета шапки не меняются */ }
+  return t;
+}
+var THEME = applyTheme(lsGet('theme') || 'radar');
+function themeSheet() {
+  var h = '<h2>🎨 Тема оформления</h2><div class="sub">Запоминается на этом устройстве.</div><div class="thg">' + Object.keys(THEMES).map(function (k) {
+    var t = THEMES[k];
+    if (k === 'tg') return '<div class="tho' + (THEME === k ? ' on' : '') + '" data-th="tg" style="background:var(--tg-theme-secondary_bg_color,#171a21);color:var(--tg-theme-text_color,#fff)"><b>' + t.name + '</b><div class="sws"><i style="background:var(--tg-theme-bg-color,#0f1115)"></i><i style="background:var(--tg-theme-section_bg_color,#1c2029)"></i><i style="background:var(--tg-theme-button_color,#5b8cff)"></i></div><div class="tb" style="background:var(--tg-theme-button_color,#5b8cff);color:var(--tg-theme-button_text_color,#fff)">цвета Telegram</div></div>';
+    return '<div class="tho' + (THEME === k ? ' on' : '') + '" data-th="' + k + '" style="background:' + t.bg2 + ';color:' + t.text + '"><b>' + t.name + '</b><div class="sws"><i style="background:' + t.card + '"></i><i style="background:' + t.accent + '"></i><i style="background:' + t.green + '"></i><i style="background:' + t.red + '"></i></div><div class="tb" style="background:' + t.grad + ';color:' + t.at + '">кнопка</div></div>';
+  }).join('') + '</div>';
+  sheet(h);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-th]'), function (el) {
+    el.onclick = function () { haptic('ok'); THEME = applyTheme(el.getAttribute('data-th')); lsSet('theme', THEME); themeSheet(); };
+  });
+}
 /** Выбор валюты для поля ввода; key — что запомнить (например, сайт продажи). */
 function curSelect(id, key) {
   var def = (key && lsGet('cur_' + key)) || CUR.code;
@@ -305,7 +401,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { rally: 'Разгон баланса', home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', trades: 'Сделки', more: 'Ещё' };
+var TITLES = { rally: 'Разгон баланса', home: 'Ценолов', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', trades: 'Сделки', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -329,9 +425,16 @@ function go(t) {
   ['#ticker', '#ticker2'].forEach(function (id) { var el = $(id); if (el) el.style.display = t === 'home' ? '' : 'none'; });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
+  view.classList.remove('enter'); view._fresh = true;
   ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally })[t]();
 }
 
+// Плавное появление содержимого раздела после загрузки (не на скелетонах).
+new MutationObserver(function () {
+  if (!view._fresh || view.querySelector('.skel')) return;
+  view._fresh = false;
+  view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
+}).observe(view, { childList: true });
 // ---------- Состояние: зелёный — всё работает; жёлтый — работает, но Steam/Skinport временно ограничены; красный — бот стоит ----------
 function health(s) {
   var by = {}; s.sources.forEach(function (x) { by[x.source] = x; });
@@ -347,9 +450,11 @@ function health(s) {
 function tickerItems(s) {
   var deals = ((s.recs || {}).deals || []);
   state.tickerDeals = deals;
-  if (!deals.length) return '<span>🔥 Горячих предложений сейчас нет — бот проверяет рынок каждые 10 минут</span>';
+  if (!deals.length) return '<span class="tkc info">🔎 Горячих предложений сейчас нет — бот проверяет рынок каждые 10 минут</span>';
   return deals.map(function (r, i) {
-    return '<span data-tk="' + i + '">🔥 ' + esc(r.name) + ': купи на ' + esc(r.buyName) + ' за ' + uahShort(r.payKop) + ' → <b class="pos">+' + uahShort(r.profitKop) + '</b></span>';
+    var em = ICON[guessCat(r.name)] || '🔥';
+    var ic = r.img ? '<img src="' + esc(r.img) + '" alt="" loading="lazy" onerror="this.parentNode.textContent=\'' + em + '\'">' : em;
+    return '<span class="tkc" data-tk="' + i + '" title="' + esc(r.name) + ': купи на ' + esc(r.buyName) + ' за ' + uahShort(r.payKop) + '"><span class="ti">' + ic + '</span><span class="tn">' + esc(r.name) + '</span><span class="mut" style="font-size:12px">' + esc(r.buyName) + '</span><span class="tp">+' + uahShort(r.profitKop) + '</span></span>';
   }).join('');
 }
 function renderTicker(s) {
@@ -363,7 +468,7 @@ function renderTicker(s) {
 // Вторая строка: топ поддержки звёздами. Нажатие — «Поддержать проект».
 function renderDonors(s) {
   var el = $('#ticker2'), ds = s.donors || [];
-  var items = ds.length ? '<span>💛 Топ поддержки:</span>' + ds.map(function (x, i) { return '<span>' + (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + ' ' + esc(x.name) + ' — <b>' + x.stars + ' ⭐</b></span>'; }).join('')
+  var items = ds.length ? '<span>💛 Топ поддержки:</span>' + ds.map(function (x, i) { return '<span>' + (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + ' <b class="gold">' + esc(x.name) + '</b> <b>' + x.stars + ' ⭐</b></span>'; }).join('')
     : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Связь с автором» → «Поддержать»</span>';
   el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
   var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(20, Math.round(w / 35)) + 's');
@@ -432,7 +537,7 @@ function home() {
   loading(5);
   api('summary').then(function (s) {
     renderTicker(s);
-    var h = '';
+    var h = heroCard(s);
     h += setupCard(s.setup);
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
@@ -444,11 +549,34 @@ function home() {
     h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
     view.innerHTML = h;
     bindSetup();
+    bindHero(s);
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
       el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
     });
   }).catch(fail);
+}
+// Сводка сверху главной: сколько идей нашёл бот и лучшая из них. Только реальные данные из summary.
+function heroCard(s) {
+  var r = s.recs || {}, deals = r.deals || [], n = r.total || 0, hs = state.health || { cls: 'ok' };
+  var best = deals.reduce(function (a, x) { return !a || x.profitKop > a.profitKop ? x : a; }, null);
+  var live = hs.cls === 'bad' ? 'цены не обновляются' : 'рынок онлайн' + (r.fetchedAt ? ' · ' + ago(r.fetchedAt) : '');
+  return '<div class="hero" id="hero"><svg class="hr" width="130" height="130" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-opacity=".3"></circle><circle cx="60" cy="60" r="34" fill="none" stroke="var(--accent)" stroke-opacity=".2"></circle><g class="sweep" style="transform-origin:60px 60px"><path d="M60 60 L60 4 A56 56 0 0 1 108 32 Z" fill="var(--accent)" fill-opacity=".3"></path></g></svg>' +
+    '<div class="hl"><span class="dot ' + (hs.cls === 'ok' ? '' : hs.cls) + '"></span>' + live + '</div>' +
+    '<div class="hn" data-count="' + n + '">' + n + '</div>' +
+    '<div class="hs">' + (n ? (n === 1 ? 'идея' : n < 5 ? 'идеи' : 'идей') + ' для покупки и продажи' : 'выгодных идей сейчас нет — бот продолжает искать') + '</div>' +
+    (best ? '<div class="hs mut" style="margin-top:6px">Лучшая: ' + esc(best.name) + ' — <b class="pos" style="white-space:nowrap">+' + uahShort(best.profitKop) + '</b></div>' : '') +
+    '</div>';
+}
+function bindHero(s) {
+  var el = $('#hero'); if (!el) return;
+  el.onclick = function () { haptic(); go('deals'); };
+  var num = el.querySelector('[data-count]'), end = +num.getAttribute('data-count');
+  if (end > 1 && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    var t0 = 0; num.textContent = '0';
+    var step = function (t) { if (!t0) t0 = t; var p = Math.min(1, (t - t0) / 700); num.textContent = Math.round(end * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
 }
 function stat(l, v, s) { return '<div class="stat"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="s">' + (s || '') + '</div></div>'; }
 function srcStatus(x) {
@@ -1826,6 +1954,7 @@ function more() {
   var row = function (id, ic, n, d) { return '<div class="row" id="' + id + '"><div class="ic">' + ic + '</div><div class="m"><div class="n">' + n + '</div><div class="d">' + d + '</div></div><div class="mut">›</div></div>'; };
   view.innerHTML = (state.isAdmin ? row('m-own', '🛠', 'Для владельца', 'Панель, состояние системы') : '') +
     row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
+    row('m-theme', '🎨', 'Тема оформления', 'Сейчас: ' + esc(THEMES[THEME].name)) +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
     row('m-talk', '✉️', 'Связь с автором', 'Предложить пост, сообщить об ошибке, поддержать') +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте, пересчёт по курсу НБУ.</div>';
@@ -1835,6 +1964,7 @@ function more() {
   };
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
+  $('#m-theme').onclick = function () { haptic(); themeSheet(); };
   $('#m-help').onclick = function () {
     haptic();
     menu([
@@ -1914,6 +2044,15 @@ var hashTab = (location.hash || '').replace('#', '');
 var first = ['deals', 'market', 'inv', 'more', 'rally'].indexOf(start) >= 0 ? start : ['deals', 'market', 'inv', 'more', 'rally'].indexOf(hashTab) >= 0 ? hashTab : 'home';
 // Сначала — согласие с условиями (один раз). Без ответа сервера не блокируем: бот всё равно спросит в чате.
 loading(3);
+// Заставка-радар: один раз за запуск, ~1,3 с, нажатие — пропустить. При «Уменьшении движения» — без неё.
+(function () {
+  var sp = $('#splash'), seen = false;
+  try { seen = sessionStorage.getItem('splash') === '1'; sessionStorage.setItem('splash', '1'); } catch (e) { /* без памяти — покажем */ }
+  if (!sp || seen || THEME === 'tg' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+  sp.style.display = '';
+  var hide = function () { sp.classList.add('out'); setTimeout(function () { sp.style.display = 'none'; }, 480); };
+  sp.onclick = hide; setTimeout(hide, 1300);
+})();
 api('terms').then(function (t) { if (t.accepted && !t.onboarded) onboarding(first); else if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });
 })();
 </script>

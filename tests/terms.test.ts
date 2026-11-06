@@ -164,3 +164,25 @@ test('текстовое меню: без повторов приложения 
   assert.ok(cbs(await M.mainMenu(D, 0, 'https://w.dev/app', true)).includes('m:status'), 'владельцу — состояние системы');
   assert.ok(cbs(await M.mainMenu(D, 0, undefined, false)).includes('m:deals'), 'без приложения — полное меню');
 });
+
+test('метка из ссылки (?start=ch, ?start=suggest) не теряется, если человек сначала принимает условия', async () => {
+  const d = migratedDb({ termsAccepted: false });
+  const env = testEnv(d);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([{ match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } }]);
+  const upd = (body: object) => handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, ...body }) }), env, NOW, fetcher);
+  const msg = (u: number, text: string) => upd({ message: { message_id: 1, from: { id: u }, chat: { id: u, type: 'private' }, text } });
+  const cb = (u: number, data: string) => upd({ callback_query: { id: 'q', from: { id: u }, data, message: { message_id: 5, chat: { id: u, type: 'private' } } } });
+  const ref = (u: number) => (d.db.prepare(`SELECT value FROM user_settings WHERE telegram_id = ? AND key = 'ref'`).get(u) as { value: string } | undefined)?.value;
+  await msg(501, '/start ch');
+  assert.equal(ref(501), undefined, 'до согласия ничего не пишем, кроме отложенной метки');
+  await cb(501, 'terms:ok');
+  assert.equal(ref(501), 'ch', 'после «Принимаю» метка канала записана');
+  assert.equal((d.db.prepare(`SELECT COUNT(*) AS n FROM user_settings WHERE telegram_id = 501 AND key = 'start_param'`).get() as { n: number }).n, 0);
+  await msg(502, '/start suggest');
+  await cb(502, 'terms:ok');
+  assert.match(String(sent.filter((s) => s.method === 'sendMessage').at(-1)!.body.text), /предлож/i, 'после согласия — сразу «Предложить пост»');
+  await msg(503, '/start');
+  await cb(503, 'terms:ok');
+  assert.equal(ref(503), undefined);
+});

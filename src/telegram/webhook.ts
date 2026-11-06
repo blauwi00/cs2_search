@@ -113,7 +113,15 @@ async function onText(text: string, h: H): Promise<void> {
   await db.ensureUser(h.d, h.uid, h.isAdmin, h.now);
   // Удаление данных и тексты условий доступны всегда; всё остальное — после принятия условий.
   if (cmd === '/deletemydata') return say(h, '🗑 Удалить всё, что бот знает о тебе? Настройки, список, покупки, привязка Steam и уведомления удалятся без возможности восстановления.', [[{ text: 'Да, удалить всё', callback_data: 'delme:yes' }], [{ text: 'Отмена', callback_data: 'delme:no' }]]);
-  if (!['/terms', '/privacy', '/paysupport'].includes(cmd) && !(await termsAccepted(h))) return askTerms(h);
+  if (!['/terms', '/privacy', '/paysupport'].includes(cmd) && !(await termsAccepted(h))) {
+    // Метку из ссылки (t.me/бот?start=ch, ?start=suggest) запоминаем до согласия — после «Принимаю» выполним /start с ней.
+    const p = cmd === '/start' ? (t.split(/\s+/)[1] ?? '') : '';
+    if (/^[A-Za-z0-9_]{1,32}$/.test(p)) {
+      await h.d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'start_param', ?, ?)
+        ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(h.uid, p, h.now).run();
+    }
+    return askTerms(h);
+  }
   switch (cmd) {
     case '/start': {
       await db.clearState(h.d, h.uid);
@@ -256,7 +264,9 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
     if (b === 'full') return say(h, termsText(), TERMS_KB);
     if (b === 'ok') {
       await db.setSetting(h.d, h.uid, 'terms_ok', TERMS_VERSION, h.now);
-      return onText('/start', h);
+      // Метка, с которой человек пришёл до согласия, — не теряем (источник в /stats, «Предложить пост»).
+      const p = (await h.d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key = 'start_param' RETURNING value`).bind(h.uid).first<{ value: string }>())?.value;
+      return onText(p && /^[A-Za-z0-9_]{1,32}$/.test(p) ? `/start ${p}` : '/start', h);
     }
   }
   if (a === 'delme') {

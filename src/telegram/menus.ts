@@ -38,10 +38,16 @@ export async function mainMenu(d: D1Database, now: number, appUrl?: string, isAd
       `Предметов отслеживается: ${watched}`,
       `Последняя проверка цен: ${ago(lastOk || null, now)}`, '',
     ] : ['Цены CS2 на всех площадках, рекомендации, инвентарь и уведомления.', '']),
-    '<i>Валюта — в /currency. Бот только анализирует — ничего не покупает и не продаёт.</i>',
+    '<i>Сделки, рынок, инвентарь и настройки — в приложении. Валюта — /currency. Бот только анализирует — ничего не покупает и не продаёт.</i>',
   ].join('\n');
-  const keyboard: Keyboard = [
-    ...(appUrl ? [[{ text: '📱 Открыть приложение', web_app: { url: appUrl } }]] : []),
+  // Сделки, рынок, инвентарь, история и настройки — в приложении; в текстовом меню только то, чего там нет.
+  // Без приложения (нет адреса) — полное меню, иначе этими разделами не воспользоваться.
+  const keyboard: Keyboard = appUrl ? [
+    [{ text: '📱 Открыть приложение', web_app: { url: appUrl } }],
+    [{ text: '📦 Кейсы', callback_data: 'm:cases' }, { text: '📈 Аналитика', callback_data: 'm:an' }],
+    [{ text: '💡 Предложить пост в канал', callback_data: 'sg:go' }],
+    ...(isAdmin ? [[{ text: '🩺 Состояние системы', callback_data: 'm:status' }]] : []),
+  ] : [
     [{ text: '💰 Выгодные сделки', callback_data: 'm:deals' }, { text: '👁 Мониторинг цен', callback_data: 'm:watch' }],
     [{ text: '📦 Кейсы', callback_data: 'm:cases' }, { text: '🎒 Мой инвентарь', callback_data: 'm:inv' }],
     [{ text: '📈 Аналитика', callback_data: 'm:an' }, { text: '🧾 История сделок', callback_data: 'm:trades' }],

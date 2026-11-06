@@ -169,3 +169,17 @@ test('прайс Steam (CSGO Trader): сохраняется для предме
   const item = await api(env, ALICE, `item/${rev.itemId}`);
   assert.equal(item.body.steamAvg.d30, 1600, '0,40 $ × 40 = 16,00 грн');
 });
+
+test('автозапуск сборщика: workflow отключён в GitHub (422) — сборщик помечается «не работает» с подсказкой', async () => {
+  const d = migratedDb();
+  const env = testEnv(d, { COLLECTOR: 'github', GH_DISPATCH_TOKEN: 'ghp_test', GH_REPO: 'blauwi00/cs2_search' });
+  const { fetcher } = mockFetch([
+    telegramRoute([]),
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+    { match: (u) => u.startsWith('https://api.github.com/'), respond: () => new Response('{"message":"Cannot trigger a \'workflow_dispatch\' on a disabled workflow"}', { status: 422 }) },
+  ]);
+  await runCycle(env, { now: NOW, fetcher });
+  const st = d.db.prepare(`SELECT status, last_error FROM source_status WHERE source = 'collector'`).get() as { status: string; last_error: string };
+  assert.equal(st.status, 'down');
+  assert.match(st.last_error, /Enable workflow/);
+});

@@ -9,7 +9,7 @@ import { formatUah, formatSignedUah, formatBp, parseMoneyInput } from '../utils/
 import { warsawDate } from '../utils/time.ts';
 import { searchCatalog } from '../catalog.ts';
 import { CATEGORY_RU } from '../core/normalization.ts';
-import { steamSellerProceeds } from '../core/fees.ts';
+import { steamNetKop } from '../core/fees.ts';
 import {
   PLATFORM_RU, PLATFORMS, valuation, viewLot, realizedStats, parseDateInput, walletFor, openQty,
 } from '../core/portfolio.ts';
@@ -233,8 +233,8 @@ export async function onText(h: H, st: { awaiting: string; payload: unknown }, t
       await setDraft(h, 'sale_received', nd);
       const kb: Keyboard = [];
       if (nd.salePlatform === 'steam') {
-        const p = steamSellerProceeds(k);
-        if (p) kb.push([{ text: `✔️ Получил ${formatUah(p.sellerReceives * (nd.qty ?? 1))} (расчёт комиссии Steam)`, callback_data: 'srv' }]);
+        const p = steamNetKop(k, await hcur(h));
+        if (p !== null) kb.push([{ text: `✔️ Получил ${formatUah(p * (nd.qty ?? 1))} (расчёт комиссии Steam)`, callback_data: 'srv' }]);
       }
       kb.push([{ text: 'Отмена', callback_data: 'm:inv' }]);
       await say(h, `Сколько фактически получил всего за ${nd.qty} шт. (после комиссий), ${await inCur(h)}?`, kb);
@@ -326,8 +326,8 @@ export async function onCallback(h: H, data: string, msgId?: number): Promise<bo
       return true;
     case 'srv':
       if (st?.awaiting === 'sale_received' && d.salePrice) {
-        const p = steamSellerProceeds(d.salePrice);
-        if (p) { await setDraft(h, 'sale_date', { ...d, received: p.sellerReceives * (d.qty ?? 1) }); await say(h, 'Дата продажи:', [[{ text: 'Сегодня', callback_data: 'sdt' }]]); }
+        const p = steamNetKop(d.salePrice, await hcur(h));
+        if (p !== null) { await setDraft(h, 'sale_date', { ...d, received: p * (d.qty ?? 1) }); await say(h, 'Дата продажи:', [[{ text: 'Сегодня', callback_data: 'sdt' }]]); }
       }
       return true;
     case 'sdt': if (st?.awaiting === 'sale_date') await finishSale(h, d, today); return true;

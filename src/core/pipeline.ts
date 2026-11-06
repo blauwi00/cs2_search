@@ -729,6 +729,7 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
         const m = await ctx.tg.sendMessage(r.telegram_id, r.text, r.keyboard ? JSON.parse(r.keyboard) as Keyboard : undefined);
         upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ?, msg_id = ? WHERE id = ?`).bind(ctx.now, m.message_id, r.id));
         upd.push(ctx.db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(r.telegram_id, r.kind, String(r.id), ctx.now));
+        if (!count.has(r.telegram_id)) upd.push(db.firstNotifStmt(ctx.db, r.telegram_id, ctx.now));
         count.set(r.telegram_id, (count.get(r.telegram_id) ?? 0) + 1);
       }
     } catch (e) {
@@ -772,6 +773,9 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
     await db.log(ctx.db, 'warn', 'collector', 'dispatch', `GitHub ответил ${res.status}: ${t}`, ctx.now);
     if (res.status === 401 || res.status === 403 || res.status === 404) {
       await db.sourceFail(ctx.db, 'collector', 'down', `не получилось запустить сборщик: GitHub ${res.status} (проверь токен GH_DISPATCH_TOKEN)`, ctx.now, 1);
+    } else if (res.status === 422) {
+      // Обычно — workflow отключён (GitHub выключает расписание после 60 дней без коммитов, или вручную).
+      await db.sourceFail(ctx.db, 'collector', 'down', 'GitHub не запускает сборщик (422): включи его — GitHub → Actions → collect-prices → Enable workflow', ctx.now, 1);
     }
   }
 }

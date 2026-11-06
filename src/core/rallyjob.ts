@@ -104,6 +104,14 @@ export const BOT_MIN_CLOSED = 10;   // вывод о схеме — не ран�
 export const BOT_MIN_WINS = 5;      // «работает» — минимум половина сделок в плюсе и общий итог в плюсе
 
 export interface BotStats { closed: number; wins: number; realizedKop: number; startKop: number; open: number; accounts: number; best: RallyTrade[] }
+/** «Разгон» открыт всем, только когда симуляция самого бота подтвердила схему: ≥ 10 закрытых, ≥ 5 в плюсе, итог в плюсе.
+ *  До этого — только владельцу (продуктовое решение: не показывать людям непроверенную схему). */
+export async function rallyProven(d: D1Database): Promise<boolean> {
+  const bt = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id <= 0 AND telegram_id >= -9 AND mode = 'sim' ORDER BY id DESC LIMIT 200").all<RallyTrade>()).results;
+  const st = botStats(bt);
+  return st.closed >= BOT_MIN_CLOSED && st.wins >= BOT_MIN_WINS && st.realizedKop > 0;
+}
+
 export function botStats(trades: RallyTrade[]): BotStats {
   const sold = trades.filter((t) => t.status === 'sold' && t.parent_id == null);
   const accounts = new Set(trades.map((t) => (t as RallyTrade & { telegram_id?: number }).telegram_id)).size;

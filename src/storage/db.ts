@@ -77,6 +77,43 @@ export async function ensureUser(db: D1Database, tid: number, isAdmin: boolean, 
   }
 }
 
+// ---------- Воронка: открыл приложение, получил уведомление, вернулся ----------
+// Ключи в user_settings (удаляются вместе с данными пользователя): value — время первого раза, updated_at — последнего.
+
+/** Отметить активность. Запись в базу — не чаще раза в 12 ч на человека (лимит записей D1). app — открыл Mini App. */
+export function touchActiveStmts(db: D1Database, tid: number, now: number, app: boolean): D1PreparedStatement[] {
+  const upsert = (key: string) => db.prepare(
+    `INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(telegram_id, key) DO UPDATE SET updated_at = excluded.updated_at WHERE user_settings.updated_at < excluded.updated_at - 43200`,
+  ).bind(tid, key, String(now), now);
+  return app ? [upsert('seen'), upsert('app_seen')] : [upsert('seen')];
+}
+
+/** Первое полученное уведомление (запись только один раз). */
+export function firstNotifStmt(db: D1Database, tid: number, now: number): D1PreparedStatement {
+  return db.prepare(`INSERT OR IGNORE INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'first_notif', ?, ?)`).bind(tid, String(now), now);
+}
+
+export interface Funnel { came: number; app: number; notified: number; returned7: number; mature: number }
+
+/** Воронка по пришедшим за 60 дней (ref — метка ?start=, null — все). «Вернулся» — считается только среди тех, кто пришёл больше 7 дней назад. */
+export async function funnel(db: D1Database, now: number, ref: string | null): Promise<Funnel> {
+  const r = await db.prepare(
+    `SELECT COUNT(*) AS came,
+       SUM(a.telegram_id IS NOT NULL) AS app,
+       SUM(n.telegram_id IS NOT NULL) AS notified,
+       SUM(u.created_at < ?2 - 604800) AS mature,
+       SUM(u.created_at < ?2 - 604800 AND s.updated_at >= u.created_at + 604800) AS returned7
+     FROM users u
+     LEFT JOIN user_settings r ON r.telegram_id = u.telegram_id AND r.key = 'ref'
+     LEFT JOIN user_settings a ON a.telegram_id = u.telegram_id AND a.key = 'app_seen'
+     LEFT JOIN user_settings n ON n.telegram_id = u.telegram_id AND n.key = 'first_notif'
+     LEFT JOIN user_settings s ON s.telegram_id = u.telegram_id AND s.key = 'seen'
+     WHERE u.created_at >= ?2 - 5184000 AND u.is_admin = 0 AND (?1 IS NULL OR r.value = ?1)`,
+  ).bind(ref, now).first<Record<keyof Funnel, number | null>>();
+  return { came: r?.came ?? 0, app: r?.app ?? 0, notified: r?.notified ?? 0, returned7: r?.returned7 ?? 0, mature: r?.mature ?? 0 };
+}
+
 // ---------- Состояние ввода ----------
 
 export async function setState(db: D1Database, tid: number, awaiting: string, payload: unknown, now: number): Promise<void> {
@@ -213,6 +250,18 @@ export interface QuoteRow {
 }
 
 export const SNAPSHOT_HEARTBEAT_SEC = 3600;
+/** Котировка без изменений переписывается не чаще этого (обновить fetched_at), чтобы не тратить лимит записей D1.
+ *  Должно быть меньше «данные устаревают» (по умолчанию 30 мин), иначе сигналы помечались бы устаревшими. */
+export const QUOTE_REFRESH_SEC = 900;
+
+/** Котировка та же, что уже в базе, и записана недавно — запись можно пропустить (и пересчёт тоже). */
+export function quoteUnchanged(q: Quote, priceKop: number | null, prev: QuoteRow | null): boolean {
+  if (!prev) return false;
+  if (prev.price_minor !== q.priceMinor || prev.quantity !== q.quantity || prev.volume !== q.volume) return false;
+  if (prev.currency !== q.currency || prev.price_kop !== priceKop || prev.quality !== q.quality || prev.listing_id !== q.listingId) return false;
+  if (q.fetchedAt - prev.fetched_at >= QUOTE_REFRESH_SEC) return false;
+  return !!prev.snap_at && q.fetchedAt - prev.snap_at < SNAPSHOT_HEARTBEAT_SEC;
+}
 
 /**
  * Готовит запросы записи котировки (без выполнения — вызывающий объединяет их в один db.batch()).
@@ -418,7 +467,10 @@ export async function countNotificationsSince(db: D1Database, tid: number, since
 }
 
 export async function logNotification(db: D1Database, tid: number, kind: string, ref: string, now: number): Promise<void> {
-  await db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(tid, kind, ref, now).run();
+  await db.batch([
+    db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(tid, kind, ref, now),
+    firstNotifStmt(db, tid, now),
+  ]);
 }
 
 export interface SourceStatusRow {

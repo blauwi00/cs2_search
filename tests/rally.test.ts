@@ -106,7 +106,15 @@ test('разгон: сборщик → кандидаты в приложени�
   const d = migratedDb(); const D = d as unknown as D1Database;
   const env = testEnv(d, { INGEST_SECRET: 'ingest_secret_test_123' });
   await db.storeFx(D, [{ base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
-  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 77, first_name: 'E' }) }, 'TEST_TOKEN');
+  const { ADMIN } = await import('./helpers.ts');
+  // Пока бот не подтвердил схему, «Разгон» открыт только владельцу.
+  const other = await signInitData({ auth_date: String(NOW), query_id: 'B', user: JSON.stringify({ id: 78, first_name: 'O' }) }, 'TEST_TOKEN');
+  const locked = await (await handleAppApi(new Request('https://w/app/api/rally', { headers: { 'X-Init-Data': other } }), env, NOW)).json() as Record<string, any>;
+  assert.equal(locked.ok, false);
+  assert.match(locked.error, /проверяется ботом/);
+  const sum = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': other } }), env, NOW)).json() as Record<string, any>;
+  assert.equal(sum.rallyOk, false);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: ADMIN, first_name: 'E' }) }, 'TEST_TOKEN');
   const api = async (path: string, body?: object, at = NOW) => (await handleAppApi(new Request('https://w/app/api/' + path, { method: body ? 'POST' : 'GET', headers: { 'X-Init-Data': init, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env, at)).json() as Promise<Record<string, any>>;
   const ingest = (body: object, at: number) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' }, body: JSON.stringify({ fetchedAt: at, ...body }) }), env, at);
   const items = (at: number) => handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, at).then((r) => r.json() as Promise<Record<string, any>>);
@@ -212,4 +220,17 @@ test('бэктест через Worker: SQL работает, история д�
   }
   const r = await (await handleIngest(new Request('https://w/ingest/backtest?max=600', { headers: { 'X-Ingest-Secret': 'ingest_secret_test_123' } }), env, NOW + 20 * 86400)).json() as any;
   assert.equal(r.ok, true); assert.equal(r.days, 20); assert.equal(r.trades, 1); assert.equal(r.wins, 1);
+});
+
+test('«Разгон» открывается всем, когда симуляция бота подтвердила схему (≥ 10 закрытых, ≥ 5 в плюсе, итог в плюсе)', async () => {
+  const { migratedDb } = await import('./helpers.ts');
+  const { rallyProven } = await import('../src/core/rallyjob.ts');
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  const add = (i: number, net: number) => d.db.prepare(`INSERT INTO rally_trades (telegram_id, mode, name, qty, buy_kop, bought_at, unlock_at, status, sold_net_kop) VALUES (?, 'sim', ?, 1, 500, 0, 0, 'sold', ?)`).run(-(i % 10), 'Item ' + i, net);
+  for (let i = 0; i < 9; i++) add(i, 600);
+  assert.equal(await rallyProven(D), false, '9 закрытых — рано');
+  add(9, 400);
+  assert.equal(await rallyProven(D), true);
+  d.db.exec('UPDATE rally_trades SET sold_net_kop = 450 WHERE id <= 6');
+  assert.equal(await rallyProven(D), false, 'меньше половины в плюсе — не открываем');
 });

@@ -153,3 +153,14 @@ test('защита авторства: копия запоминает свой 
   assert.equal(await recordCopy(D, '<script>', NOW), false);
   assert.deepEqual((await listCopies(D)).map((x) => x[0]), ['stolen-bot.thief.workers.dev']);
 });
+
+test('текстовое меню: без повторов приложения — сделки, рынок, инвентарь, история и настройки только в приложении', async () => {
+  const M = await import('../src/telegram/menus.ts');
+  const { migratedDb } = await import('./helpers.ts');
+  const D = migratedDb() as unknown as D1Database;
+  const cbs = (v: { keyboard: { callback_data?: string; web_app?: unknown }[][] }) => v.keyboard.flat().map((b) => b.callback_data ?? 'app');
+  const withApp = cbs(await M.mainMenu(D, 0, 'https://w.dev/app', false));
+  assert.deepEqual(withApp, ['app', 'm:cases', 'm:an', 'sg:go']);
+  assert.ok(cbs(await M.mainMenu(D, 0, 'https://w.dev/app', true)).includes('m:status'), 'владельцу — состояние системы');
+  assert.ok(cbs(await M.mainMenu(D, 0, undefined, false)).includes('m:deals'), 'без приложения — полное меню');
+});

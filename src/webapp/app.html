@@ -378,6 +378,7 @@ function api(path, opt) {
       if (j.cur && j.cur.per > 0) CUR = j.cur;
       if (j.fx && j.fx.UAH) FX = j.fx;
       if (j.admin) state.isAdmin = true;
+      if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
       return j;
     });
   });
@@ -654,6 +655,7 @@ function recSheet(r) {
 }
 // Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
 function recSwitch(on) {
+  if (!state.isAdmin && !state.rallyOk) return ''; // «Разгон» скрыт, пока бот не подтвердил схему
   return '<div class="seg" id="recsw"><button data-v="recs" class="' + (on === 'recs' ? 'on' : '') + '">💡 Идеи</button><button data-v="rally" class="' + (on === 'rally' ? 'on' : '') + '">🚀 Разгон баланса</button></div>';
 }
 function bindRecSwitch() {
@@ -953,7 +955,12 @@ function trades() {
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
       if (r.lots.length) h += '<div class="grid2">' + stat('Если продать в Steam', uahShort(val), 'после комиссии') + stat('Потенциальная', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без актуальной цены: ' + unk : 'если продать сейчас · не заработано') + '</div>';
-      if (r.salesCount) h += '<div class="grid2">' + stat('Фактическая прибыль', '<span class="' + cls(r.realizedKop) + '">' + uah(r.realizedKop, true) + '</span>', 'по ' + r.salesCount + ' записанным продажам') + stat('Вложено сейчас', uahShort(cost), 'себестоимость непроданного') + '</div>';
+      if (r.salesCount) {
+        // Steam Wallet и живые деньги — раздельно: деньги из Steam вывести нельзя.
+        var rS = r.realizedSteamKop || 0, rC = r.realizedCashKop || 0;
+        var real = (rC || !rS ? '<span class="' + cls(rC) + '">' + uah(rC, true) + '</span>' : '') + (rS ? (rC ? '<br>' : '') + '<span class="' + cls(rS) + '">' + uah(rS, true) + '</span> <span class="mut" style="font-size:12px">в Steam</span>' : '');
+        h += '<div class="grid2">' + stat('Фактическая прибыль', real, 'по ' + r.salesCount + ' записанным продажам') + stat('Вложено сейчас', uahShort(cost), 'себестоимость непроданного') + '</div>';
+      }
       h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
       h += r.lots.length ? r.lots.map(function (l) {
         return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + '</div></div>' +
@@ -1690,7 +1697,7 @@ function rally() {
     Array.prototype.forEach.call(document.querySelectorAll('#rtab button'), function (b) { b.onclick = function () { haptic(); state.rallyTab = b.getAttribute('data-t'); rally(); }; });
     bindRecSwitch();
     bindRally(r);
-  }).catch(fail);
+  }).catch(function (e) { if (/Разгон баланса/.test(e.message)) { state.rallyOk = false; go('deals'); } else fail(e); });
 }
 function capHtml(c, mode, s) {
   return '<div class="rcap">' + stat(mode === 'sim' ? 'Виртуальный баланс' : 'Баланс Steam', uahShort(c.balanceKop), 'свободно ' + uahShort(c.availableKop) + ' сверх резерва ' + uahShort(s.reserveKop)) +

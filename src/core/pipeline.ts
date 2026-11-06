@@ -659,7 +659,9 @@ export async function jobDailyReport(ctx: Ctx): Promise<void> {
          AND NOT EXISTS (SELECT 1 FROM hidden_signals h WHERE h.telegram_id = ? AND h.signal_id = s.id)
        ORDER BY s.spread_kop DESC LIMIT 3`,
     ).bind(tid, ctx.now - 86400, tid).all<{ name: string; spread_kop: number | null }>()).results;
-    const lines = [
+    // Всё по нулям (ни продаж, ни инвентаря, ни возможностей) — пустую сводку не шлём, только отмечаем день.
+    const empty = !pf.salesToday && !pf.openLots && !top.length;
+    const lines = empty ? [] : [
       `📊 <b>Сводка за ${today}</b>`, '',
       '<b>Твои сделки за день</b>',
       `• на баланс Steam: ${formatUah(pf.realizedSteamToday)}`,
@@ -671,7 +673,7 @@ export async function jobDailyReport(ctx: Ctx): Promise<void> {
       ...(top.length ? top.map((x) => `• ${esc(x.name)}: ${formatUah(x.spread_kop)}`) : ['• сейчас нет']),
       '', 'Рекомендации по всему рынку — в приложении, вкладка «Рекомендации».',
     ];
-    pending.push(enqueueStmt(ctx.db, tid, { kind: 'inventory', ref: `daily:${today}`, signalId: null, priority: 'low', text: lines.join('\n'), keyboard: [] }, ctx.now, ctx.now));
+    if (!empty) pending.push(enqueueStmt(ctx.db, tid, { kind: 'inventory', ref: `daily:${today}`, signalId: null, priority: 'low', text: lines.join('\n'), keyboard: [] }, ctx.now, ctx.now));
     pending.push(ctx.db.prepare(
       `INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'last_daily_report', ?, ?)
        ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,

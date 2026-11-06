@@ -1,3 +1,4 @@
+import { funnel, type Funnel } from '../storage/db.ts';
 import { listCopies } from '../core/origin.ts';
 import { SITES, loadRefLinks, checkRefUrl, setRefStmt } from '../core/sites.ts';
 // Команды владельца бота: подключение канала для автопостинга, предпросмотр постов, статистика пользователей.
@@ -128,6 +129,14 @@ export async function statsCommand(h: H): Promise<void> {
       const total = w.filter(([k]) => !/^w:(evaluate|outbox|channel|ideas|hot_recs|health|quality|daily_report|cleanup|origin|kick_collector|fx|weekly|csfloat|steam|skinport_items|skinport_sales)$/.test(k)).reduce((s, [, v]) => s + v, 0);
       const top = w.filter(([k]) => k !== 'w:cron').sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k.slice(2)} ${v}`).join(', ');
       return `💾 Записи в базу сегодня ≈ <b>${total}</b> из 100 000${total > 70000 ? ' ⚠️' : ''}\n   больше всего: ${esc(top)}`;
+    })(), '',
+    await (async () => {
+      // Воронка (#продукт): пришёл → открыл приложение → получил уведомление → вернулся через 7 дней.
+      const [all, ch] = await Promise.all([funnel(h.d, h.now, null), funnel(h.d, h.now, 'ch')]);
+      const pc = (a: number, b: number) => (b ? `${Math.round((a * 100) / b)}%` : '—');
+      const line = (t: string, f: Funnel) => `• ${t}: пришли ${f.came} → приложение ${f.app} (${pc(f.app, f.came)}) → уведомление ${f.notified} (${pc(f.notified, f.came)}) → вернулись через 7 дн ${f.returned7} из ${f.mature} (${pc(f.returned7, f.mature)})`;
+      return ['<b>🔻 Воронка</b> (пришли за 60 дней, без владельца):', line('все', all), line('из канала', ch),
+        '   <i>приложение, уведомления и возвраты считаются с момента выкладки этой версии</i>'].join('\n');
     })(), '',
     '<b>Откуда пришли</b> (всего / за неделю):',
     ...refs.results.map((r) => `• ${esc(r.ref)}: ${r.n} / ${r.d7 ?? 0}`), '',

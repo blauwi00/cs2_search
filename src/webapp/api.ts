@@ -181,6 +181,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   if (!user) return bad('forbidden', 403);
   const d0 = budgetedDb(rawDb ?? env.DB, newBudget());
   await db.ensureUser(d0, user.id, user.id === Number(env.ADMIN_TELEGRAM_ID), now, guessCurrency(user.language_code));
+  await d0.batch(db.touchActiveStmts(d0, user.id, now, true));
   const res = await appApi(req, env, now, user.id, rawDb);
   // Суммы в текстах (метки ⟦копейки⟧) — в валюте человека; саму валюту отдаём приложению в каждом ответе.
   if (!res.headers.get('Content-Type')?.startsWith('application/json')) return res;

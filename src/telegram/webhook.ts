@@ -78,6 +78,7 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   const lang = update.message?.from?.language_code ?? update.callback_query?.from?.language_code;
   try {
     await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
+    await d.batch(db.touchActiveStmts(d, uid, now, false));
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, update.message.from?.first_name, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (isAdmin && (update.message as { forward_origin?: { type?: string } } | undefined)?.forward_origin?.type === 'channel') {

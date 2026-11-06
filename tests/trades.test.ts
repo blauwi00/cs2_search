@@ -1,4 +1,4 @@
-// Учёт продаж: двойные нажатия, «ждёт оплаты», дробное количество, раздельная прибыль по кошелькам.
+// Учёт продаж (двойные нажатия, «ждёт оплаты», дробное количество, прибыль по кошелькам) и воронка пользователей.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migratedDb, testEnv } from './helpers.ts';
@@ -101,4 +101,23 @@ test('API: дробное и пустое количество — ошибка;
   assert.equal(inv.realizedSteamKop, 1000);
   assert.equal(inv.salesCount, 2);
   assert.equal(inv.realizedKop, undefined, 'общей суммы по разным кошелькам нет');
+});
+
+test('воронка: пришёл из канала → открыл приложение → получил уведомление → вернулся через 7 дней', async () => {
+  const { d } = setup();
+  const D = d as unknown as D1Database;
+  const T0 = NOW - 10 * 86400;
+  const { ensureUser, touchActiveStmts, logNotification, funnel } = await import('../src/storage/db.ts');
+  for (const id of [1, 2, 3]) await ensureUser(D, id, false, T0);
+  d.db.exec(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (1, 'ref', 'ch', 0), (2, 'ref', 'ch', 0)`);
+  await D.batch(touchActiveStmts(D, 1, T0, true));
+  await D.batch(touchActiveStmts(D, 2, T0, false));
+  await logNotification(D, 1, 'arb', 'x', T0 + 100);
+  await logNotification(D, 1, 'arb', 'y', T0 + 200);
+  await D.batch(touchActiveStmts(D, 1, T0 + 3600, true));
+  assert.equal((d.db.prepare(`SELECT updated_at FROM user_settings WHERE telegram_id = 1 AND key = 'seen'`).get() as { updated_at: number }).updated_at, T0, 'чаще раза в 12 ч не пишем');
+  await D.batch(touchActiveStmts(D, 1, T0 + 8 * 86400, true));
+  const ch = await funnel(D, NOW, 'ch');
+  assert.deepEqual(ch, { came: 2, app: 1, notified: 1, returned7: 1, mature: 2 });
+  assert.equal((await funnel(D, NOW, null)).came, 3);
 });

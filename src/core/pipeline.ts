@@ -729,6 +729,7 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
         const m = await ctx.tg.sendMessage(r.telegram_id, r.text, r.keyboard ? JSON.parse(r.keyboard) as Keyboard : undefined);
         upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ?, msg_id = ? WHERE id = ?`).bind(ctx.now, m.message_id, r.id));
         upd.push(ctx.db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(r.telegram_id, r.kind, String(r.id), ctx.now));
+        if (!count.has(r.telegram_id)) upd.push(db.firstNotifStmt(ctx.db, r.telegram_id, ctx.now));
         count.set(r.telegram_id, (count.get(r.telegram_id) ?? 0) + 1);
       }
     } catch (e) {

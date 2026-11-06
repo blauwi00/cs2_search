@@ -138,6 +138,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const rate = p.q.currency === 'UAH' ? null : fx.get(p.q.currency) ?? null;
       const kop = p.q.priceMinor === null ? null : toKop(p.q.priceMinor, p.q.currency, rate);
       const pv = prev.get(`${p.itemId}:${p.q.source}:${p.q.priceType}`) ?? null;
+      // Ничего не изменилось и записано недавно — ни котировку, ни пересчёт не пишем (главный расход записей D1).
+      if (db.quoteUnchanged(p.q, kop, pv)) { result.stored++; continue; }
       const w = db.quoteWrites(d, p.itemId, p.q, kop, rate?.id ?? null, pv);
       stmts.push(...w.stmts);
       if (w.snapshot) snaps++;

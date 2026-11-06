@@ -213,6 +213,18 @@ export interface QuoteRow {
 }
 
 export const SNAPSHOT_HEARTBEAT_SEC = 3600;
+/** Котировка без изменений переписывается не чаще этого (обновить fetched_at), чтобы не тратить лимит записей D1.
+ *  Должно быть меньше «данные устаревают» (по умолчанию 30 мин), иначе сигналы помечались бы устаревшими. */
+export const QUOTE_REFRESH_SEC = 900;
+
+/** Котировка та же, что уже в базе, и записана недавно — запись можно пропустить (и пересчёт тоже). */
+export function quoteUnchanged(q: Quote, priceKop: number | null, prev: QuoteRow | null): boolean {
+  if (!prev) return false;
+  if (prev.price_minor !== q.priceMinor || prev.quantity !== q.quantity || prev.volume !== q.volume) return false;
+  if (prev.currency !== q.currency || prev.price_kop !== priceKop || prev.quality !== q.quality || prev.listing_id !== q.listingId) return false;
+  if (q.fetchedAt - prev.fetched_at >= QUOTE_REFRESH_SEC) return false;
+  return !!prev.snap_at && q.fetchedAt - prev.snap_at < SNAPSHOT_HEARTBEAT_SEC;
+}
 
 /**
  * Готовит запросы записи котировки (без выполнения — вызывающий объединяет их в один db.batch()).

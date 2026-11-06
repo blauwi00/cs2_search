@@ -117,3 +117,23 @@ test('бережём Steam: после 429 — пауза, растущая пр
   await post(true, T + 1800); assert.equal(await pause(T + 1800), T + 1800 + 60 * 60);
   await post(false, T + 7200); assert.equal(await pause(T + 7200), 0);
 });
+
+test('бережём записи D1: та же цена в течение 15 минут не переписывается, позже — обновляется время', async () => {
+  const d = migratedDb();
+  const e = env(d);
+  const it = await seed(d, 'Revolution Case');
+  const body = (at: number, price = '10₴') => post({ kind: 'steam', fetchedAt: at, items: [
+    { name: 'Revolution Case', ok: true, body: { success: true, lowest_price: price, median_price: '9,20₴', volume: '66,133' } },
+  ] });
+  const D = d as unknown as D1Database;
+  const fetched = async () => (await db.getQuotes(D, it.id)).find((x) => x.price_type === 'lowest_listing')!.fetched_at;
+  await handleIngest(body(NOW), e, NOW);
+  d.db.exec('UPDATE items SET needs_eval = 0');
+  await handleIngest(body(NOW + 600), e, NOW + 600);
+  assert.equal(await fetched(), NOW, 'без изменений через 10 мин — не пишем');
+  assert.equal((d.db.prepare('SELECT needs_eval FROM items WHERE id = ?').get(it.id) as { needs_eval: number }).needs_eval, 0, 'и пересчёт не нужен');
+  await handleIngest(body(NOW + 700, '11₴'), e, NOW + 700);
+  assert.equal(await fetched(), NOW + 700, 'цена изменилась — пишем сразу');
+  await handleIngest(body(NOW + 700 + db.QUOTE_REFRESH_SEC, '11₴'), e, NOW + 700 + db.QUOTE_REFRESH_SEC);
+  assert.equal(await fetched(), NOW + 700 + db.QUOTE_REFRESH_SEC, 'через 15 мин — обновляем, чтобы данные не считались устаревшими');
+});

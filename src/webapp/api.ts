@@ -10,7 +10,7 @@ import { parseMarketHashName, CATEGORY_RU } from '../core/normalization.ts';
 import { classifyLiquidity, LIQUIDITY_RU } from '../core/liquidity.ts';
 import { stats } from '../core/analyzer.ts';
 import { valuation, viewLot, realizedStats, PLATFORMS, PLATFORM_RU, walletFor, parseDateInput, openQty } from '../core/portfolio.ts';
-import { steamSellerProceeds } from '../core/fees.ts';
+import { steamSellerProceeds, steamListForNetKop } from '../core/fees.ts';
 import { settingsFor, parseSettingInput, displayValue } from '../telegram/settings.ts';
 import { listJobs, setJobEnabled } from '../core/scheduler.ts';
 import { warsawDate } from '../utils/time.ts';
@@ -186,7 +186,10 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   const cur = await userCur(d0, user.id, rates);
   let text = renderMoney(await res.text(), cur);
   const adm = user.id === Number(env.ADMIN_TELEGRAM_ID) ? '"admin":true,' : '';
-  if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},${adm}` + (text.length > 2 ? text.slice(1) : '}');
+  // Курсы основных валют (грн за единицу) — чтобы вводить суммы в валюте сайта или кошелька Steam, а не только в валюте бота.
+  const fx: Record<string, number> = { UAH: 1 };
+  for (const c of ['USD', 'EUR', 'PLN', cur.code]) if (rates[c]) fx[c] = rates[c];
+  if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},"fx":${JSON.stringify(fx)},${adm}` + (text.length > 2 ? text.slice(1) : '}');
   return new Response(text, { status: res.status, headers: res.headers });
 }
 
@@ -325,6 +328,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
         status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
+        goneCount: linked ? ((await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0) : 0,
         totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
       });
     }
@@ -353,7 +357,8 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         await db.counterStmt(d, `inv_direct_${res.status}`, 1, now).run().catch(() => undefined);
         if (res.status !== 'rate_limited' && res.status !== 'error') {
           await storeInventory(d, tid, res, now);
-          return json({ ok: true, updated: true, msg: res.status === 'ok' ? `✅ Инвентарь обновлён: ${res.items.length} предм.` : res.status === 'private' ? '🔒 Инвентарь закрыт в настройках приватности Steam' : 'Профиль Steam не найден' });
+          const gone = (await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0;
+          return json({ ok: true, updated: true, gone, msg: res.status === 'ok' ? `✅ Инвентарь обновлён: ${res.items.length} предм.` : res.status === 'private' ? '🔒 Инвентарь закрыт в настройках приватности Steam' : 'Профиль Steam не найден' });
         }
       }
       // Steam ограничил запросы сервера — честно говорим, когда примерно обновится.
@@ -565,6 +570,96 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const id = await T.addTrade(d, { tid, itemId: item.id, signalId, quantity: qty, buyPriceKop: price, buyFeeKop: fee, platform, buyDate: date, note: null, now });
       await T.addWatchFromInventory(d, tid, item.id, now);
       return json({ ok: true, id });
+    }
+    // «Пропало из инвентаря Steam» — предложить записать как продажи.
+    if (path === 'inventory/gone' && method === 'GET') {
+      const rows = (await d.prepare(`SELECT g.id, g.item_id, g.qty, g.gone_at, i.market_hash_name AS name FROM inv_gone g JOIN items i ON i.id = g.item_id
+        WHERE g.telegram_id = ? AND g.status = 'new' ORDER BY g.gone_at DESC, i.market_hash_name LIMIT 100`).bind(tid).all<{ id: number; item_id: number; qty: number; gone_at: number; name: string }>()).results;
+      const names = [...new Set(rows.map((r) => r.name))];
+      const [imgs, lots, fxm, srcRaw, last] = await Promise.all([
+        imagesFor(d, names), T.openTrades(d, tid), db.loadLatestFx(d), getMeta(d, 'site_src_at'),
+        d.prepare(`SELECT value FROM user_settings WHERE telegram_id = ? AND key = 'last_sell_site'`).bind(tid).first<{ value: string }>(),
+      ]);
+      const usd = fxm.get('USD') ?? null;
+      let srcAt: Record<string, number> = {};
+      try { srcAt = JSON.parse(srcRaw ?? '{}'); } catch { srcAt = {}; }
+      const prices = new Map<string, Record<string, number>>();
+      for (let i = 0; i < names.length; i += 90) {
+        const p = names.slice(i, i + 90);
+        for (const r of (await d.prepare(`SELECT name, json FROM site_prices WHERE name IN (${p.map(() => '?').join(',')})`).bind(...p).all<{ name: string; json: string }>()).results) {
+          let c: Record<string, number> = {};
+          try { c = JSON.parse(r.json); } catch { c = {}; }
+          const out: Record<string, number> = {};
+          for (const [k, v] of Object.entries(c)) {
+            if (typeof v !== 'number' || !usd || (srcAt[k] && now - srcAt[k] > 48 * 3600)) continue;
+            const kk = toKop(v, 'USD', usd);
+            if (kk) out[k] = kk;
+          }
+          prices.set(r.name, out);
+        }
+      }
+      return json({
+        ok: true, lastSite: last?.value ?? null,
+        platforms: PLATFORMS.filter((p) => p !== 'gift').map((p) => ({ v: p, t: PLATFORM_RU[p] })),
+        items: rows.map((r) => {
+          const lot = lots.find((l) => l.item_id === r.item_id && l.quantity > l.sold_quantity);
+          return { id: r.id, itemId: r.item_id, name: r.name, qty: r.qty, goneAt: r.gone_at, img: imgs.get(r.name) ?? null,
+            buyKop: lot ? lot.buy_price_kop : null, lotQty: lots.filter((l) => l.item_id === r.item_id).reduce((s, l) => s + l.quantity - l.sold_quantity, 0), prices: prices.get(r.name) ?? {} };
+        }),
+      });
+    }
+    if (path === 'inventory/gone/save' && method === 'POST') {
+      const list = (Array.isArray(body.rows) ? body.rows : []).slice(0, 100) as Record<string, unknown>[];
+      if (!list.length) return bad('Нечего записывать');
+      const date = warsawDate(now);
+      const wallet = await walletCur();
+      let sold = 0, skipped = 0, resultKop = 0;
+      const errors: string[] = [];
+      let lastSite: string | null = null;
+      for (const r of list) {
+        const g = await d.prepare(`SELECT g.id, g.item_id, g.qty, i.market_hash_name AS name FROM inv_gone g JOIN items i ON i.id = g.item_id WHERE g.id = ? AND g.telegram_id = ? AND g.status = 'new'`)
+          .bind(Number(r.id), tid).first<{ id: number; item_id: number; qty: number; name: string }>();
+        if (!g) continue;
+        if (r.action === 'skip') {
+          await d.prepare(`UPDATE inv_gone SET status = 'skip' WHERE id = ?`).bind(g.id).run();
+          skipped++;
+          continue;
+        }
+        const qty = Math.trunc(Number(r.qty ?? g.qty));
+        const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
+        const platform = String(r.platform ?? '');
+        if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') { errors.push(`${g.name}: выбери, где продал`); continue; }
+        if (!Number.isInteger(qty) || qty < 1 || qty > g.qty) { errors.push(`${g.name}: количество от 1 до ${g.qty}`); continue; }
+        if (!Number.isSafeInteger(got) || got <= 0) { errors.push(`${g.name}: впиши, сколько получил`); continue; }
+        const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
+        let left = qty;
+        try {
+          // Сначала — из записанных покупок (по порядку), остальное — новой записью с ценой покупки (0 — если выпал).
+          for (const l of (await T.openTrades(d, tid)).filter((x) => x.item_id === g.item_id).sort((a, b) => a.id - b.id)) {
+            if (!left) break;
+            const q = Math.min(left, l.quantity - l.sold_quantity);
+            if (q <= 0) continue;
+            const s = await T.addSale(d, tid, { tradeId: l.id, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, sellDate: date, now });
+            resultKop += got * q - s.costKop;
+            left -= q;
+          }
+          if (left) {
+            const buy = Number(r.buyKop);
+            if (!Number.isSafeInteger(buy) || buy < 0) { errors.push(`${g.name}: впиши, за сколько покупал (0 — если выпал)`); if (left === qty) continue; }
+            else {
+              const id = await T.addTrade(d, { tid, itemId: g.item_id, signalId: null, quantity: left, buyPriceKop: buy, buyFeeKop: 0, platform: buy === 0 ? 'gift' : 'other', buyDate: date, note: 'из «Пропало из инвентаря»', now });
+              const s = await T.addSale(d, tid, { tradeId: id, quantity: left, sellPriceKop: sellPrice, receivedKop: got * left, platform, sellDate: date, now });
+              resultKop += got * left - s.costKop;
+              left = 0;
+            }
+          }
+        } catch (e) { errors.push(`${g.name}: ${(e as Error).message}`); continue; }
+        await d.prepare(`UPDATE inv_gone SET status = 'sold' WHERE id = ?`).bind(g.id).run();
+        sold++;
+        lastSite = platform;
+      }
+      if (lastSite) await d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'last_sell_site', ?, ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(tid, lastSite, now).run();
+      return json({ ok: true, sold, skipped, resultKop, errors });
     }
     if (seg[0] === 'inventory' && seg[2] === 'sell' && method === 'POST') {
       const id = Number(seg[1]);

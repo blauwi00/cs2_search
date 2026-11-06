@@ -71,3 +71,64 @@ test('кнопка «Обновить»: Worker загрузил сам — ср
     assert.equal((await api(env, 'steam', 'GET', NOW + 20 * 60)).body.pending, true, 'остаётся в очереди сборщика');
   } finally { g.fetch = orig; }
 });
+
+test('пропало из инвентаря: бот видит, что ушло, и записывает продажи пачкой (с покупкой, без неё, «не продавал»)', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, steam_verified, inv_synced_at) VALUES (?, ?, ?, 1, ?)').run(U, NOW - 3600, SID, NOW - 3600);
+  const it = (name: string, qty: number) => ({ name, qty, marketable: 1, tradable: 1, img: null });
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [it('Kilowatt Case', 5), it('AK-47 | Slate (Field-Tested)', 1), it('AWP | Atheris (Field-Tested)', 1), it('Sticker | Y', 2)], partial: false }, NOW - 3000);
+  assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM inv_gone').get() as { n: number }).n, 0, 'первый раз — сравнивать не с чем');
+  // Записанная раньше покупка AK — цена покупки возьмётся из неё.
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+  const call = async (path: string, method = 'GET', body?: unknown) => (await handleAppApi(new Request('https://w.dev/app/api/' + path, { method, headers: { 'X-Init-Data': init }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as Promise<Record<string, any>>;
+  await call('inventory', 'POST', { name: 'AK-47 | Slate (Field-Tested)', qty: 1, priceKop: 10000, platform: 'steam', date: '2026-11-01' });
+  // Продано 3 кейса (1 из них уже отмечен кнопкой «Я продал» до обновления), AK и AWP; наклейки на месте.
+  const caseLot = (await call('inventory', 'POST', { name: 'Kilowatt Case', qty: 1, priceKop: 2000, platform: 'steam', date: '2026-11-01' })).id;
+  await call(`inventory/${caseLot}/sell`, 'POST', { qty: 1, priceKop: 2500, receivedKop: 2400, platform: 'waxpeer', date: '2026-11-06' });
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [it('Kilowatt Case', 2), it('Sticker | Y', 2)], partial: false }, NOW);
+  const gone = await call('inventory/gone');
+  const by = Object.fromEntries(gone.items.map((x: any) => [x.name, x]));
+  assert.deepEqual(Object.keys(by).sort(), ['AK-47 | Slate (Field-Tested)', 'AWP | Atheris (Field-Tested)', 'Kilowatt Case']);
+  assert.equal(by['Kilowatt Case'].qty, 2, '3 ушло, 1 уже записан — осталось 2');
+  assert.equal(by['AK-47 | Slate (Field-Tested)'].buyKop, 10000);
+  assert.ok(gone.platforms.some((p: any) => p.v === 'csgomarket'), 'есть Market.CSGO');
+  const st = await call('steam');
+  assert.equal(st.goneCount, 3);
+  assert.ok(st.fx && st.fx.UAH === 1, 'курсы для ввода в другой валюте');
+  const res = await call('inventory/gone/save', 'POST', { rows: [
+    { id: by['Kilowatt Case'].id, action: 'sold', platform: 'csgomarket', receivedKop: 3000, qty: 2, buyKop: 0 },
+    { id: by['AK-47 | Slate (Field-Tested)'].id, action: 'sold', platform: 'csgomarket', receivedKop: 12000 },
+    { id: by['AWP | Atheris (Field-Tested)'].id, action: 'skip' },
+  ] });
+  assert.equal(res.sold, 2);
+  assert.equal(res.skipped, 1);
+  assert.deepEqual(res.errors, []);
+  assert.equal(res.resultKop, 2 * 3000 + (12000 - 10000), 'кейсы выпали (0), AK — из записи о покупке');
+  assert.equal((await call('inventory/gone')).items.length, 0);
+  assert.equal((await call('inventory')).realizedKop, 400 + 8000);
+  // Повторно записать то же нельзя
+  assert.equal((await call('inventory/gone/save', 'POST', { rows: [{ id: by['Kilowatt Case'].id, action: 'sold', platform: 'csgomarket', receivedKop: 3000, buyKop: 0 }] })).sold, 0);
+});
+
+test('пропало: без цены покупки и без записи — не записывает, просит указать', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, steam_verified, inv_synced_at) VALUES (?, ?, ?, 1, ?)').run(U, NOW - 3600, SID, NOW - 3600);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'X Case', qty: 1, marketable: 1, tradable: 1, img: null }], partial: false }, NOW - 100);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [], partial: false }, NOW);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+  const call = async (path: string, method = 'GET', body?: unknown) => (await handleAppApi(new Request('https://w.dev/app/api/' + path, { method, headers: { 'X-Init-Data': init }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as Promise<Record<string, any>>;
+  const g = (await call('inventory/gone')).items[0];
+  const r = await call('inventory/gone/save', 'POST', { rows: [{ id: g.id, action: 'sold', platform: 'steam', receivedKop: 1000 }] });
+  assert.equal(r.sold, 0);
+  assert.match(r.errors[0], /за сколько покупал/);
+  const r2 = await call('inventory/gone/save', 'POST', { rows: [{ id: g.id, action: 'sold', platform: 'steam', receivedKop: 1000, buyKop: 500 }] });
+  assert.equal(r2.sold, 1);
+  const sale = d.db.prepare('SELECT sell_price_kop, received_kop, wallet FROM trade_sales').get() as { sell_price_kop: number; received_kop: number; wallet: string };
+  assert.equal(sale.received_kop, 1000);
+  assert.equal(sale.wallet, 'steam_wallet');
+  assert.ok(sale.sell_price_kop >= 1149 && sale.sell_price_kop <= 1151, 'Steam: цена покупателя восстановлена из полученного (+15%)');
+});

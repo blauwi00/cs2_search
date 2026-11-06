@@ -198,6 +198,20 @@ var state = { tab: 'home', ideas: 'recs', invTab: 'steam', mkAct: 'all', edit: f
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // Все суммы приходят в копейках гривны; показываем и вводим в валюте человека (CUR — из ответа сервера).
 var CUR = { code: 'UAH', sign: '₴', per: 1 };
+// Курсы (грн за единицу) — чтобы вводить суммы в валюте сайта или кошелька Steam, а не только в валюте бота.
+var FX = { UAH: 1 };
+var CUR_SIGN = { UAH: '₴', USD: '$', EUR: '€', PLN: 'zł', RUB: '₽', KZT: '₸', GBP: '£' };
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без памяти */ } }
+/** Выбор валюты для поля ввода; key — что запомнить (например, сайт продажи). */
+function curSelect(id, key) {
+  var def = (key && lsGet('cur_' + key)) || CUR.code;
+  if (!FX[def]) def = CUR.code;
+  return '<select id="' + id + '" class="cursel" style="width:auto;padding:8px 10px">' + Object.keys(FX).map(function (c) { return '<option value="' + c + '"' + (c === def ? ' selected' : '') + '>' + (CUR_SIGN[c] || c) + ' ' + c + '</option>'; }).join('') + '</select>';
+}
+/** Сумма в выбранной валюте → копейки бота (гривны). */
+function toKopIn(v, code) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * (FX[code] || CUR.per)); }
+function unitsIn(k, code) { return k == null ? '' : String(+(k / 100 / (FX[code] || CUR.per)).toFixed(2)).replace('.', ','); }
 var NO_CENTS = { JPY: 1, KRW: 1, HUF: 1, KZT: 1, ARS: 1 };
 function money(k, sign, short) {
   if (k == null || isNaN(k)) return '—';
@@ -246,6 +260,7 @@ function api(path, opt) {
       if (r.status === 403) throw new Error('Нет доступа. Открой приложение кнопкой в своём боте.');
       if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
       if (j.cur && j.cur.per > 0) CUR = j.cur;
+      if (j.fx && j.fx.UAH) FX = j.fx;
       if (j.admin) state.isAdmin = true;
       return j;
     });
@@ -805,6 +820,7 @@ function steamBlock(st) {
     (st.pending ? '⏳ Загружаю инвентарь — до ~10 минут' : st.syncedAt ? 'Обновлено ' + ago(st.syncedAt) : '') + '</div></div>' +
     '<button class="btn sec2" id="st-ref" style="width:auto;margin:0;padding:8px 12px">Обновить</button></div>';
   if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
+  if (st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
     if (st.totalKop > 0) h += '<button class="btn" id="st-share" style="margin:0 0 12px">📸 Поделиться: сколько стоит мой инвентарь</button>';
@@ -819,6 +835,7 @@ function steamBlock(st) {
   return h;
 }
 function bindSteamBlock(st) {
+  if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); };
   if (!st) return;
   if ($('#st-pv')) $('#st-pv').onclick = privacy;
   // Пока инвентарь загружается — сами проверяем каждые 30 секунд (только на этой вкладке и при открытом приложении).
@@ -836,7 +853,7 @@ function bindSteamBlock(st) {
     return;
   }
   if ($('#st-share')) $('#st-share').onclick = function () { haptic(); shareInventory(st); };
-  $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function (r) { haptic('ok'); toast(r.msg || 'Обновлю в течение ~10 минут'); again(); }).catch(function (e) { toast(e.message); }); };
+  $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function (r) { haptic('ok'); toast(r.msg || 'Обновлю в течение ~10 минут'); again(); if (r.gone) setTimeout(goneSheet, 600); }).catch(function (e) { toast(e.message); }); };
   $('#st-off').onclick = function () {
     var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Отключить Steam от бота?', function (ok) { if (ok) run(); }); else run();
@@ -1057,6 +1074,73 @@ function lotSheet(l) {
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
 }
+// «Пропало из инвентаря» — записать продажи пачкой. Цены подставлены с сайта (подсказка), суммы — в валюте сайта.
+function goneSheet() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('inventory/gone').then(function (r) {
+    if (!r.items.length) { closeSheet(); return toast('Всё уже записано'); }
+    var site = r.lastSite || lsGet('last_site') || 'other';
+    var h = '<h2>📦 Пропало из инвентаря</h2><div class="sub">Бот сравнил инвентарь с прошлым обновлением. Отметь, что продал, — остальное «не продавал».</div>';
+    h += '<div class="grid2"><label class="f" style="margin:0"><span>Где продал</span><select id="gsite">' + r.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="f" style="margin:0"><span>Валюта на сайте</span>' + curSelect('gcur', site) + '</label></div>';
+    h += '<div class="note">«Получил за 1 шт.» — сколько пришло на баланс сайта (или кошелька Steam) после комиссии. Бот подставил текущую цену на выбранном сайте — поправь на свою.</div>';
+    h += r.items.map(function (x) {
+      var needBuy = x.lotQty < x.qty;
+      return '<div class="card" data-g="' + x.id + '"><div style="display:flex;gap:10px;align-items:center">' + pic(x.img, '🎒') + '<div style="flex:1;font-weight:600">' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</div></div>' +
+        '<div class="seg g-act" style="margin:8px 0"><button data-v="sold" class="on">💸 Продал</button><button data-v="skip">Не продавал</button></div>' +
+        '<div class="g-f"><div class="grid2">' + (x.qty > 1 ? '<label class="f" style="margin:0"><span>Сколько продал</span><input class="g-q" inputmode="numeric" value="' + x.qty + '"></label>' : '') +
+        '<label class="f" style="margin:0"><span>Получил за 1 шт.</span><input class="g-p" inputmode="decimal"></label></div>' +
+        (needBuy ? '<div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Покупал за 1 шт.</span><input class="g-b" inputmode="decimal" placeholder="0 — если выпал"></label>' +
+          '<button class="btn sec2 g-zero" style="margin:auto 0 0">🎁 Выпал — 0</button></div>' : '<div class="mut" style="font-size:12px;margin-top:6px">Цена покупки — из твоей записи о покупке</div>') +
+        '<div class="mut g-hint" style="font-size:12px;margin-top:4px"></div></div></div>';
+    }).join('');
+    h += (r.items.some(function (x) { return x.lotQty < x.qty; }) ? '<label class="f"><span>Валюта, в которой покупал</span>' + curSelect('gbcur', 'buy') + '</label>' : '');
+    h += '<button class="btn" id="gsave">Записать</button>';
+    sheet(h);
+    var fill = function (force) {
+      var s = $('#gsite').value, c = $('#gcur').value;
+      r.items.forEach(function (x) {
+        var el = document.querySelector('[data-g="' + x.id + '"]'), inp = el.querySelector('.g-p'), k = x.prices[s];
+        el.querySelector('.g-hint').textContent = k ? 'Сейчас на сайте самое дешёвое объявление ≈ ' + unitsIn(k, c) + ' ' + (CUR_SIGN[c] || c) : 'Цены этого сайта для предмета нет — впиши сумму сам';
+        if (k && (force || !inp.getAttribute('data-ed'))) inp.value = unitsIn(k, c);
+      });
+    };
+    fill(true);
+    Array.prototype.forEach.call(document.querySelectorAll('.g-p'), function (i) { i.oninput = function () { i.setAttribute('data-ed', '1'); }; });
+    $('#gsite').onchange = function () { var c = lsGet('cur_' + $('#gsite').value); if (c && FX[c]) $('#gcur').value = c; fill(false); };
+    $('#gcur').onchange = function () { fill(false); };
+    Array.prototype.forEach.call(document.querySelectorAll('.g-act button'), function (b) {
+      b.onclick = function () {
+        haptic(); var card = b.closest('[data-g]');
+        Array.prototype.forEach.call(card.querySelectorAll('.g-act button'), function (x) { x.classList.toggle('on', x === b); });
+        card.querySelector('.g-f').style.display = b.getAttribute('data-v') === 'sold' ? '' : 'none';
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.g-zero'), function (b) { b.onclick = function () { haptic(); b.closest('[data-g]').querySelector('.g-b').value = '0'; }; });
+    $('#gsave').onclick = function () {
+      var s = $('#gsite').value, c = $('#gcur').value, bc = $('#gbcur') ? $('#gbcur').value : CUR.code, rows = [];
+      for (var i = 0; i < r.items.length; i++) {
+        var x = r.items[i], card = document.querySelector('[data-g="' + x.id + '"]');
+        if (card.querySelector('.g-act .on').getAttribute('data-v') === 'skip') { rows.push({ id: x.id, action: 'skip' }); continue; }
+        var p = toKopIn(card.querySelector('.g-p').value, c), q = card.querySelector('.g-q') ? +card.querySelector('.g-q').value : x.qty;
+        var bi = card.querySelector('.g-b'), b = bi ? toKopIn(bi.value, bc) : null;
+        if (!(p > 0)) return toast(x.name + ': впиши, сколько получил');
+        if (bi && (b == null || isNaN(b) || b < 0)) return toast(x.name + ': впиши, за сколько покупал (0 — если выпал)');
+        rows.push({ id: x.id, action: 'sold', platform: s, receivedKop: p, qty: q, buyKop: b });
+      }
+      lsSet('cur_' + s, c); lsSet('last_site', s); if ($('#gbcur')) lsSet('cur_buy', bc);
+      $('#gsave').disabled = true;
+      api('inventory/gone/save', { method: 'POST', body: { rows: rows } }).then(function (res) {
+        haptic('ok');
+        var h2 = '<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (res.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>Записано продаж: ' + res.sold + '</h2>' +
+          (res.sold ? '<div class="big-num ' + cls(res.resultKop) + '">' + uah(res.resultKop, true) + '</div><div class="sub">результат по этим продажам</div>' : '') +
+          (res.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + res.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>';
+        sheet(h2);
+        $('#okb').onclick = function () { closeSheet(); inventory(); };
+      }).catch(function (e) { $('#gsave').disabled = false; toast(e.message); });
+    };
+  }).catch(function (e) { closeSheet(); toast(e.message); });
+}
 // «Я продал» прямо из инвентаря Steam: есть запись о покупке — продаём из неё; нет — сначала спросим, за сколько покупал.
 function soldFromSteam(x) {
   api('inventory').then(function (r) {
@@ -1065,13 +1149,15 @@ function soldFromSteam(x) {
     var h = '<h2>Продажа</h2><div class="sub">' + esc(x.name) + '</div>';
     h += '<div class="note">Чтобы посчитать прибыль, нужно знать, за сколько ты его брал. Выпал из кейса или в дропе — поставь 0 и выбери «Получено бесплатно».</div>';
     h += '<div class="grid2"><label class="f" style="margin:0"><span>Сколько продал</span><input id="fsq" inputmode="numeric" value="1"></label>' +
-      '<label class="f" style="margin:0"><span>Покупал за 1 шт., ' + esc(CUR.sign) + '</span><input id="fsb" inputmode="decimal" placeholder="0 — если выпал"></label></div>';
+      '<label class="f" style="margin:0"><span>Покупал за 1 шт.</span><input id="fsb" inputmode="decimal" placeholder="0 — если выпал"></label></div>';
+    h += '<label class="f"><span>Валюта, в которой покупал</span>' + curSelect('fscur', 'buy') + '</label>';
     h += '<label class="f"><span>Где покупал</span><select id="fspl">' + platformOptions('steam') + '</select></label>';
     h += '<label class="f"><span>Когда покупал</span><input id="fsd" type="date" value="' + today() + '" max="' + today() + '"></label>';
     h += '<button class="btn" id="fsnext">Дальше — цена продажи</button>';
     sheet(h);
     $('#fsnext').onclick = function () {
-      var q = +$('#fsq').value, b = toKop($('#fsb').value);
+      var q = +$('#fsq').value, b = toKopIn($('#fsb').value, $('#fscur').value);
+      lsSet('cur_buy', $('#fscur').value);
       if (!(q >= 1) || q > x.qty) return toast('Количество: от 1 до ' + x.qty);
       if (b == null || isNaN(b) || b < 0) return toast('Введи цену покупки (0 — если выпал)');
       $('#fsnext').disabled = true;
@@ -1083,19 +1169,22 @@ function soldFromSteam(x) {
 }
 function sellForm(l) {
   var h = '<h2>Продажа</h2><div class="sub">' + esc(l.name) + ' · осталось ' + l.openQty + ' шт.</div>';
-  h += '<div class="grid2"><label class="f" style="margin:0"><span>Количество</span><input id="sq" inputmode="numeric" value="' + (l.openQty === 1 ? 1 : '') + '"></label><label class="f" style="margin:0"><span>Цена покупателя, ' + CUR.sign + '/шт.</span><input id="sp" inputmode="decimal"></label></div>';
+  h += '<div class="grid2"><label class="f" style="margin:0"><span>Количество</span><input id="sq" inputmode="numeric" value="' + (l.openQty === 1 ? 1 : '') + '"></label><label class="f" style="margin:0"><span>Цена покупателя за 1 шт.</span><input id="sp" inputmode="decimal"></label></div>';
   h += '<label class="f"><span>Где продал</span><select id="spl">' + platformOptions('steam', true) + '</select></label>';
-  h += '<label class="f"><span>Получено всего после комиссий, ' + CUR.sign + '</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
+  h += '<label class="f"><span>Валюта сумм (как на сайте или в кошельке Steam)</span>' + curSelect('scur', 'steam') + '</label>';
+  h += '<label class="f"><span>Получено всего после комиссий</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
   h += '<label class="f"><span>Дата</span><input id="sd" type="date" value="' + today() + '" max="' + today() + '"></label>';
   h += '<div class="note" id="shint"></div><button class="btn" id="ssave">Записать продажу</button>';
   sheet(h);
   var hint = function () {
-    var p = toKop($('#sp').value), q = +$('#sq').value || 1;
+    var p = toKopIn($('#sp').value, $('#scur').value), q = +$('#sq').value || 1;
     $('#shint').textContent = $('#spl').value === 'steam' && p > 0 ? 'Steam: покупатель платит ' + uah(p) + ', тебе придёт примерно ' + uah(Math.floor(p / 1.15) * q) + ' (точно посчитает сервер).' : '';
   };
-  $('#sp').oninput = hint; $('#spl').onchange = hint; $('#sq').oninput = hint;
+  $('#sp').oninput = hint; $('#sq').oninput = hint; $('#scur').onchange = hint;
+  $('#spl').onchange = function () { var c = lsGet('cur_' + $('#spl').value); if (c && FX[c]) $('#scur').value = c; hint(); };
   $('#ssave').onclick = function () {
-    var p = toKop($('#sp').value), rcv = toKop($('#srcv').value);
+    var cc = $('#scur').value, p = toKopIn($('#sp').value, cc), rcv = toKopIn($('#srcv').value, cc);
+    lsSet('cur_' + $('#spl').value, cc);
     if (!(p > 0)) return toast('Введи цену продажи');
     api('inventory/' + l.id + '/sell', { method: 'POST', body: { qty: +$('#sq').value, priceKop: p, receivedKop: rcv == null ? null : rcv, platform: $('#spl').value, date: $('#sd').value } })
       .then(function (r) {

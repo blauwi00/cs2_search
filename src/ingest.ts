@@ -22,6 +22,7 @@ import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
 import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
+import { goneStmts } from './core/steaminv.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -281,6 +282,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
           const p = names.slice(i, i + 90);
           for (const r of (await d.prepare(`SELECT id, market_hash_name FROM items WHERE market_hash_name IN (${p.map(() => '?').join(',')})`).bind(...p).all<{ id: number; market_hash_name: string }>()).results) ids.set(r.market_hash_name, r.id);
         }
+        // Что пропало с прошлого раза — бот предложит записать как продажи.
+        stmts.push(...await goneStmts(d, tid, new Map([...byName].filter(([n]) => ids.has(n)).map(([n, v]) => [ids.get(n)!, v.qty])), byName.size >= 500, now));
         stmts.push(d.prepare('DELETE FROM steam_inventory WHERE telegram_id = ?').bind(tid));
         for (const [n, v] of byName) {
           const id = ids.get(n);

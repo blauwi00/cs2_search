@@ -9,10 +9,11 @@ import { steamSellReference } from './arbitrage.ts';
 
 export type Wallet = 'steam_wallet' | 'external_cash';
 
-export const PLATFORMS = ['steam', 'skinport', 'csfloat', 'other', 'gift'] as const;
+export const PLATFORMS = ['steam', 'skinport', 'csfloat', 'csgomarket', 'csmoney', 'waxpeer', 'lisskins', 'buffmarket', 'skinbaron', 'csdeals', 'tradeit', 'dmarket', 'other', 'gift'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 export const PLATFORM_RU: Record<string, string> = {
-  steam: 'Steam Market', skinport: 'Skinport', csfloat: 'CSFloat', other: 'Другая площадка', gift: 'Получено бесплатно (дроп/подарок)',
+  steam: 'Steam Market', skinport: 'Skinport', csfloat: 'CSFloat', csgomarket: 'Market.CSGO', csmoney: 'CS.MONEY', waxpeer: 'Waxpeer', lisskins: 'LIS-SKINS',
+  buffmarket: 'BUFF Market', skinbaron: 'SkinBaron', csdeals: 'CS.Deals', tradeit: 'Tradeit.gg', dmarket: 'DMarket', other: 'Другая площадка', gift: 'Получено бесплатно (дроп/подарок)',
 };
 
 export function walletFor(platform: string): Wallet {

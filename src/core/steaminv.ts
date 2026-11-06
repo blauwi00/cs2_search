@@ -71,6 +71,8 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
     d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ?, steam_id = ?, steam_vanity = NULL WHERE telegram_id = ?').bind(now, 'ok', res.steamId, tid),
   ];
   const keep = [...ids.values()];
+  const fresh = new Map(res.items.filter((x) => ids.has(x.name)).map((x) => [ids.get(x.name)!, x.qty]));
+  stmts.push(...await goneStmts(d, tid, fresh, res.partial, now));
   if (!res.partial) {
     stmts.push(keep.length
       ? d.prepare(`DELETE FROM steam_inventory WHERE telegram_id = ? AND item_id NOT IN (SELECT value FROM json_each(?))`).bind(tid, JSON.stringify(keep))
@@ -87,4 +89,21 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
     if (x.img) stmts.push(d.prepare('INSERT OR IGNORE INTO item_images (name, url) VALUES (?, ?)').bind(x.name, x.img));
   }
   for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
+}
+
+/** Что пропало из инвентаря по сравнению с прошлым разом (только если прошлый раз был). Неполный ответ — только уменьшения. */
+export async function goneStmts(d: D1Database, tid: number, fresh: Map<number, number>, partial: boolean, now: number): Promise<D1PreparedStatement[]> {
+  // Минус то, что уже записано как продажа после прошлого обновления (кнопка «Я продал» до «Обновить»).
+  const old = (await d.prepare(`SELECT s.item_id, s.qty, COALESCE((SELECT SUM(ts.quantity) FROM trade_sales ts JOIN trades t ON t.id = ts.trade_id
+      WHERE t.telegram_id = s.telegram_id AND t.item_id = s.item_id AND ts.created_at >= COALESCE(u.inv_synced_at, 0)), 0) AS sold
+    FROM steam_inventory s JOIN users u ON u.telegram_id = s.telegram_id WHERE s.telegram_id = ?`).bind(tid).all<{ item_id: number; qty: number; sold: number }>()).results;
+  const out: D1PreparedStatement[] = [];
+  for (const o of old) {
+    const n = fresh.get(o.item_id);
+    if (n === undefined && partial) continue;
+    const diff = o.qty - (n ?? 0) - o.sold;
+    if (diff > 0) out.push(d.prepare('INSERT INTO inv_gone (telegram_id, item_id, qty, gone_at) VALUES (?, ?, ?, ?)').bind(tid, o.item_id, diff, now));
+    if (out.length >= 200) break;
+  }
+  return out;
 }

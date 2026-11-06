@@ -107,7 +107,7 @@ test('пропало из инвентаря: бот видит, что ушло
   assert.deepEqual(res.errors, []);
   assert.equal(res.resultKop, 2 * 3000 + (12000 - 10000), 'кейсы выпали (0), AK — из записи о покупке');
   assert.equal((await call('inventory/gone')).items.length, 0);
-  assert.equal((await call('inventory')).realizedKop, 400 + 8000);
+  assert.equal((await call('inventory')).realizedCashKop, 400 + 8000);
   // Повторно записать то же нельзя
   assert.equal((await call('inventory/gone/save', 'POST', { rows: [{ id: by['Kilowatt Case'].id, action: 'sold', platform: 'csgomarket', receivedKop: 3000, buyKop: 0 }] })).sold, 0);
 });
@@ -143,7 +143,7 @@ test('продажа «ждёт оплаты»: не в прибыли и не �
   assert.equal(p.pending, true);
   assert.equal(p.resultKop, 2000);
   let inv = await call('inventory');
-  assert.equal(inv.realizedKop, 0, 'не в прибыли');
+  assert.equal(inv.realizedCashKop, 0, 'не в прибыли');
   assert.equal(inv.lots[0].openQty, 1, 'в покупках осталась 1');
   let tr = await call('trades');
   assert.equal(tr.pending.length, 1);
@@ -155,7 +155,7 @@ test('продажа «ждёт оплаты»: не в прибыли и не �
   const c = await call(`sales/pending/${tr.pending[0].id}/confirm`, 'POST', { receivedKop: 11500 });
   assert.equal(c.resultKop, 1500);
   inv = await call('inventory');
-  assert.equal(inv.realizedKop, 1500);
+  assert.equal(inv.realizedCashKop, 1500);
   tr = await call('trades');
   assert.equal(tr.pending.length, 0);
   assert.equal(tr.sales.length, 1);
@@ -168,6 +168,6 @@ test('продажа «ждёт оплаты»: не в прибыли и не �
   // Ошибочная продажа удаляется, штука возвращается
   assert.equal((await call(`sales/${tr.sales[0].id}`, 'DELETE')).ok, true);
   inv = await call('inventory');
-  assert.equal(inv.realizedKop, 0);
+  assert.equal(inv.realizedCashKop, 0);
   assert.equal(inv.lots[0].openQty, 2);
 });

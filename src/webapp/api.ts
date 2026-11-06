@@ -10,7 +10,7 @@ import { parseMarketHashName, CATEGORY_RU } from '../core/normalization.ts';
 import { classifyLiquidity, LIQUIDITY_RU } from '../core/liquidity.ts';
 import { stats } from '../core/analyzer.ts';
 import { valuation, viewLot, realizedStats, PLATFORMS, PLATFORM_RU, walletFor, parseDateInput, openQty } from '../core/portfolio.ts';
-import { steamSellerProceeds, steamListForNetKop } from '../core/fees.ts';
+import { steamListForNetKop } from '../core/fees.ts';
 import { settingsFor, parseSettingInput, displayValue } from '../telegram/settings.ts';
 import { listJobs, setJobEnabled } from '../core/scheduler.ts';
 import { warsawDate } from '../utils/time.ts';
@@ -200,13 +200,13 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
  * остальное — новой записью с ценой покупки (0 — выпал). Суммы — за 1 шт., в копейках бота.
  */
 async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; name: string; maxQty: number; qty: unknown; receivedKop: unknown; platform: unknown; buyKop: unknown; pending: boolean; note: string },
-  wallet: { per: number }, date: string, now: number): Promise<{ resultKop: number; recorded: boolean; error?: string }> {
+  wallet: { per: number }, date: string, now: number): Promise<{ resultKop: number; recorded: boolean; recordedQty: number; error?: string }> {
   const qty = Math.trunc(Number(r.qty));
   const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
   const platform = String(r.platform ?? '');
-  if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return { resultKop: 0, recorded: false, error: `${r.name}: выбери, где продал` };
-  if (!Number.isInteger(qty) || qty < 1 || qty > r.maxQty) return { resultKop: 0, recorded: false, error: `${r.name}: количество от 1 до ${r.maxQty}` };
-  if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, error: `${r.name}: впиши, сколько получил` };
+  if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: выбери, где продал` };
+  if (!Number.isInteger(qty) || qty < 1 || qty > r.maxQty) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: количество от 1 до ${r.maxQty}` };
+  if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: впиши, сколько получил` };
   const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
   let left = qty, resultKop = 0;
   const sale = (tradeId: number, q: number) => (r.pending
@@ -224,13 +224,16 @@ async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; na
     if (left) {
       const buy = Number(r.buyKop);
       if (r.buyKop === null || r.buyKop === undefined || r.buyKop === '' || !Number.isSafeInteger(buy) || buy < 0) {
-        return { resultKop, recorded: left < qty, error: `${r.name}: впиши, за сколько покупал (0 — если выпал)` };
+        return { resultKop, recorded: left < qty, recordedQty: qty - left, error: `${r.name}: впиши, за сколько покупал (0 — если выпал)` };
       }
       const id = await T.addTrade(d, { tid, itemId: r.itemId, signalId: null, quantity: left, buyPriceKop: buy, buyFeeKop: 0, platform: buy === 0 ? 'gift' : 'other', buyDate: date, note: r.note, now });
       resultKop += got * left - (await sale(id, left)).costKop;
     }
-  } catch (e) { return { resultKop, recorded: false, error: `${r.name}: ${(e as Error).message}` }; }
-  return { resultKop, recorded: true };
+  } catch (e) {
+    // Часть штук могла уже записаться (по первым лотам) — сообщаем, сколько, чтобы повтор не записал их второй раз.
+    return { resultKop, recorded: left < qty, recordedQty: qty - left, error: `${r.name}: ${(e as Error).message}` };
+  }
+  return { resultKop, recorded: true, recordedQty: qty };
 }
 
 async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: D1Database): Promise<Response> {
@@ -572,11 +575,12 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         steamAvgFor(d, lotIds), db.loadLatestFx(d), walletCur(),
       ]);
       const usd = fxm.get('USD') ?? null;
-      // Фактическая (реализованная) прибыль — только по записанным продажам: получено − себестоимость проданного.
-      const real = await d.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(s.received_kop - s.quantity * t.buy_price_kop - t.buy_fee_kop * s.quantity / t.quantity), 0) AS p
-        FROM trade_sales s JOIN trades t ON t.id = s.trade_id WHERE t.telegram_id = ?`).bind(tid).first<{ n: number; p: number }>();
+      // Фактическая (реализованная) прибыль — только по записанным продажам, той же себестоимостью, что во вкладке «Продажи».
+      // Steam Wallet и живые деньги не складываются (portfolio.ts).
+      const [allT, allS] = await Promise.all([T.allTrades(d, tid), T.salesFor(d, tid)]);
+      const rs = realizedStats(allT, T.salesWithCost(allT, allS));
       return json({
-        ok: true, realizedKop: real?.p ?? 0, salesCount: real?.n ?? 0,
+        ok: true, realizedSteamKop: rs.realizedSteamKop, realizedCashKop: rs.realizedCashKop, salesCount: rs.sales,
         platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
         lots: lots.map((l) => {
           const q = quotes.get(l.item_id) ?? [];
@@ -668,10 +672,13 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           continue;
         }
         const res = await recordSaleRow(d, tid, { itemId: g.item_id, name: g.name, maxQty: g.qty, qty: r.qty ?? g.qty, receivedKop: r.receivedKop, platform: r.platform, buyKop: r.buyKop, pending: r.pending === true, note: 'из «Пропало из инвентаря»' }, wallet, date, now);
-        if (res.error) { errors.push(res.error); if (!res.recorded) continue; }
+        if (res.error) errors.push(res.error);
+        if (!res.recordedQty) continue;
         resultKop += res.resultKop;
         const platform = String(r.platform);
-        await d.prepare(`UPDATE inv_gone SET status = 'sold' WHERE id = ?`).bind(g.id).run();
+        // Записано не всё — в «Пропало» остаётся только незаписанный остаток (повтор не задвоит продажу).
+        if (res.error && res.recordedQty < g.qty) await d.prepare(`UPDATE inv_gone SET qty = qty - ? WHERE id = ?`).bind(res.recordedQty, g.id).run();
+        else await d.prepare(`UPDATE inv_gone SET status = 'sold' WHERE id = ?`).bind(g.id).run();
         sold++;
         lastSite = platform;
       }
@@ -682,6 +689,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const id = Number(seg[1]);
       const qty = Number(body.qty), price = Number(body.priceKop);
       const platform = String(body.platform ?? '');
+      if (!Number.isInteger(qty) || qty < 1) return bad('Количество — целое число от 1');
       const date = parseDateInput(String(body.date ?? 'сегодня'), warsawDate(now));
       if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return bad('Выбери площадку');
       if (!Number.isSafeInteger(price) || price <= 0) return bad('Неверная цена');
@@ -689,9 +697,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       let received = Number(body.receivedKop);
       if (body.receivedKop === undefined || body.receivedKop === null || body.receivedKop === '') {
         if (platform !== 'steam') return bad('Укажи, сколько фактически получил');
-        const p = steamSellerProceeds(price);
-        if (!p) return bad('Цена ниже минимальной в Steam');
-        received = p.sellerReceives * qty;
+        const net = steamNetKop(price, await walletCur());
+        if (net === null) return bad('Цена ниже минимальной в Steam');
+        received = net * qty;
       }
       if (!Number.isSafeInteger(received) || received < 0) return bad('Неверная полученная сумма');
       if (body.pending === true) {

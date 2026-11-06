@@ -953,7 +953,12 @@ function trades() {
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
       if (r.lots.length) h += '<div class="grid2">' + stat('Если продать в Steam', uahShort(val), 'после комиссии') + stat('Потенциальная', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без актуальной цены: ' + unk : 'если продать сейчас · не заработано') + '</div>';
-      if (r.salesCount) h += '<div class="grid2">' + stat('Фактическая прибыль', '<span class="' + cls(r.realizedKop) + '">' + uah(r.realizedKop, true) + '</span>', 'по ' + r.salesCount + ' записанным продажам') + stat('Вложено сейчас', uahShort(cost), 'себестоимость непроданного') + '</div>';
+      if (r.salesCount) {
+        // Steam Wallet и живые деньги — раздельно: деньги из Steam вывести нельзя.
+        var rS = r.realizedSteamKop || 0, rC = r.realizedCashKop || 0;
+        var real = (rC || !rS ? '<span class="' + cls(rC) + '">' + uah(rC, true) + '</span>' : '') + (rS ? (rC ? '<br>' : '') + '<span class="' + cls(rS) + '">' + uah(rS, true) + '</span> <span class="mut" style="font-size:12px">в Steam</span>' : '');
+        h += '<div class="grid2">' + stat('Фактическая прибыль', real, 'по ' + r.salesCount + ' записанным продажам') + stat('Вложено сейчас', uahShort(cost), 'себестоимость непроданного') + '</div>';
+      }
       h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
       h += r.lots.length ? r.lots.map(function (l) {
         return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + '</div></div>' +

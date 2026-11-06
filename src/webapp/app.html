@@ -170,6 +170,7 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
   <button class="tab" data-t="deals"><span class="t">💡</span>Рекомендации</button>
   <button class="tab" data-t="market"><span class="t">📊</span>Рынок</button>
   <button class="tab" data-t="inv"><span class="t">🎒</span>Инвентарь</button>
+  <button class="tab" data-t="trades"><span class="t">🤝</span>Сделки</button>
   <button class="tab" data-t="more"><span class="t">⚙️</span>Ещё</button>
 </nav>
 <div class="sheet-bg" id="sbg"></div>
@@ -193,7 +194,7 @@ applySafeTop();
 var INIT = tg ? tg.initData : '';
 var $ = function (s, r) { return (r || document).querySelector(s); };
 var view = $('#view');
-var state = { tab: 'home', ideas: 'recs', invTab: 'steam', mkAct: 'all', edit: false, sel: {}, dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
+var state = { tab: 'home', ideas: 'recs', invTab: 'mine', mkAct: 'all', edit: false, sel: {}, dealOrder: 'spread', dealSrc: 'all', mkCat: 'all', cache: {} };
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // Все суммы приходят в копейках гривны; показываем и вводим в валюте человека (CUR — из ответа сервера).
@@ -213,6 +214,24 @@ function curSelect(id, key) {
 function toKopIn(v, code) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * (FX[code] || CUR.per)); }
 function unitsIn(k, code) { return k == null ? '' : String(+(k / 100 / (FX[code] || CUR.per)).toFixed(2)).replace('.', ','); }
 var NO_CENTS = { JPY: 1, KRW: 1, HUF: 1, KZT: 1, ARS: 1 };
+/** Сумма в валюте, выбранной для площадки (💱 Валюта площадок); не выбрана — в валюте бота. */
+function siteMoney(k, key, short) {
+  var code = lsGet('cur_' + key), save = CUR;
+  if (code && FX[code] && code !== CUR.code) CUR = { code: code, sign: CUR_SIGN[code] || code, per: FX[code] };
+  try { return money(k, false, short); } finally { CUR = save; }
+}
+var SITE_LIST = [['steam', 'Steam'], ['skinport', 'Skinport'], ['csfloat', 'CSFloat'], ['csgomarket', 'Market.CSGO'], ['csmoney', 'CS.MONEY'], ['waxpeer', 'Waxpeer'], ['lisskins', 'LIS-SKINS'], ['buffmarket', 'BUFF Market'], ['skinbaron', 'SkinBaron'], ['csdeals', 'CS.Deals'], ['tradeit', 'Tradeit.gg'], ['dmarket', 'DMarket']];
+function siteCurSheet(after) {
+  var h = '<h2>💱 Валюта площадок</h2><div class="sub">Например: Steam — в гривнах, Skinport — в злотых. Цены этих площадок будут показаны в выбранной валюте (по курсу НБУ), и в ней же бот спросит суммы при продаже.</div><div class="card" style="padding:2px 14px">';
+  h += SITE_LIST.map(function (x) {
+    var cur = lsGet('cur_' + x[0]) || '';
+    return '<div class="kv" style="align-items:center"><span>' + esc(x[1]) + '</span><select data-sc="' + x[0] + '" style="width:auto;padding:6px 8px"><option value="">как в боте (' + esc(CUR.code) + ')</option>' +
+      Object.keys(FX).map(function (c) { return '<option value="' + c + '"' + (c === cur ? ' selected' : '') + '>' + (CUR_SIGN[c] || c) + ' ' + c + '</option>'; }).join('') + '</select></div>';
+  }).join('') + '</div><button class="btn" id="scok">Готово</button>';
+  sheet(h);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sc]'), function (el) { el.onchange = function () { var k = 'cur_' + el.getAttribute('data-sc'); if (el.value) lsSet(k, el.value); else { try { localStorage.removeItem(k); } catch (e) { /* нет памяти */ } } }; });
+  $('#scok').onclick = function () { closeSheet(); if (after) after(); };
+}
 function money(k, sign, short) {
   if (k == null || isNaN(k)) return '—';
   var v = k / 100 / CUR.per, a = Math.abs(v);
@@ -285,7 +304,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { rally: 'Разгон баланса', home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', more: 'Ещё' };
+var TITLES = { rally: 'Разгон баланса', home: 'CS2 Market', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', trades: 'Сделки', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -294,7 +313,7 @@ function go(t) {
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
-  ({ home: home, deals: deals, market: market, inv: inventory, more: more, rally: rally })[t]();
+  ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally })[t]();
 }
 
 // ---------- Состояние: зелёный — всё работает; жёлтый — работает, но Steam/Skinport временно ограничены; красный — бот стоит ----------
@@ -418,7 +437,7 @@ function home() {
     view.innerHTML = h;
     bindSetup();
     if ($('#h-rally')) $('#h-rally').onclick = function () { haptic(); go('rally'); };
-    if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('inv'); };
+    if ($('#h-inv')) $('#h-inv').onclick = function () { state.invTab = 'mine'; go('trades'); };
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
       el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
@@ -770,7 +789,16 @@ function chart(series, days, avg) {
 }
 
 // ---------- Инвентарь ----------
+// ---------- Инвентарь: только предметы Steam (цены — в валюте каждой площадки) ----------
 function inventory() {
+  loading(4);
+  api('steam').then(function (st) {
+    view.innerHTML = steamBlock(st);
+    bindSteamBlock(st);
+  }).catch(fail);
+}
+// ---------- Сделки: покупки и продажи ----------
+function trades() {
   loading(4);
   Promise.all([api('inventory'), api('steam').catch(function () { return null; })]).then(function (res) {
     var r = res[0], st = res[1];
@@ -778,10 +806,8 @@ function inventory() {
     var cost = 0, val = 0, unk = 0;
     r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
     var stN = st && st.items ? st.items.length : 0;
-    var h = '<div class="seg" id="invseg"><button data-v="steam" class="' + (state.invTab === 'steam' ? 'on' : '') + '">🎮 Steam' + (stN ? ' · ' + stN : '') + '</button><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button><button data-v="sales" class="' + (state.invTab === 'sales' ? 'on' : '') + '">💸 Продажи</button></div>';
-    if (state.invTab === 'steam') {
-      h += steamBlock(st);
-    } else if (state.invTab === 'sales') {
+    var h = '<div class="seg" id="invseg"><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button><button data-v="sales" class="' + (state.invTab === 'sales' ? 'on' : '') + '">💸 Продажи</button></div>';
+    if (state.invTab === 'sales') {
       if (st && st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
       h += '<div id="salesbox"><div class="skel"></div><div class="skel"></div></div>';
     } else {
@@ -796,8 +822,7 @@ function inventory() {
     }
     view.innerHTML = h;
     if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
-    Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); inventory(); }; });
-    if (state.invTab === 'steam') bindSteamBlock(st);
+    Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); trades(); }; });
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
       el.onclick = function () { haptic(); var id = +el.getAttribute('data-lot'); lotSheet(r.lots.filter(function (x) { return x.id === id; })[0]); };
@@ -824,11 +849,12 @@ function steamBlock(st) {
   if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
   if (st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
   if (st.items.length) {
-    h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + uahShort(st.totalKop), 'по ценам Steam') + stat('Если продать', '≈ ' + uahShort(st.totalNetKop), 'на баланс, после 15%') + '</div>';
+    h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
+    h += '<button class="btn sec2" id="st-cur" style="margin:0 0 8px">💱 Валюта площадок' + (lsGet('cur_steam') ? ' · Steam в ' + esc(lsGet('cur_steam')) : '') + '</button>';
     if (st.totalKop > 0) h += '<button class="btn" id="st-share" style="margin:0 0 12px">📸 Поделиться: сколько стоит мой инвентарь</button>';
     h += st.items.slice(0, 60).map(function (x) {
       return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.targetKop ? ' · 🎯 ' + uahShort(x.targetKop) : '') + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
-        '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + uahShort(x.priceKop) : '<span class="mut" style="font-size:12px;font-weight:500">нет актуальных<br>данных</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
+        '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + siteMoney(x.priceKop, 'steam', true) : '<span class="mut" style="font-size:12px;font-weight:500">нет актуальных<br>данных</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
     }).join('');
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
     h += '<div class="note">«≈» — средняя цена продаж в Steam за последние дни (история, не текущее объявление).' + (st.noDataCount ? ' Без актуальных данных: ' + st.noDataCount + ' — в сумму не входят.' : '') + ' Нажми на предмет — цены подробно и за сколько выставить.</div>';
@@ -837,6 +863,7 @@ function steamBlock(st) {
   return h;
 }
 function bindSteamBlock(st) {
+  if ($('#st-cur')) $('#st-cur').onclick = function () { haptic(); siteCurSheet(function () { if (state.tab === 'inv') inventory(); }); };
   if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); };
   if (!st) return;
   if ($('#st-pv')) $('#st-pv').onclick = privacy;
@@ -945,14 +972,15 @@ function loadPrices(name) {
       return '<div class="kv" style="align-items:center;cursor:pointer" data-url="' + esc(x.url) + '"><span style="display:flex;align-items:center;gap:10px">' + icon + '<span>' + label + extra + '</span></span><span class="v" style="white-space:nowrap">' + price + '</span></div>';
     };
     var ico = function (x) { return '<span class="ic site sm' + (x.icon ? '' : ' noimg') + '"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + '</span>'; };
-    if (r.steam) h += line(r.steam, '<span class="ic" style="width:26px;height:26px;border-radius:7px;font-size:15px;flex:none">🎮</span>', 'Steam Market', (r.steam.basis === 'avg' ? '≈ ' : '') + uah(r.steam.kop), '<div class="mut" style="font-size:11px">' + esc(BASIS[r.steam.basis] || '') + ' · деньги остаются в Steam</div>');
+    if (r.steam) h += line(r.steam, '<span class="ic" style="width:26px;height:26px;border-radius:7px;font-size:15px;flex:none">🎮</span>', 'Steam Market', (r.steam.basis === 'avg' ? '≈ ' : '') + siteMoney(r.steam.kop, 'steam'), '<div class="mut" style="font-size:11px">' + esc(BASIS[r.steam.basis] || '') + ' · деньги остаются в Steam</div>');
     else if (r.steamStatus === 'no_data') h += '<div class="kv"><span>🎮 Steam Market</span><span class="mut">нет актуальных данных</span></div>';
     all.forEach(function (x) {
       var tags = (x.kind === 'reference' ? '<div class="mut" style="font-size:11px">ориентир площадки, не объявление</div>' : '') + (x.at ? '<div class="mut" style="font-size:11px">данные ' + ago(x.at) + (x.cur && x.cur !== 'USD' ? ' · из ' + esc(x.cur) : '') + '</div>' : '') + (x.kop === min && x.kind !== 'reference' ? '<span class="pos" style="font-size:11px;font-weight:700"> · дешевле всех</span>' : '') + (x.group === 'china' ? '<div class="mut" style="font-size:11px">Китай — нужен аккаунт на площадке</div>' : '') + (x.ref ? '<div style="font-size:11px;color:var(--amber)">партнёрская ссылка</div>' : '');
-      h += line(x, ico(x), esc(x.name), '<span class="' + (x.kop === min ? 'pos' : '') + '">' + uah(x.kop) + '</span>', tags);
+      h += line(x, ico(x), esc(x.name), '<span class="' + (x.kop === min ? 'pos' : '') + '">' + siteMoney(x.kop, x.key) + '</span>', tags);
     });
-    h += '</div><div class="note">Самые дешёвые объявления на момент обновления данных площадки, без комиссии при оплате. Совпадение — по точному названию (износ, StatTrak™, Souvenir). Данные старше 2 суток не показываются.' + (r.pattern ? ' <b>Цена этого предмета зависит от фазы/паттерна — объявления могут быть другого экземпляра.</b>' : '') + ' Нажми на площадку — откроется сайт.</div>';
+    h += '</div><div class="note">Самые дешёвые объявления на момент обновления данных площадки, без комиссии при оплате. Совпадение — по точному названию (износ, StatTrak™, Souvenir). Данные старше 2 суток не показываются.' + (r.pattern ? ' <b>Цена этого предмета зависит от фазы/паттерна — объявления могут быть другого экземпляра.</b>' : '') + ' Нажми на площадку — откроется сайт. <a href="#" id="pcur">💱 Валюта площадок</a></div>';
     el.innerHTML = h;
+    if ($('#pcur')) $('#pcur').onclick = function (e) { e.preventDefault(); haptic(); siteCurSheet(); };
     Array.prototype.forEach.call(el.querySelectorAll('[data-url]'), function (row) { row.onclick = function () { haptic(); openLink(row.getAttribute('data-url')); }; });
   }).catch(function () { var el = $('#pricebox'); if (el) el.innerHTML = ''; });
 }
@@ -1045,7 +1073,7 @@ function buyForm(pre) {
     if (!name) return toast('Выбери предмет');
     if (price == null || isNaN(price) || price < 0) return toast('Введи цену');
     api('inventory', { method: 'POST', body: { name: name, qty: +$('#bqty').value, priceKop: price, feeKop: fee, platform: $('#bpl').value, date: $('#bdt').value, signalId: pre.signalId || null } })
-      .then(function () { haptic('ok'); toast('Записано в инвентарь'); go('inv'); }).catch(function (e) { toast(e.message); });
+      .then(function () { haptic('ok'); toast('Записано в покупки'); state.invTab = 'mine'; go('trades'); }).catch(function (e) { toast(e.message); });
   };
 }
 function lotSheet(l) {
@@ -1072,7 +1100,7 @@ function lotSheet(l) {
     api('inventory/' + l.id + '/target', { method: 'POST', body: { kop: k } }).then(function () { haptic('ok'); toast(k ? 'Цель сохранена' : 'Цель убрана'); });
   };
   if (!l.sold) $('#ldel').onclick = function () {
-    var del = function () { api('inventory/' + l.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); go('inv'); }); };
+    var del = function () { api('inventory/' + l.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); go('trades'); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
 }
@@ -1139,7 +1167,7 @@ function goneSheet() {
           (res.sold ? '<div class="big-num ' + cls(res.resultKop) + '">' + uah(res.resultKop, true) + '</div><div class="sub">' + ($('#gpend') && $('#gpend').checked ? 'ожидаемый результат — в прибыль попадёт, когда отметишь «деньги пришли»' : 'результат по этим продажам') + '</div>' : '') +
           (res.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + res.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>';
         sheet(h2);
-        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; inventory(); };
+        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; go('trades'); };
       }).catch(function (e) { $('#gsave').disabled = false; toast(e.message); });
     };
   }).catch(function (e) { closeSheet(); toast(e.message); });
@@ -1195,7 +1223,7 @@ function sellForm(l) {
         haptic('ok');
         sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (r.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>' + (r.pending ? '⏳ Ждёт оплаты' : 'Продажа записана') + '</h2><div class="sub">' + (r.wallet === 'steam_wallet' ? 'Steam Wallet — вывести нельзя' : 'Реальные деньги (External Cash)') + '</div>' +
           '<div class="big-num ' + cls(r.resultKop) + '">' + uah(r.resultKop, true) + '</div><div class="card" style="text-align:left;margin-top:12px">' + kv('Получено', uah(r.receivedKop)) + kv('Себестоимость', uah(r.costKop)) + '</div><button class="btn" id="okb">Готово</button></div>');
-        $('#okb').onclick = function () { state.invTab = 'sales'; go('inv'); };
+        $('#okb').onclick = function () { state.invTab = 'sales'; go('trades'); };
       }).catch(function (e) { toast(e.message); });
   };
 }
@@ -1319,7 +1347,7 @@ function scanSheet(items, m) {
         sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (pend ? '⏳' : '🎉') + '</div><h2>' + (pend ? 'Ждут оплаты: ' : 'Записано продаж: ') + tot.sold + '</h2>' +
           (tot.sold ? '<div class="big-num ' + cls(tot.resultKop) + '">' + uah(tot.resultKop, true) + '</div><div class="sub">' + (pend ? 'ожидаемый результат' : 'результат') + '</div>' : '') +
           (tot.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + tot.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>');
-        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; inventory(); };
+        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; go('trades'); };
         return;
       }
       api('sales/batch', { method: 'POST', body: { rows: rows.slice(k, k + 5) } }).then(function (r) { tot.sold += r.sold; tot.resultKop += r.resultKop; tot.errors = tot.errors.concat(r.errors); })
@@ -1337,10 +1365,10 @@ function pendingSheet(x) {
   $('#pok').onclick = function () {
     var v = $('#pcv').value.trim(), k = v ? toKopIn(v, $('#pcur').value) : null;
     if (v && !(k >= 0)) return toast('Неверная сумма');
-    api('sales/pending/' + x.id + '/confirm', { method: 'POST', body: { receivedKop: k } }).then(function (r) { haptic('ok'); toast('Записано: ' + uah(r.resultKop, true)); closeSheet(); state.invTab = 'sales'; inventory(); }).catch(function (e) { toast(e.message); });
+    api('sales/pending/' + x.id + '/confirm', { method: 'POST', body: { receivedKop: k } }).then(function (r) { haptic('ok'); toast('Записано: ' + uah(r.resultKop, true)); closeSheet(); state.invTab = 'sales'; go('trades'); }).catch(function (e) { toast(e.message); });
   };
   $('#pno').onclick = function () {
-    api('sales/pending/' + x.id + '/cancel', { method: 'POST' }).then(function () { haptic('ok'); toast('Вернул в покупки'); closeSheet(); inventory(); }).catch(function (e) { toast(e.message); });
+    api('sales/pending/' + x.id + '/cancel', { method: 'POST' }).then(function () { haptic('ok'); toast('Вернул в покупки'); closeSheet(); trades(); }).catch(function (e) { toast(e.message); });
   };
 }
 function soldSheet(x) {
@@ -1349,7 +1377,7 @@ function soldSheet(x) {
   h += '<button class="btn danger" id="sdel">🗑 Удалить запись о продаже</button><div class="note">Если записал по ошибке: предмет вернётся в «Покупки».</div>';
   sheet(h);
   $('#sdel').onclick = function () {
-    var del = function () { api('sales/' + x.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); closeSheet(); inventory(); }).catch(function (e) { toast(e.message); }); };
+    var del = function () { api('sales/' + x.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); closeSheet(); trades(); }).catch(function (e) { toast(e.message); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о продаже?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
 }
@@ -1415,7 +1443,7 @@ function onboarding(first) {
         : '<button class="btn" id="ob-next">Дальше</button><div class="skip" id="ob-skip">Пропустить</div>') + '</div>';
     haptic();
     if ($('#ob-next')) $('#ob-next').onclick = function () { i++; show(); };
-    if ($('#ob-steam')) $('#ob-steam').onclick = function () { state.invTab = 'steam'; done('inv'); };
+    if ($('#ob-steam')) $('#ob-steam').onclick = function () { done('inv'); };
     $('#ob-skip').onclick = function () { done(first); };
   };
   // Свайп влево/вправо — как в обычных приложениях.

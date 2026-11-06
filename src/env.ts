@@ -1,7 +1,5 @@
 export interface Env {
   DB: D1Database;
-  /** Встроенные нейросети Cloudflare (Workers AI, бесплатный дневной лимит) — чтение скриншотов. */
-  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
   /** Токен бота от BotFather (Secret). */
   TELEGRAM_BOT_TOKEN: string;
   /** Случайная строка, которую Telegram присылает в заголовке X-Telegram-Bot-Api-Secret-Token (Secret). */

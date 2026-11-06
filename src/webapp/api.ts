@@ -34,7 +34,8 @@ import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
-import { VISION_MODEL, VISION_PROMPT, parseVision, parsePriceMinor, candidates, matchName, type NamesRu } from '../core/screenread.ts';
+import { matchName } from '../core/screenread.ts';
+import { SKINPORT_LISTED } from './import_skinport.ts';
 import { recStats } from '../core/insights.ts';
 import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
 import { steamNetKop } from '../core/fees.ts';
@@ -249,7 +250,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
   let body: Record<string, unknown> = {};
   if (method === 'POST') {
     const t = await req.text();
-    if (t.length > (path === 'sales/scan' ? 1_500_000 : 16_000)) return bad('too_large', 413);
+    if (t.length > 16_000) return bad('too_large', 413);
     try { body = t ? JSON.parse(t) : {}; } catch { return bad('bad_json'); }
   }
   try {
@@ -706,44 +707,22 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         return bad((e as Error).message);
       }
     }
-    // Скриншот сайта → список предметов с ценами (нейросеть Cloudflare только читает текст; сопоставление — по словарю игры и инвентарю).
-    if (path === 'sales/scan' && method === 'POST') {
-      if (!env.AI) return bad('Чтение скриншотов пока не подключено');
-      const img = typeof body.image === 'string' ? body.image : '';
-      if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img) || img.length > 1_400_000) return bad('Пришли картинку поменьше (до ~1 МБ)');
-      const used = Number((await d.prepare(`SELECT value FROM usage_counters WHERE day = ? AND counter = ?`).bind(new Date(now * 1000).toISOString().slice(0, 10), `scan_${tid}`).first<{ value: number }>())?.value ?? 0);
-      if (!isAdmin && used >= 30) return bad('На сегодня лимит — 30 скриншотов. Завтра можно снова.');
-      const ask = () => env.AI!.run(VISION_MODEL, { messages: [{ role: 'user', content: VISION_PROMPT }], image: img, max_tokens: 1800, temperature: 0 });
-      let out: unknown;
-      try {
-        out = await ask();
-      } catch (e) {
-        // Первый запуск модели Meta требует согласия с её лицензией — один раз на аккаунт.
-        if (/agree|licen[cs]e/i.test((e as Error).message)) {
-          try { await env.AI.run(VISION_MODEL, { prompt: 'agree' }); out = await ask(); } catch (e2) { return bad('Нейросеть недоступна: ' + (e2 as Error).message.slice(0, 120)); }
-        } else return bad('Нейросеть недоступна: ' + (e as Error).message.slice(0, 120));
-      }
-      await db.counterStmt(d, `scan_${tid}`, 1, now).run().catch(() => undefined);
-      const text = typeof out === 'string' ? out : String((out as { response?: unknown })?.response ?? '');
-      const rows = parseVision(text);
-      let dict: NamesRu | null = null;
-      try { dict = JSON.parse((await getMeta(d, 'names_ru')) ?? 'null'); } catch { dict = null; }
+    // Разовый импорт выставленных на Skinport предметов (со скриншотов владельца, 06.11.2026) — проверка и запись через то же окно.
+    if (path === 'import/skinport' && method === 'GET') {
+      if (!isAdmin) return bad('forbidden', 403);
       const known = [...new Set([
         ...(await d.prepare('SELECT i.market_hash_name AS n FROM steam_inventory s JOIN items i ON i.id = s.item_id WHERE s.telegram_id = ?').bind(tid).all<{ n: string }>()).results.map((r) => r.n),
         ...(await T.openTrades(d, tid)).map((l) => l.market_hash_name),
       ])];
       return json({
-        ok: true, raw: rows.length ? undefined : text.slice(0, 300), known,
-        items: rows.map((r) => {
-          const cands = candidates(r, dict);
-          return { text: [r.type, r.name, r.wear].filter(Boolean).join(' · '), name: matchName(cands, known), guess: cands[0] ?? null, priceMinor: parsePriceMinor(r.price), currency: /^[A-Z]{3}$/.test(r.currency) ? r.currency : null, float: r.float || null };
-        }),
+        ok: true, known,
+        items: SKINPORT_LISTED.map((x) => ({ text: x.text, name: matchName(x.names, known), priceMinor: x.priceMinor, currency: 'PLN', float: x.float })),
         fees: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.sellFeeBp])),
         lots: Object.fromEntries((await T.openTrades(d, tid)).map((l) => [l.market_hash_name, 1])),
         platforms: PLATFORMS.filter((x) => x !== 'gift').map((x) => ({ v: x, t: PLATFORM_RU[x] })),
       });
     }
-    // Пачка продаж по названиям (после чтения скриншота). До 5 строк за запрос — лимит запросов к базе.
+    // Пачка продаж по названиям (импорт). До 5 строк за запрос — лимит запросов к базе.
     if (path === 'sales/batch' && method === 'POST') {
       const list = (Array.isArray(body.rows) ? body.rows : []).slice(0, 5) as Record<string, unknown>[];
       if (!list.length) return bad('Нечего записывать');

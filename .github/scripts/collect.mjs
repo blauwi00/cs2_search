@@ -45,7 +45,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false, needNamesRu = false } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false } = await toWorker('/ingest/items');
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
@@ -188,29 +188,6 @@ try {
   // Все кейсы — для «индекса кейсов» и вечернего поста в канале.
   const cases = [...steamAvg.entries()].filter(([n]) => / Case$/.test(n)).map(([name, v]) => ({ name, ...v }));
   if (cases.length) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
-  // Русские названия предметов → английские (для чтения скриншотов сайтов на русском). Раз в неделю, из файлов локализации игры.
-  if (needNamesRu && !HOME) {
-    try {
-      const base = 'https://raw.githubusercontent.com/ByMykel/counter-strike-file-tracker/main/static/';
-      const [en, ru] = await Promise.all(['csgo_english.json', 'csgo_russian.json'].map(async (f) => {
-        const r = await fetch(base + f, { headers: { 'User-Agent': UA } });
-        if (!r.ok) throw new Error(`${f}: HTTP ${r.status}`);
-        return (await r.json())?.lang?.Tokens ?? {};
-      }));
-      const w = {}, p = {}, c = {};
-      for (const [k, v] of Object.entries(ru)) {
-        const e = en[k];
-        if (typeof v !== 'string' || typeof e !== 'string' || !v || !e || v.length > 80) continue;
-        const kl = k.toLowerCase();
-        if (kl.startsWith('sfui_wpnhud_')) w[v] = e;
-        else if (kl.startsWith('paintkit_') && kl.endsWith('_tag')) { if (v !== e) (p[v] ??= []).includes(e) || p[v].push(e); }
-        else if (kl.startsWith('csgo_crate_') && !kl.includes('desc') && !kl.includes('_tag')) c[v] = e;
-      }
-      console.log('Русские названия:', Object.keys(p).length, await toWorker('/ingest', { kind: 'names_ru', fetchedAt: now(), w, p, c }));
-    } catch (e) {
-      console.error('Русские названия:', e.message);
-    }
-  }
   // «Окупается ли кейс» — раз в сутки (по запросу Worker): состав кейсов из открытого набора ByMykel/CSGO-API.
   if (needCaseEv && !HOME) {
     try {

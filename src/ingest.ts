@@ -76,7 +76,6 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
       // Записи в D1 за сегодня по источникам (выборочный учёт, ≈). Бесплатный лимит — 100 000 строк в сутки.
       writes: Object.fromEntries(Object.entries(await db.counters(d, now)).filter(([k]) => k.startsWith('w:'))),
-      needNamesRu: now - (Number(await getMeta(d, 'names_ru_at')) || 0) > 7 * 86400,
       needCaseEv: await (async () => { try { return now - (JSON.parse((await getMeta(d, 'case_ev')) ?? '{}').at ?? 0) > 20 * 3600; } catch { return true; } })(),
       newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
@@ -366,21 +365,6 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const pending = (await d.prepare('SELECT * FROM idea_log WHERE checked_at IS NULL AND created_at <= ? LIMIT 20').bind(now - 20 * 3600).all<IdeaRow>()).results;
       const checks = checkStmts(d, pending, merged, fx, now);
       if (checks.length) await d.batch(checks);
-    } else if (body.kind === 'names_ru') {
-      // Словарь локализации игры: русские названия оружия, раскрасок и кейсов → английские (для чтения скриншотов).
-      const clean = (o: unknown, list = false): Record<string, unknown> => {
-        const out: Record<string, unknown> = {};
-        if (!o || typeof o !== 'object') return out;
-        for (const [k, v] of Object.entries(o as Record<string, unknown>).slice(0, 5000)) {
-          if (k.length > 80) continue;
-          if (list ? Array.isArray(v) && v.every((x) => typeof x === 'string' && x.length <= 80) : typeof v === 'string' && v.length <= 80) out[k] = list ? (v as string[]).slice(0, 5) : v;
-        }
-        return out;
-      };
-      const b = body as unknown as { w?: unknown; p?: unknown; c?: unknown };
-      const dict = { w: clean(b.w), p: clean(b.p, true), c: clean(b.c), at: now };
-      if (Object.keys(dict.p).length > 100) await d.batch([setMetaStmt(d, 'names_ru', JSON.stringify(dict)), setMetaStmt(d, 'names_ru_at', String(now))]);
-      result.stored = Object.keys(dict.p).length;
     } else if (body.kind === 'case_ev') {
       // «Окупается ли кейс»: средняя отдача открытия (считает сборщик). Одна запись в сутки.
       const c = (x: unknown) => (typeof x === 'number' && Number.isSafeInteger(x) && x > 0 && x < 1e9 ? x : null);

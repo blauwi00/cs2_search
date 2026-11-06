@@ -1,0 +1,25 @@
+// Предметы, выставленные владельцем на Skinport (по его скриншотам от 06.11.2026, цены в PLN).
+// Названия переведены по словарю игры; где на скриншоте не видно износа или названия — подбирается по инвентарю или выбирается вручную.
+export const SKINPORT_LISTED: { text: string; names: string[]; priceMinor: number; float: string | null }[] = [
+  { text: 'Кейс «Грёзы и кошмары»', names: ['Dreams & Nightmares Case'], priceMinor: 347, float: null },
+  { text: 'MP5-SD · Умелые ручки · После полевых испытаний', names: ['MP5-SD | Kitbash (Field-Tested)'], priceMinor: 130, float: '0.347' },
+  { text: 'Galil AR · Destroyer · После полевых испытаний (с наклейками)', names: ['Galil AR | Destroyer (Field-Tested)'], priceMinor: 32, float: null },
+  { text: 'Five-SeveN · Каракули', names: ['Five-SeveN | Scrawl'], priceMinor: 31, float: null },
+  { text: 'Galil AR · Destroyer · После полевых испытаний', names: ['Galil AR | Destroyer (Field-Tested)'], priceMinor: 31, float: '0.279' },
+  { text: 'StatTrak™ Tec-9 · Повстанец · После полевых испытаний', names: ['StatTrak™ Tec-9 | Rebel (Field-Tested)'], priceMinor: 27, float: '0.273' },
+  { text: 'StatTrak™ MAC-10 · Заточение', names: ['StatTrak™ MAC-10 | Ensnared'], priceMinor: 27, float: null },
+  { text: 'Tec-9 · Raw Ceramic', names: ['Tec-9 | Raw Ceramic'], priceMinor: 13, float: null },
+  { text: 'XM1014 · XoooM · После полевых испытаний', names: ['XM1014 | XoooM (Field-Tested)'], priceMinor: 13, float: '0.222' },
+  { text: 'CZ75-Auto · Honey Paisley · Прямо с завода', names: ['CZ75-Auto | Honey Paisley (Factory New)'], priceMinor: 13, float: '0.051' },
+  { text: 'ПП-19 «Бизон» (название на скриншоте не видно)', names: [], priceMinor: 13, float: null },
+  { text: 'Револьвер R8 (название на скриншоте не видно)', names: [], priceMinor: 13, float: null },
+  { text: 'Sawed-Off · Crimson Batik · Закалённое в боях', names: ['Sawed-Off | Crimson Batik (Battle-Scarred)'], priceMinor: 13, float: '0.477' },
+  { text: 'Tec-9 · Банановые листья · После полевых испытаний', names: ['Tec-9 | Banana Leaf (Field-Tested)'], priceMinor: 13, float: '0.187' },
+  { text: 'P2000 · Marsh', names: ['P2000 | Marsh'], priceMinor: 13, float: null },
+  { text: 'FAMAS · Grey Ghost', names: ['FAMAS | Grey Ghost'], priceMinor: 13, float: null },
+  { text: 'Сувенирный P250 · Безводье · Немного поношенное', names: ['Souvenir P250 | Drought (Minimal Wear)'], priceMinor: 13, float: '0.106' },
+  { text: 'SG 553 · Safari Print · Немного поношенное', names: ['SG 553 | Safari Print (Minimal Wear)'], priceMinor: 10, float: '0.102' },
+  { text: 'SSG 08 · Sans Comic', names: ['SSG 08 | Sans Comic (Minimal Wear)'], priceMinor: 10, float: '0.127' },
+  { text: 'UMP-45 · Green Swirl', names: ['UMP-45 | Green Swirl (Minimal Wear)'], priceMinor: 10, float: '0.099' },
+  { text: 'MP9 · Buff Blue · Закалённое в боях', names: ['MP9 | Buff Blue (Battle-Scarred)'], priceMinor: 10, float: '0.520' },
+];

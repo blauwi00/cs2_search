@@ -834,7 +834,7 @@ function trades() {
     }
     view.innerHTML = h;
     if (state.tab === 'trades') setMenu([
-      ['📷 Распознать скриншоты с сайта', pickScreens],
+      state.isAdmin && !lsGet('import_skinport_done') ? ['📥 Выставленное на Skinport (21 шт. со скриншотов)', importSkinport] : null,
       st && st.goneCount ? ['📦 Пропало из инвентаря: ' + st.goneCount, goneSheet] : null,
       ['🧮 Калькулятор комиссий', function () { calcSheet(); }],
     ]);
@@ -1265,7 +1265,7 @@ function salesTab() {
     if (s.sales) h += '<div class="card">' + kv('Продаж', s.sales) + kv('В плюс / в минус', '<span class="pos">' + s.profitable + '</span> / <span class="neg">' + s.losing + '</span>') +
       kv('Средняя доходность', pct(s.avgRoiBp)) + kv('Среднее удержание', s.avgHoldDays == null ? '—' : s.avgHoldDays.toFixed(1).replace('.', ',') + ' дн') + '</div>';
     h += r.sales.length ? r.sales.map(function (x) { return saleRow(x, 'data-sale="' + x.id + '"'); }).join('') :
-      '<div class="empty"><div class="e">💸</div>Проданного пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через меню ⋯ вверху (скриншоты, пропавшие предметы).</span></div>';
+      '<div class="empty"><div class="e">💸</div>Проданного пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через меню ⋯ вверху (пропавшие из инвентаря предметы).</span></div>';
     h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести. «Ждут оплаты» в прибыль не входят.</div>';
     if (!$('#salesbox')) return;
     $('#salesbox').innerHTML = h;
@@ -1275,47 +1275,17 @@ function salesTab() {
 }
 // ---------- Скриншоты сайта → продажи ----------
 /** Уменьшаем картинку перед отправкой (ширина до 900px, JPEG): быстрее и в лимитах Cloudflare. */
-function pickScreens() {
-  var inp = $('#scanfile');
-  if (!inp) { inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.id = 'scanfile'; inp.style.display = 'none'; document.body.appendChild(inp); }
-  inp.value = '';
-  inp.onchange = function () { if (inp.files && inp.files.length) scanFiles([].slice.call(inp.files, 0, 10)); };
-  inp.click();
+function importSkinport() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('import/skinport').then(function (r) { lsSet('cur_scan', 'PLN'); lsSet('scan_site', 'skinport'); scanSheet(r.items, r, function () { lsSet('import_skinport_done', '1'); }); }).catch(function (e) { closeSheet(); toast(e.message); });
 }
-function shrinkImage(file) {
-  return new Promise(function (ok, fail) {
-    var url = URL.createObjectURL(file), im = new Image();
-    im.onload = function () {
-      var k = Math.min(1, 900 / im.width), c = document.createElement('canvas');
-      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
-      if (c.height > 2400) { c.height = 2400; }
-      c.getContext('2d').drawImage(im, 0, 0, Math.round(im.width * k), Math.round(im.height * k));
-      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.8));
-    };
-    im.onerror = function () { URL.revokeObjectURL(url); fail(new Error('Не получилось открыть картинку')); };
-    im.src = url;
-  });
-}
-function scanFiles(files) {
-  var all = [], meta = null, seen = {}, i = 0, errs = [];
-  var step = function () {
-    if (i >= files.length) return all.length ? scanSheet(all, meta) : (closeSheet(), toast(errs[0] || 'Не нашёл предметов на скриншотах'));
-    sheet('<div style="text-align:center;padding:24px 0"><div style="font-size:40px">🔎</div><h2>Читаю скриншот ' + (i + 1) + ' из ' + files.length + '…</h2><div class="sub">Нейросеть Cloudflare переписывает названия и цены. Это занимает 5–20 секунд.</div></div>');
-    shrinkImage(files[i]).then(function (img) { return api('sales/scan', { method: 'POST', body: { image: img } }); }).then(function (r) {
-      meta = r;
-      r.items.forEach(function (x) { var k = (x.name || x.text) + '|' + x.priceMinor + '|' + (x.float || ''); if (!seen[k]) { seen[k] = 1; all.push(x); } });
-      if (!r.items.length) errs.push('На скриншоте ' + (i + 1) + ' не нашёл предметов');
-    }).catch(function (e) { errs.push(e.message); }).then(function () { i++; step(); });
-  };
-  step();
-}
-function scanSheet(items, m) {
+function scanSheet(items, m, onDone) {
   var site = lsGet('scan_site') || lsGet('last_site') || 'skinport';
   var curCnt = {}; items.forEach(function (x) { if (x.currency) curCnt[x.currency] = (curCnt[x.currency] || 0) + 1; });
   var cur = Object.keys(curCnt).sort(function (a, b) { return curCnt[b] - curCnt[a]; })[0];
   if (cur && FX[cur]) lsSet('cur_scan', cur);
   var opts = function (sel) { return '<option value="">— не нашёл в инвентаре —</option>' + m.known.slice().sort().map(function (n) { return '<option' + (n === sel ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join(''); };
-  var h = '<h2>📷 Распознано: ' + items.length + '</h2><div class="sub">Проверь: нейросеть могла ошибиться. Сопоставлено с твоим инвентарём — ' + items.filter(function (x) { return x.name; }).length + ' из ' + items.length + '.</div>';
+  var h = '<h2>📥 Выставлено на сайте: ' + items.length + '</h2><div class="sub">Переписано со скриншотов. Сопоставлено с твоим инвентарём — ' + items.filter(function (x) { return x.name; }).length + ' из ' + items.length + '. Где не нашлось — выбери предмет из списка или сними галочку.</div>';
   h += '<div class="grid2"><label class="f" style="margin:0"><span>Сайт</span><select id="ssite">' + m.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
     '<label class="f" style="margin:0"><span>Валюта цен</span>' + curSelect('scur2', 'scan') + '</label></div>';
   h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend2" style="width:auto"' + (lsGet('scan_pend') === '0' ? '' : ' checked') + '><span style="margin:0">⏳ Деньги ещё не пришли (выставлено / ждёт оплаты)</span></label>';
@@ -1366,6 +1336,7 @@ function scanSheet(items, m) {
     var next = function () {
       if (k >= rows.length) {
         haptic('ok');
+        if (tot.sold && onDone) onDone();
         sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (pend ? '⏳' : '🎉') + '</div><h2>' + (pend ? 'Ждут оплаты: ' : 'Записано продаж: ') + tot.sold + '</h2>' +
           (tot.sold ? '<div class="big-num ' + cls(tot.resultKop) + '">' + uah(tot.resultKop, true) + '</div><div class="sub">' + (pend ? 'ожидаемый результат' : 'результат') + '</div>' : '') +
           (tot.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + tot.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>');

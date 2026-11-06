@@ -186,3 +186,26 @@ test('метка из ссылки (?start=ch, ?start=suggest) не теряет
   await cb(503, 'terms:ok');
   assert.equal(ref(503), undefined);
 });
+
+test('кнопка «📣 Канал»: в /start и в сводке приложения — по ссылке из памяти бота, без запроса к Telegram', async () => {
+  const { channelUrlOf } = await import('../src/core/channel.ts');
+  assert.equal(channelUrlOf({ username: 'cenolov_cs2' }), 'https://t.me/cenolov_cs2');
+  assert.equal(channelUrlOf({ invite_link: 'https://t.me/+AbCd123' }), 'https://t.me/+AbCd123');
+  assert.equal(channelUrlOf({ invite_link: 'javascript:alert(1)' }), null);
+  const d = migratedDb();
+  const env = testEnv(d);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([{ match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } }]);
+  const start = async () => {
+    await handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, message: { message_id: 1, from: { id: 601 }, chat: { id: 601, type: 'private' }, text: '/start' } }) }), env, NOW, fetcher);
+    return JSON.stringify(sent.filter((s) => s.method === 'sendMessage').at(-1)!.body.reply_markup);
+  };
+  assert.ok(!(await start()).includes('📣'), 'канал не подключён — кнопки нет');
+  d.db.exec(`INSERT INTO meta (key, value) VALUES ('channel_url', 'https://t.me/cenolov_cs2')`);
+  const kb = await start();
+  assert.ok(kb.includes('📣 Канал') && kb.includes('https://t.me/cenolov_cs2'));
+  assert.ok(!sent.some((s) => s.method === 'getChat'), 'getChat на /start не вызывается');
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 601 }) }, 'TEST_TOKEN');
+  const sum = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': init } }), env, NOW)).json() as Record<string, any>;
+  assert.equal(sum.channelUrl, 'https://t.me/cenolov_cs2');
+});

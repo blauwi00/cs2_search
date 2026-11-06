@@ -25,7 +25,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, ALL_SLOTS, type Slot } from './channel.ts';
+import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, newsRuLines, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
@@ -792,6 +792,12 @@ export const newsKb = (n: NewsItem, user: string | null): Keyboard => [[{ text: 
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
+  // Канал подключён раньше, чем бот стал запоминать ссылку, — узнаём её один раз (кнопка «📣 Канал»).
+  if (!(await getMeta(ctx.db, 'channel_url')) && !(await getMeta(ctx.db, 'channel_url_tried')) && spendExternal(ctx)) {
+    let url: string | null = null;
+    try { url = channelUrlOf(await ctx.tg.call<{ username?: string; invite_link?: string }>('getChat', { chat_id: Number(chat) })); } catch { /* попробуем при следующем подключении */ }
+    await ctx.db.batch([setMetaStmt(ctx.db, url ? 'channel_url' : 'channel_url_tried', url ?? String(ctx.now))]);
+  }
   const writes: D1PreparedStatement[] = [];
   const user = await botUsername(ctx.db, ctx.tg);
   const post = async (text: string, kb: Keyboard, image: string | null): Promise<number | false> => {

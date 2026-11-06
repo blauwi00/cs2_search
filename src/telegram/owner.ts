@@ -8,7 +8,7 @@ import { newsPost, newsRuLines, type NewsItem } from '../core/insights.ts';
 import { newsKb } from '../core/pipeline.ts';
 import { say, type H } from './context.ts';
 import { nextAllowed } from '../core/audience.ts';
-import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
+import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, channelUrlOf, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
 const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', rubric: 'Рубрика дня: «Окупается ли кейс» пн/чт, «Что отслеживают» сб, «Истории CS2» вт/ср/пт/вс (13:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
@@ -31,13 +31,13 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
     ].join('\n'));
   }
   if (a === 'off') {
-    await h.d.prepare(`DELETE FROM meta WHERE key IN ('channel_id','channel_title')`).run();
+    await h.d.prepare(`DELETE FROM meta WHERE key IN ('channel_id','channel_title','channel_url')`).run();
     return say(h, 'Автопостинг выключен.');
   }
   const target = /^@[A-Za-z0-9_]{4,64}$/.test(a) ? a : /^-?\d{5,20}$/.test(a) ? Number(a) : null;
   if (target === null) return say(h, 'Не понял. Пример: <code>/channel @skinradar_ua</code> или <code>/channel -1001234567890</code>');
   try {
-    const chat = await h.tg.call<{ id: number; title?: string; type: string; username?: string }>('getChat', { chat_id: target });
+    const chat = await h.tg.call<{ id: number; title?: string; type: string; username?: string; invite_link?: string }>('getChat', { chat_id: target });
     const me = await h.tg.call<{ id: number; username?: string }>('getMe', {});
     const m = await h.tg.call<{ status: string; can_post_messages?: boolean }>('getChatMember', { chat_id: chat.id, user_id: me.id });
     const ok = m.status === 'administrator' && (chat.type !== 'channel' || m.can_post_messages !== false);
@@ -53,7 +53,9 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
       '<blockquote>Цены — в долларах, комиссии площадок учтены. Каждое утро — честный итог вчерашних рекомендаций: сработали или нет.</blockquote>', '',
       'Личные подсказки, уведомления и твой инвентарь — в боте 👇',
     ].join('\n'), botButton(user, '🤖 Открыть бота'));
-    await h.d.batch([setMetaStmt(h.d, 'channel_id', String(chat.id)), setMetaStmt(h.d, 'channel_title', chat.title ?? chat.username ?? String(chat.id))]);
+    const url = channelUrlOf(chat);
+    await h.d.batch([setMetaStmt(h.d, 'channel_id', String(chat.id)), setMetaStmt(h.d, 'channel_title', chat.title ?? chat.username ?? String(chat.id)),
+      ...(url ? [setMetaStmt(h.d, 'channel_url', url)] : [])]);
     return say(h, `✅ Подключено: <b>${esc(chat.title ?? String(chat.id))}</b>. Приветственный пост опубликован. Дальше — по расписанию.`);
   } catch (e) {
     return say(h, `❌ Не получилось: ${esc((e as Error).message).slice(0, 200)}\nПроверь имя канала и что бот добавлен в администраторы.`);

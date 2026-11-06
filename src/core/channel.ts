@@ -25,6 +25,19 @@ export const ALL_SLOTS: Slot[] = ['ideas', 'rubric', 'trends', 'cases', 'weekly'
 
 const fmt = (k: number | null) => formatUah(k);
 
+/** Публичная ссылка на канал: t.me/имя или пригласительная ссылка (для закрытого канала, если бот — админ). */
+export function channelUrlOf(chat: { username?: string; invite_link?: string }): string | null {
+  if (chat.username && /^[A-Za-z0-9_]{4,32}$/.test(chat.username)) return `https://t.me/${chat.username}`;
+  if (chat.invite_link && /^https:\/\/t\.me\/\S+$/.test(chat.invite_link)) return chat.invite_link;
+  return null;
+}
+
+/** Кнопка «📣 Канал» — ссылка из meta (без запроса к Telegram). Нет канала или ссылки — пусто. */
+export async function channelButton(d: D1Database): Promise<Keyboard> {
+  const url = await getMeta(d, 'channel_url');
+  return url ? [[{ text: '📣 Канал', url }]] : [];
+}
+
 export function botButton(botUsername: string | null, text = '🤖 Все рекомендации и уведомления — в боте'): Keyboard {
   return botUsername ? [[{ text, url: `https://t.me/${botUsername}?start=ch` }]] : [];
 }

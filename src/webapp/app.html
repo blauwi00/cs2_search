@@ -379,6 +379,7 @@ function api(path, opt) {
       if (j.fx && j.fx.UAH) FX = j.fx;
       if (j.admin) state.isAdmin = true;
       if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
+      if (j.channelUrl !== undefined) state.channelUrl = j.channelUrl || '';
       return j;
     });
   });
@@ -1982,11 +1983,17 @@ function more() {
   };
   $('#m-talk').onclick = function () {
     haptic();
-    menu([
-      ['💡', 'Предложить пост в канал', 'Новость, находка, идея', suggestSheet],
-      ['📮', 'Сообщить об ошибке', 'Неверная цена, битая ссылка, идея', function () { reportSheet(null, 'раздел «Ещё»'); }],
-      ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно', donateSheet],
-    ]);
+    var open = function () {
+      var items = [
+        ['💡', 'Предложить пост в канал', 'Новость, находка, идея', suggestSheet],
+        ['📮', 'Сообщить об ошибке', 'Неверная цена, битая ссылка, идея', function () { reportSheet(null, 'раздел «Ещё»'); }],
+        ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно', donateSheet],
+      ];
+      // Ссылка на канал — из сводки (сервер берёт её из своей памяти, без запроса к Telegram).
+      if (state.channelUrl) items.unshift(['📣', 'Канал', 'Рекомендации дня, кейсы, итоги недели', function () { openLink(state.channelUrl); }]);
+      menu(items);
+    };
+    if (state.channelUrl === undefined) api('summary').then(open, open); else open();
   };
 }
 function settings() {

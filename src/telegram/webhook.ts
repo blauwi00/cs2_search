@@ -1,4 +1,4 @@
-import { getMeta } from '../core/channel.ts';
+import { getMeta, channelButton } from '../core/channel.ts';
 import { suggestStart, suggestReceive, suggestDecide } from './suggest.ts';
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
@@ -135,6 +135,7 @@ async function onText(text: string, h: H): Promise<void> {
       const cur = await hcur(h);
       return say(h, `<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь.\n\n💱 Валюта: <b>${cur.code}</b> — если не твоя, смени: /currency\n🛡 Бот не спрашивает пароль Steam и ничего не покупает сам. Что он знает и что нужно для работы: /privacy\n\nЖми кнопку 👇`, [
         [{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }],
+        ...(await channelButton(h.d)),
         [{ text: '☰ Текстовое меню', callback_data: 'm' }],
       ]);
     }

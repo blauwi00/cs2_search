@@ -296,7 +296,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           enabled: st.notify_enabled === '1', maxPerHour: db.num(st.max_per_hour) || 6, quietStart: db.num(st.quiet_start), quietEnd: db.num(st.quiet_end),
           daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
         },
-        ok: true, now, watched, actions, rallyOk: isAdmin || await rallyProven(d),
+        ok: true, now, watched, actions, rallyOk: isAdmin || await rallyProven(d), channelUrl: await getMeta(d, 'channel_url'),
         rally: st.rally_on === '1' ? await (async () => {
           const rs = await rallySettingsFor(d, tid);
           const tr = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = 'real'").bind(tid).all<RallyTrade>()).results;

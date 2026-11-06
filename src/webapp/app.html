@@ -378,6 +378,7 @@ function api(path, opt) {
       if (j.cur && j.cur.per > 0) CUR = j.cur;
       if (j.fx && j.fx.UAH) FX = j.fx;
       if (j.admin) state.isAdmin = true;
+      if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
       return j;
     });
   });
@@ -654,6 +655,7 @@ function recSheet(r) {
 }
 // Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
 function recSwitch(on) {
+  if (!state.isAdmin && !state.rallyOk) return ''; // «Разгон» скрыт, пока бот не подтвердил схему
   return '<div class="seg" id="recsw"><button data-v="recs" class="' + (on === 'recs' ? 'on' : '') + '">💡 Идеи</button><button data-v="rally" class="' + (on === 'rally' ? 'on' : '') + '">🚀 Разгон баланса</button></div>';
 }
 function bindRecSwitch() {
@@ -1695,7 +1697,7 @@ function rally() {
     Array.prototype.forEach.call(document.querySelectorAll('#rtab button'), function (b) { b.onclick = function () { haptic(); state.rallyTab = b.getAttribute('data-t'); rally(); }; });
     bindRecSwitch();
     bindRally(r);
-  }).catch(fail);
+  }).catch(function (e) { if (/Разгон баланса/.test(e.message)) { state.rallyOk = false; go('deals'); } else fail(e); });
 }
 function capHtml(c, mode, s) {
   return '<div class="rcap">' + stat(mode === 'sim' ? 'Виртуальный баланс' : 'Баланс Steam', uahShort(c.balanceKop), 'свободно ' + uahShort(c.availableKop) + ' сверх резерва ' + uahShort(s.reserveKop)) +

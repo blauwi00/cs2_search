@@ -42,7 +42,7 @@ import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
 import { findCandidates, capital, buyBlockers, checkChain, RALLY_KEYS, RALLY_DEFAULTS, UNLOCK_SEC, type RallyTrade, type RallySettings } from '../core/rally.ts';
-import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, BOT_MIN_CLOSED } from '../core/rallyjob.ts';
+import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, rallyProven, BOT_MIN_CLOSED } from '../core/rallyjob.ts';
 import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
@@ -258,6 +258,8 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     try { body = t ? JSON.parse(t) : {}; } catch { return bad('bad_json'); }
   }
   try {
+    // «Разгон баланса» — только владельцу, пока симуляция бота не подтвердила схему.
+    if (seg[0] === 'rally' && !isAdmin && !(await rallyProven(d))) return bad('«Разгон баланса» пока проверяется ботом — откроется, когда схема подтвердится');
     // ---------- Сводка ----------
     if (path === 'summary' && method === 'GET') {
       const [sources, watched, deals, lots, jobs] = await Promise.all([
@@ -294,7 +296,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           enabled: st.notify_enabled === '1', maxPerHour: db.num(st.max_per_hour) || 6, quietStart: db.num(st.quiet_start), quietEnd: db.num(st.quiet_end),
           daily: st.daily_report === '1', dailyHour: db.num(st.daily_hour), watched,
         },
-        ok: true, now, watched, actions,
+        ok: true, now, watched, actions, rallyOk: isAdmin || await rallyProven(d),
         rally: st.rally_on === '1' ? await (async () => {
           const rs = await rallySettingsFor(d, tid);
           const tr = (await d.prepare("SELECT * FROM rally_trades WHERE telegram_id = ? AND mode = 'real'").bind(tid).all<RallyTrade>()).results;

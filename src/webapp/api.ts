@@ -699,12 +699,16 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const sales = T.salesWithCost(trades, raw);
       const st = realizedStats(trades, sales);
       const byId = new Map(trades.map((t) => [t.id, t]));
+      const last = sales.slice(-100).reverse();
+      const imgs = await imagesFor(d, [...new Set(last.map((s) => byId.get(s.trade_id)?.market_hash_name ?? ''))].filter(Boolean));
       return json({
         ok: true, stats: st,
-        sales: sales.slice(-50).reverse().map((s) => ({
-          name: byId.get(s.trade_id)?.market_hash_name ?? '', qty: s.quantity, receivedKop: s.received_kop, costKop: s.costKop,
-          resultKop: s.received_kop - s.costKop, wallet: s.wallet, date: s.sell_date,
-        })),
+        sales: last.map((s) => {
+          const name = byId.get(s.trade_id)?.market_hash_name ?? '';
+          const pl = (s as unknown as { platform?: string }).platform ?? '';
+          return { name, img: imgs.get(name) ?? null, qty: s.quantity, receivedKop: s.received_kop, costKop: s.costKop,
+            resultKop: s.received_kop - s.costKop, wallet: s.wallet, date: s.sell_date, platform: PLATFORM_RU[pl] ?? pl };
+        }),
         open: trades.filter((t) => openQty(t) > 0).length,
       });
     }

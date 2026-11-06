@@ -778,9 +778,12 @@ function inventory() {
     var cost = 0, val = 0, unk = 0;
     r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
     var stN = st && st.items ? st.items.length : 0;
-    var h = '<div class="seg" id="invseg"><button data-v="steam" class="' + (state.invTab === 'steam' ? 'on' : '') + '">🎮 Steam' + (stN ? ' · ' + stN : '') + '</button><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Мои покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button></div>';
+    var h = '<div class="seg" id="invseg"><button data-v="steam" class="' + (state.invTab === 'steam' ? 'on' : '') + '">🎮 Steam' + (stN ? ' · ' + stN : '') + '</button><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button><button data-v="sales" class="' + (state.invTab === 'sales' ? 'on' : '') + '">💸 Продажи</button></div>';
     if (state.invTab === 'steam') {
       h += steamBlock(st);
+    } else if (state.invTab === 'sales') {
+      if (st && st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
+      h += '<div id="salesbox"><div class="skel"></div><div class="skel"></div></div>';
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
       if (r.lots.length) h += '<div class="grid2">' + stat('Если продать в Steam', uahShort(val), 'после комиссии') + stat('Потенциальная', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без актуальной цены: ' + unk : 'если продать сейчас · не заработано') + '</div>';
@@ -791,12 +794,11 @@ function inventory() {
           '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
       }).join('') : '<div class="empty"><div class="e">🧾</div>Пока пусто.</div>';
     }
-    if (state.invTab === 'mine') h += '<button class="btn sec2" id="hist">🧾 История продаж</button>';
     view.innerHTML = h;
+    if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
     Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); inventory(); }; });
     if (state.invTab === 'steam') bindSteamBlock(st);
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
-    if ($('#hist')) $('#hist').onclick = history;
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
       el.onclick = function () { haptic(); var id = +el.getAttribute('data-lot'); lotSheet(r.lots.filter(function (x) { return x.id === id; })[0]); };
     });
@@ -1136,7 +1138,7 @@ function goneSheet() {
           (res.sold ? '<div class="big-num ' + cls(res.resultKop) + '">' + uah(res.resultKop, true) + '</div><div class="sub">результат по этим продажам</div>' : '') +
           (res.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + res.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>';
         sheet(h2);
-        $('#okb').onclick = function () { closeSheet(); inventory(); };
+        $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; inventory(); };
       }).catch(function (e) { $('#gsave').disabled = false; toast(e.message); });
     };
   }).catch(function (e) { closeSheet(); toast(e.message); });
@@ -1191,9 +1193,25 @@ function sellForm(l) {
         haptic('ok');
         sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (r.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>Продажа записана</h2><div class="sub">' + (r.wallet === 'steam_wallet' ? 'Steam Wallet — вывести нельзя' : 'Реальные деньги (External Cash)') + '</div>' +
           '<div class="big-num ' + cls(r.resultKop) + '">' + uah(r.resultKop, true) + '</div><div class="card" style="text-align:left;margin-top:12px">' + kv('Получено', uah(r.receivedKop)) + kv('Себестоимость', uah(r.costKop)) + '</div><button class="btn" id="okb">Готово</button></div>');
-        $('#okb').onclick = function () { go('inv'); };
+        $('#okb').onclick = function () { state.invTab = 'sales'; go('inv'); };
       }).catch(function (e) { toast(e.message); });
   };
+}
+// Вкладка «Продажи»: итог (Steam и реальные деньги отдельно) и список продаж.
+function salesTab() {
+  api('trades').then(function (r) {
+    var s = r.stats, h = '';
+    h += '<div class="grid2">' + stat('В кошелёк Steam', '<span class="' + cls(s.realizedSteamKop) + '">' + uah(s.realizedSteamKop, true) + '</span>', 'получено ' + uahShort(s.receivedSteamKop)) +
+      stat('Реальные деньги', '<span class="' + cls(s.realizedCashKop) + '">' + uah(s.realizedCashKop, true) + '</span>', 'получено ' + uahShort(s.receivedCashKop)) + '</div>';
+    h += '<div class="card">' + kv('Продаж', s.sales) + kv('В плюс / в минус', '<span class="pos">' + s.profitable + '</span> / <span class="neg">' + s.losing + '</span>') +
+      kv('Средняя доходность', pct(s.avgRoiBp)) + kv('Среднее удержание', s.avgHoldDays == null ? '—' : s.avgHoldDays.toFixed(1).replace('.', ',') + ' дн') + '</div>';
+    h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести.</div>';
+    h += r.sales.length ? r.sales.map(function (x) {
+      return '<div class="row">' + pic(x.img, ICON[guessCat(x.name)] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</div><div class="d">' + esc(x.date) + ' · ' + esc(x.platform || (x.wallet === 'steam_wallet' ? 'Steam' : '')) +
+        ' · получено ' + uahShort(x.receivedKop) + (x.costKop ? ', куплено за ' + uahShort(x.costKop) : ', выпал') + '</div></div><div class="r big ' + cls(x.resultKop) + '">' + uah(x.resultKop, true) + '</div></div>';
+    }).join('') : '<div class="empty"><div class="e">💸</div>Продаж пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через «📦 Пропало из инвентаря».</span></div>';
+    if ($('#salesbox')) $('#salesbox').innerHTML = h;
+  }).catch(function (e) { if ($('#salesbox')) $('#salesbox').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
 function history() {
   sheet('<div class="skel"></div><div class="skel"></div>');

@@ -344,7 +344,14 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const last = Math.max(u?.inv_requested_at ?? 0, u?.inv_synced_at ?? 0);
       if (now - last < 15 * 60) return bad(`Обновлять можно раз в 15 минут — попробуй через ${Math.ceil((15 * 60 - (now - last)) / 60)} мин.`);
       await d.prepare('UPDATE users SET inv_requested_at = ? WHERE telegram_id = ?').bind(now, tid).run();
-      return json({ ok: true });
+      // Steam ограничил запросы сервера — честно говорим, когда примерно обновится.
+      const pause = Number(await getMeta(d, 'steam_pause_until')) || 0;
+      const agentRaw = await getMeta(d, 'agent_at');
+      const agent = (() => { try { return Number(JSON.parse(agentRaw ?? '{}').at) || 0; } catch { return 0; } })();
+      const msg = pause > now && now - agent > 30 * 60
+        ? `Steam сейчас ограничил запросы бота — инвентарь обновится примерно через ${Math.max(10, Math.ceil((pause - now) / 60) + 10)} мин.`
+        : 'Обновлю в течение ~10 минут';
+      return json({ ok: true, msg });
     }
     if (path === 'steam/unlink' && method === 'POST') {
       await d.batch([

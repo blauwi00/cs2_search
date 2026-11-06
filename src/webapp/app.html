@@ -836,7 +836,7 @@ function bindSteamBlock(st) {
     return;
   }
   if ($('#st-share')) $('#st-share').onclick = function () { haptic(); shareInventory(st); };
-  $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function () { haptic('ok'); toast('Обновлю в течение ~10 минут'); again(); }).catch(function (e) { toast(e.message); }); };
+  $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function (r) { haptic('ok'); toast(r.msg || 'Обновлю в течение ~10 минут'); again(); }).catch(function (e) { toast(e.message); }); };
   $('#st-off').onclick = function () {
     var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Отключить Steam от бота?', function (ok) { if (ok) run(); }); else run();
@@ -851,8 +851,10 @@ function bindSteamBlock(st) {
       h += pricesBoxHtml();
       h += assetDetails(x);
       h += '<div class="btns"><button class="btn sec2" id="si-chart">📈 График и цены</button><button class="btn sec2" id="si-steam">Steam Market</button></div>';
+      h += '<button class="btn" id="si-sold">💸 Я продал</button>';
       h += '<button class="btn sec2" id="si-buy">✍️ Записать цену покупки</button>';
       sheet(h);
+      $('#si-sold').onclick = function () { haptic(); soldFromSteam(x); };
       $('#si-chart').onclick = function () { itemSheet(id); };
       $('#si-steam').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); };
       $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
@@ -1054,6 +1056,30 @@ function lotSheet(l) {
     var del = function () { api('inventory/' + l.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); go('inv'); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
+}
+// «Я продал» прямо из инвентаря Steam: есть запись о покупке — продаём из неё; нет — сначала спросим, за сколько покупал.
+function soldFromSteam(x) {
+  api('inventory').then(function (r) {
+    var lot = r.lots.filter(function (l) { return l.name === x.name && l.openQty > 0; })[0];
+    if (lot) return sellForm(lot);
+    var h = '<h2>Продажа</h2><div class="sub">' + esc(x.name) + '</div>';
+    h += '<div class="note">Чтобы посчитать прибыль, нужно знать, за сколько ты его брал. Выпал из кейса или в дропе — поставь 0 и выбери «Получено бесплатно».</div>';
+    h += '<div class="grid2"><label class="f" style="margin:0"><span>Сколько продал</span><input id="fsq" inputmode="numeric" value="1"></label>' +
+      '<label class="f" style="margin:0"><span>Покупал за 1 шт., ' + esc(CUR.sign) + '</span><input id="fsb" inputmode="decimal" placeholder="0 — если выпал"></label></div>';
+    h += '<label class="f"><span>Где покупал</span><select id="fspl">' + platformOptions('steam') + '</select></label>';
+    h += '<label class="f"><span>Когда покупал</span><input id="fsd" type="date" value="' + today() + '" max="' + today() + '"></label>';
+    h += '<button class="btn" id="fsnext">Дальше — цена продажи</button>';
+    sheet(h);
+    $('#fsnext').onclick = function () {
+      var q = +$('#fsq').value, b = toKop($('#fsb').value);
+      if (!(q >= 1) || q > x.qty) return toast('Количество: от 1 до ' + x.qty);
+      if (b == null || isNaN(b) || b < 0) return toast('Введи цену покупки (0 — если выпал)');
+      $('#fsnext').disabled = true;
+      api('inventory', { method: 'POST', body: { name: x.name, qty: q, priceKop: b, feeKop: 0, platform: $('#fspl').value, date: $('#fsd').value } })
+        .then(function (res) { sellForm({ id: res.id, name: x.name, openQty: q }); })
+        .catch(function (e) { $('#fsnext').disabled = false; toast(e.message); });
+    };
+  }).catch(function (e) { toast(e.message); });
 }
 function sellForm(l) {
   var h = '<h2>Продажа</h2><div class="sub">' + esc(l.name) + ' · осталось ' + l.openQty + ' шт.</div>';

@@ -24,6 +24,7 @@ button{font:inherit;color:inherit}
 .top{position:sticky;top:0;z-index:5;background:var(--bg2);padding:calc(12px + var(--safe-top)) 16px 8px;display:flex;align-items:center;gap:10px}
 :root{--safe-top:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
 .top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px;flex:1}
+.menubtn{background:var(--card);border:0;border-radius:12px;width:38px;height:34px;font-size:22px;line-height:1;color:var(--text);cursor:pointer}
 .top{flex-wrap:wrap}
 .ticker{flex:0 0 calc(100% + 32px);margin:2px -16px 0;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--hint);cursor:pointer;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
@@ -163,7 +164,7 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 </style>
 </head>
 <body>
-<div class="top"><h1 id="title">CS2 Market</h1><div class="ticker" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
+<div class="top"><h1 id="title">CS2 Market</h1><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
@@ -308,7 +309,19 @@ var TITLES = { rally: 'Разгон баланса', home: 'CS2 Market', deals: 
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
+/** Меню «⋯» в шапке раздела: второстепенные действия, чтобы не загромождать экран. items: [[иконка+текст, функция], ...] */
+function setMenu(items) {
+  var b = $('#menu'); if (!b) return;
+  items = (items || []).filter(Boolean);
+  b.style.display = items.length ? '' : 'none';
+  b.onclick = function () {
+    haptic();
+    sheet('<div class="list-s">' + items.map(function (x, i) { return '<div class="row" data-mi="' + i + '"><div class="m"><div class="n">' + x[0] + '</div></div><div class="mut">›</div></div>'; }).join('') + '</div>');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mi]'), function (el) { el.onclick = function () { haptic(); closeSheet(); items[+el.getAttribute('data-mi')][1](); }; });
+  };
+}
 function go(t) {
+  setMenu(null);
   state.tab = t; closeSheet();
   var bt = t === 'rally' ? 'deals' : t; // «Разгон» — часть «Рекомендаций»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
@@ -351,7 +364,7 @@ function renderTicker(s) {
 function renderDonors(s) {
   var el = $('#ticker2'), ds = s.donors || [];
   var items = ds.length ? '<span>💛 Топ поддержки:</span>' + ds.map(function (x, i) { return '<span>' + (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + ' ' + esc(x.name) + ' — <b>' + x.stars + ' ⭐</b></span>'; }).join('')
-    : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Поддержать проект»</span>';
+    : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Связь с автором» → «Поддержать»</span>';
   el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
   var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(20, Math.round(w / 35)) + 's');
 }
@@ -829,9 +842,12 @@ function trades() {
           '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
       }).join('') : '<div class="empty"><div class="e">🧾</div>Пока пусто.</div>';
     }
-    h += '<div class="row" id="t-calc" style="margin-top:14px"><div class="ic">🧮</div><div class="m"><div class="n">Калькулятор комиссий</div><div class="d">Сколько придёт после продажи на каждой площадке</div></div><div class="mut">›</div></div>';
     view.innerHTML = h;
-    $('#t-calc').onclick = function () { haptic(); calcSheet(); };
+    if (state.tab === 'trades') setMenu([
+      ['📷 Распознать скриншоты с сайта', pickScreens],
+      st && st.goneCount ? ['📦 Пропало из инвентаря: ' + st.goneCount, goneSheet] : null,
+      ['🧮 Калькулятор комиссий', function () { calcSheet(); }],
+    ]);
     if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
     Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); trades(); }; });
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
@@ -861,8 +877,6 @@ function steamBlock(st) {
   if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Сделки → Продажи» ›</div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
-    h += '<button class="btn sec2" id="st-cur" style="margin:0 0 8px">💱 Валюта площадок' + (lsGet('cur_steam') ? ' · Steam в ' + esc(lsGet('cur_steam')) : '') + '</button>';
-    if (st.totalKop > 0) h += '<button class="btn" id="st-share" style="margin:0 0 12px">📸 Поделиться: сколько стоит мой инвентарь</button>';
     h += st.items.slice(0, 60).map(function (x) {
       return '<div class="row" data-sinv="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">×' + x.qty + (x.targetKop ? ' · 🎯 ' + uahShort(x.targetKop) : '') + (x.marketable ? '' : ' · нельзя продать на ТП') + (x.flags && x.flags.length ? ' · <span style="color:var(--amber)">' + esc(x.flags.join(' · ')) + '</span>' : '') + '</div></div>' +
         '<div class="r"><div class="big">' + (x.priceKop ? (x.live ? '' : '≈ ') + siteMoney(x.priceKop, 'steam', true) : '<span class="mut" style="font-size:12px;font-weight:500">нет актуальных<br>данных</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div></div>';
@@ -870,11 +884,14 @@ function steamBlock(st) {
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
     h += '<div class="note">«≈» — средняя цена продаж в Steam за последние дни (история, не текущее объявление).' + (st.noDataCount ? ' Без актуальных данных: ' + st.noDataCount + ' — в сумму не входят.' : '') + ' Нажми на предмет — цены подробно и за сколько выставить.</div>';
   } else if (!st.pending && st.status === 'ok') h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
-  h += '<button class="btn sec2" id="st-off" style="margin-top:4px">Отключить Steam</button>';
   return h;
 }
 function bindSteamBlock(st) {
-  if ($('#st-cur')) $('#st-cur').onclick = function () { haptic(); siteCurSheet(function () { if (state.tab === 'inv') inventory(); }); };
+  if (state.tab === 'inv') setMenu(st && st.linked ? [
+    ['💱 Валюта площадок', function () { siteCurSheet(function () { if (state.tab === 'inv') inventory(); }); }],
+    st.totalKop > 0 ? ['📸 Поделиться: сколько стоит инвентарь', function () { shareInventory(st); }] : null,
+    ['🔌 Отключить Steam', function () { offSteam(); }],
+  ] : null);
   if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); state.invTab = 'sales'; go('trades'); };
   if (!st) return;
   if ($('#st-pv')) $('#st-pv').onclick = privacy;
@@ -892,9 +909,9 @@ function bindSteamBlock(st) {
     };
     return;
   }
-  if ($('#st-share')) $('#st-share').onclick = function () { haptic(); shareInventory(st); };
+
   $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function (r) { haptic('ok'); toast(r.msg || 'Обновлю в течение ~10 минут'); again(); if (r.gone) setTimeout(goneSheet, 600); }).catch(function (e) { toast(e.message); }); };
-  $('#st-off').onclick = function () {
+  var offSteam = function () {
     var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Отключить Steam от бота?', function (ok) { if (ok) run(); }); else run();
   };
@@ -1247,7 +1264,6 @@ function saleRow(x, attr) {
 function salesTab() {
   api('trades').then(function (r) {
     var s = r.stats, h = '';
-    h += '<button class="btn sec2" id="scanbtn" style="margin:0 0 12px">📷 Распознать скриншоты с сайта</button><input type="file" id="scanfile" accept="image/*" multiple style="display:none">';
     if (r.pending.length) {
       var exp = r.pending.reduce(function (a, x) { return a + x.receivedKop; }, 0);
       h += '<div class="sec">⏳ Ждут оплаты · ' + r.pending.length + '</div><div class="mut" style="font-size:13px;margin:0 2px 8px">Выставлено или отправлено на сайт, деньги ещё не пришли — ожидается ≈ ' + uahShort(exp) + '. Нажми, когда придут.</div>';
@@ -1259,18 +1275,23 @@ function salesTab() {
     if (s.sales) h += '<div class="card">' + kv('Продаж', s.sales) + kv('В плюс / в минус', '<span class="pos">' + s.profitable + '</span> / <span class="neg">' + s.losing + '</span>') +
       kv('Средняя доходность', pct(s.avgRoiBp)) + kv('Среднее удержание', s.avgHoldDays == null ? '—' : s.avgHoldDays.toFixed(1).replace('.', ',') + ' дн') + '</div>';
     h += r.sales.length ? r.sales.map(function (x) { return saleRow(x, 'data-sale="' + x.id + '"'); }).join('') :
-      '<div class="empty"><div class="e">💸</div>Проданного пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через «📦 Пропало из инвентаря».</span></div>';
+      '<div class="empty"><div class="e">💸</div>Проданного пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через меню ⋯ вверху (скриншоты, пропавшие предметы).</span></div>';
     h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести. «Ждут оплаты» в прибыль не входят.</div>';
     if (!$('#salesbox')) return;
     $('#salesbox').innerHTML = h;
-    $('#scanbtn').onclick = function () { haptic(); $('#scanfile').value = ''; $('#scanfile').click(); };
-    $('#scanfile').onchange = function () { if (this.files && this.files.length) scanFiles([].slice.call(this.files, 0, 10)); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-pend]'), function (el) { el.onclick = function () { haptic(); pendingSheet(r.pending.filter(function (x) { return x.id === +el.getAttribute('data-pend'); })[0]); }; });
     Array.prototype.forEach.call(document.querySelectorAll('[data-sale]'), function (el) { el.onclick = function () { haptic(); soldSheet(r.sales.filter(function (x) { return x.id === +el.getAttribute('data-sale'); })[0]); }; });
   }).catch(function (e) { if ($('#salesbox')) $('#salesbox').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
 // ---------- Скриншоты сайта → продажи ----------
 /** Уменьшаем картинку перед отправкой (ширина до 900px, JPEG): быстрее и в лимитах Cloudflare. */
+function pickScreens() {
+  var inp = $('#scanfile');
+  if (!inp) { inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.id = 'scanfile'; inp.style.display = 'none'; document.body.appendChild(inp); }
+  inp.value = '';
+  inp.onchange = function () { if (inp.files && inp.files.length) scanFiles([].slice.call(inp.files, 0, 10)); };
+  inp.click();
+}
 function shrinkImage(file) {
   return new Promise(function (ok, fail) {
     var url = URL.createObjectURL(file), im = new Image();
@@ -1841,20 +1862,34 @@ function donateSheet() {
   });
 }
 function more() {
-  view.innerHTML = (state.isAdmin ? '<div class="row" id="m-own"><div class="ic">🛠</div><div class="m"><div class="n">Панель владельца</div><div class="d">Пользователи, Steam и домашний агент, проверка разгона, донаты, ошибки</div></div><div class="mut">›</div></div>' : '') +
-    '<div class="row" id="m-set"><div class="ic">⚙️</div><div class="m"><div class="n">Настройки</div><div class="d">Пороги прибыли, бюджет, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
-    (state.isAdmin ? '<div class="row" id="m-st"><div class="ic">🩺</div><div class="m"><div class="n">Состояние системы</div><div class="d">Источники, сборщик, курсы, ошибки</div></div><div class="mut">›</div></div>' : '') +
-    '<div class="row" id="m-f"><div class="ic">⏱</div><div class="m"><div class="n">Как часто обновляется</div><div class="d">Цены, рекомендации, уведомления, тихие часы</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-pv"><div class="ic">🛡</div><div class="m"><div class="n">Что знает бот</div><div class="d">Что нужно для работы, какие данные видит, чего не получает никогда</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-tm"><div class="ic">📄</div><div class="m"><div class="n">Условия и риски</div><div class="d">Бот — сборник информации, сделки на свой риск</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-don"><div class="ic">💛</div><div class="m"><div class="n">Поддержать проект</div><div class="d">Звёздами Telegram — добровольно, бот остаётся бесплатным</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-sug"><div class="ic">💡</div><div class="m"><div class="n">Предложить пост в канал</div><div class="d">Новость, находка на рынке, идея — владелец решит, публиковать ли</div></div><div class="mut">›</div></div>' +
-    '<div class="row" id="m-rep"><div class="ic">📮</div><div class="m"><div class="n">Сообщить об ошибке</div><div class="d">Неверная цена, битая ссылка, идея — уйдёт владельцу</div></div><div class="mut">›</div></div>' +
-    '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте (меняется в настройках), пересчёт по курсу НБУ.</div>';
-  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); ownerPanel(); };
-  $('#m-don').onclick = donateSheet; $('#m-rep').onclick = function () { reportSheet(null, 'раздел «Ещё»'); }; $('#m-sug').onclick = suggestSheet;
-  $('#m-set').onclick = settings; if ($('#m-st')) $('#m-st').onclick = status; $('#m-pv').onclick = privacy; $('#m-tm').onclick = termsSheet;
-  $('#m-f').onclick = function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); };
+  var row = function (id, ic, n, d) { return '<div class="row" id="' + id + '"><div class="ic">' + ic + '</div><div class="m"><div class="n">' + n + '</div><div class="d">' + d + '</div></div><div class="mut">›</div></div>'; };
+  view.innerHTML = (state.isAdmin ? row('m-own', '🛠', 'Для владельца', 'Панель, состояние системы') : '') +
+    row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
+    row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
+    row('m-talk', '✉️', 'Связь с автором', 'Предложить пост, сообщить об ошибке, поддержать') +
+    '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте, пересчёт по курсу НБУ.</div>';
+  var menu = function (items) {
+    sheet('<div class="list-s">' + items.map(function (x, i) { return '<div class="row" data-mm="' + i + '"><div class="ic">' + x[0] + '</div><div class="m"><div class="n">' + x[1] + '</div><div class="d">' + x[2] + '</div></div><div class="mut">›</div></div>'; }).join('') + '</div>');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-mm]'), function (el) { el.onclick = function () { haptic(); items[+el.getAttribute('data-mm')][3](); }; });
+  };
+  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
+  $('#m-set').onclick = function () { haptic(); settings(); };
+  $('#m-help').onclick = function () {
+    haptic();
+    menu([
+      ['⏱', 'Как часто обновляется', 'Цены, рекомендации, уведомления', function () { api('summary').then(function (s) { howOften(s.notify); }).catch(function (e) { toast(e.message); }); }],
+      ['🛡', 'Что знает бот', 'Какие данные видит, чего не получает никогда', privacy],
+      ['📄', 'Условия и риски', 'Бот — сборник информации, сделки на свой риск', termsSheet],
+    ]);
+  };
+  $('#m-talk').onclick = function () {
+    haptic();
+    menu([
+      ['💡', 'Предложить пост в канал', 'Новость, находка, идея', suggestSheet],
+      ['📮', 'Сообщить об ошибке', 'Неверная цена, битая ссылка, идея', function () { reportSheet(null, 'раздел «Ещё»'); }],
+      ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно', donateSheet],
+    ]);
+  };
 }
 function settings() {
   sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');

@@ -33,6 +33,7 @@ import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
+import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
 import { recStats } from '../core/insights.ts';
 import { steamEvidence, marketValue, AVG_MAX_AGE_SEC, LIVE_MAX_AGE_SEC } from '../core/evidence.ts';
 import { steamNetKop } from '../core/fees.ts';
@@ -344,6 +345,17 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const last = Math.max(u?.inv_requested_at ?? 0, u?.inv_synced_at ?? 0);
       if (now - last < 15 * 60) return bad(`Обновлять можно раз в 15 минут — попробуй через ${Math.ceil((15 * 60 - (now - last)) / 60)} мин.`);
       await d.prepare('UPDATE users SET inv_requested_at = ? WHERE telegram_id = ?').bind(now, tid).run();
+      // Сначала — сами, из Worker (сборщику на GitHub Steam часто отвечает 429). Не вышло — очередь сборщика.
+      const su = await d.prepare('SELECT steam_id, steam_vanity FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null }>();
+      if (su?.steam_id || su?.steam_vanity) {
+        let res: InvFetch;
+        try { res = await fetchInventory(fetch, su.steam_id, su.steam_vanity); } catch { res = { status: 'error', steamId: null }; }
+        await db.counterStmt(d, `inv_direct_${res.status}`, 1, now).run().catch(() => undefined);
+        if (res.status !== 'rate_limited' && res.status !== 'error') {
+          await storeInventory(d, tid, res, now);
+          return json({ ok: true, updated: true, msg: res.status === 'ok' ? `✅ Инвентарь обновлён: ${res.items.length} предм.` : res.status === 'private' ? '🔒 Инвентарь закрыт в настройках приватности Steam' : 'Профиль Steam не найден' });
+        }
+      }
       // Steam ограничил запросы сервера — честно говорим, когда примерно обновится.
       const pause = Number(await getMeta(d, 'steam_pause_until')) || 0;
       const agentRaw = await getMeta(d, 'agent_at');

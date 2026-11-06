@@ -773,6 +773,9 @@ export async function jobKickCollector(ctx: Ctx): Promise<void> {
     await db.log(ctx.db, 'warn', 'collector', 'dispatch', `GitHub ответил ${res.status}: ${t}`, ctx.now);
     if (res.status === 401 || res.status === 403 || res.status === 404) {
       await db.sourceFail(ctx.db, 'collector', 'down', `не получилось запустить сборщик: GitHub ${res.status} (проверь токен GH_DISPATCH_TOKEN)`, ctx.now, 1);
+    } else if (res.status === 422) {
+      // Обычно — workflow отключён (GitHub выключает расписание после 60 дней без коммитов, или вручную).
+      await db.sourceFail(ctx.db, 'collector', 'down', 'GitHub не запускает сборщик (422): включи его — GitHub → Actions → collect-prices → Enable workflow', ctx.now, 1);
     }
   }
 }

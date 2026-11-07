@@ -509,6 +509,24 @@ function rateHtml(x) {
   if (x.rating == null) return '<div class="sr off">нет оценки</div>';
   return '<div class="sr ' + (x.rating >= 4.5 ? 'hi' : x.rating >= 3.5 ? 'mid' : 'lo') + '">' + (x.rating < 3.5 ? '⚠️ ' : '') + '★ ' + x.rating.toFixed(1) + '</div>';
 }
+// Баланс Steam: вписывается вручную (бот не входит в аккаунт), дальше бот сам учитывает продажи и покупки в Steam.
+function balanceCard(s) {
+  var b = s.steamBalance, inv = s.inventory || {};
+  if (!b) return '<div class="row" id="bal" style="border:1px dashed var(--accent)"><div class="ic">💳</div><div class="m"><div class="n">Баланс Steam</div><div class="d">Впиши — бот покажет итог и будет подбирать идеи под эти деньги</div></div><div class="mut">›</div></div>';
+  var v = inv.valueKop || 0;
+  return '<div class="grid2" id="bal" style="cursor:pointer">' + stat('Баланс Steam', uahShort(b.kop), 'вписан ' + ago(b.at) + ' · ✏️ изменить') +
+    stat('Всего', uahShort(b.kop + v), 'баланс + инвентарь' + (inv.lots ? ' (оценка ' + uahShort(v) + ')' : '')) + '</div>';
+}
+function balanceSheet(cur, done) {
+  sheet('<h2>💳 Баланс Steam</h2><div class="sub">Сколько сейчас на кошельке Steam. Бот не входит в твой аккаунт, поэтому баланс вписываешь ты — дальше продажи и покупки в Steam, которые ты отмечаешь в боте, он учтёт сам.</div>' +
+    '<label class="f"><span>Баланс, ' + CUR.sign + '</span><input id="sbv" inputmode="decimal" value="' + (cur ? units(cur.kop) : '') + '" placeholder="например 250,40"></label>' +
+    '<button class="btn" id="sbok">Сохранить</button>' + (cur ? '<button class="btn sec2" id="sbdel">Убрать баланс</button>' : ''));
+  var save = function (kop) {
+    api('steam-balance', { method: 'POST', body: { kop: kop } }).then(function () { haptic('ok'); closeSheet(); if (done) done(); }).catch(function (e) { toast(e.message); });
+  };
+  $('#sbok').onclick = function () { var k = toKop($('#sbv').value); if (k == null || isNaN(k) || k < 0) return toast('Впиши сумму, например 250,40'); save(k); };
+  if ($('#sbdel')) $('#sbdel').onclick = function () { save(null); };
+}
 function setupCard(su) {
   if (!su) return '';
   var steamOk = su.steam === 'ok';
@@ -552,6 +570,7 @@ function home() {
   api('summary').then(function (s) {
     renderTicker(s);
     var h = heroCard(s);
+    h += balanceCard(s);
     h += setupCard(s.setup);
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
@@ -564,6 +583,7 @@ function home() {
     view.innerHTML = h;
     bindSetup();
     bindHero(s);
+    if ($('#bal')) $('#bal').onclick = function () { haptic(); balanceSheet(s.steamBalance, home); };
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
       el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };

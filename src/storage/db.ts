@@ -48,6 +48,8 @@ export const DEFAULT_SETTINGS = {
   currency_ok: '',           // 1 = человек сам выбрал или подтвердил валюту
   setup_hidden: '',          // 1 = скрыл карточку «Настрой бота»
   terms_ok: '',
+  steam_balance_kop: '',     // баланс кошелька Steam, вписанный вручную (копейки бота); пусто — не задан
+  steam_balance_at: '',      // когда вписан: продажи в Steam и покупки в Steam после этого меняют баланс сами
   suggest_ban: '0',          // 1 — владелец закрыл этому человеку предложку              // версия принятых условий использования (TERMS_VERSION)
 } as const;
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
@@ -60,11 +62,15 @@ export async function getSettings(db: D1Database, tid: number): Promise<Settings
   return s;
 }
 
-export async function setSetting(db: D1Database, tid: number, key: SettingKey, value: string, now: number): Promise<void> {
-  await db.prepare(
+export function setSettingStmt(db: D1Database, tid: number, key: SettingKey, value: string, now: number): D1PreparedStatement {
+  return db.prepare(
     `INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-  ).bind(tid, key, value, now).run();
+  ).bind(tid, key, value, now);
+}
+
+export async function setSetting(db: D1Database, tid: number, key: SettingKey, value: string, now: number): Promise<void> {
+  await setSettingStmt(db, tid, key, value, now).run();
 }
 
 export const num = (s: string): number => (Number.isFinite(Number(s)) ? Number(s) : 0);

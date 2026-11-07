@@ -12,6 +12,7 @@ import { esc } from '../telegram/api.ts';
 import { TERMS_VERSION } from './terms.ts';
 import { IDEA_SETTINGS } from './insights.ts';
 import type { Keyboard } from '../telegram/api.ts';
+import { steamBalances } from './steambalance.ts';
 
 export const HOT_FRESH_SEC = 40 * 60;
 export const HOT_REPEAT_SEC = 24 * 3600;
@@ -19,7 +20,8 @@ export const HOT_UP_BP = 2500;
 
 export const hotKey = (r: Rec) => `${r.name}|${r.buyAt}|${r.sellAt}`;
 
-export function hotText(r: Rec): string {
+/** balanceKop — баланс Steam человека (если вписан и сделка — покупка в Steam): «хватает на покупку». */
+export function hotText(r: Rec, balanceKop: number | null = null): string {
   return [
     '🔥 <b>Горячая рекомендация</b>', '',
     `<b>${esc(r.name)}</b>`,
@@ -27,8 +29,18 @@ export function hotText(r: Rec): string {
     `💰 Продать: ${MARKETS[r.sellAt].name} — ${formatUah(r.sellKop)}`,
     `✅ Чистыми: <b>${formatSignedUah(r.profitKop ?? 0)}</b> (+${Math.round((r.roiBp ?? 0) / 100)}%) · ${r.wallet === 'cash' ? 'деньгами' : 'на баланс Steam'}`,
     r.sales7 ? `📊 ${r.sales7} продаж за неделю` : '',
+    balanceKop !== null && r.buyAt === 'steam' ? `💳 Хватает твоего баланса Steam (≈${formatUah(balanceKop)})` : '',
     '', '<i>Цена на момент проверки, комиссии учтены по твоим настройкам. Не финансовый совет — проверь цену на сайте.</i>',
   ].filter((x) => x !== '').join('\n').replace('\n\n<i>', '\n\n<i>');
+}
+
+/** Какую сделку предложить. Есть баланс Steam — сначала покупка в Steam, которая в него укладывается; дороже баланса в Steam — никогда. */
+export function pickRec(list: Rec[], balanceKop: number | null, isNew: (r: Rec) => boolean): Rec | undefined {
+  if (balanceKop !== null) {
+    const fit = list.find((x) => x.buyAt === 'steam' && x.payKop <= balanceKop && isNew(x));
+    if (fit) return fit;
+  }
+  return list.find((x) => isNew(x) && (x.buyAt !== 'steam' || balanceKop === null || x.payKop <= balanceKop));
 }
 
 export function hotKeyboard(r: Rec, origin: string | null, pages?: ItemPages | null): Keyboard {
@@ -77,23 +89,26 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
   const isNew = (r: Rec) => { const p = before[hotKey(r)]; return !p || ctx.now - p.at >= HOT_REPEAT_SEC || (r.profitKop ?? 0) >= p.p * (1 + HOT_UP_BP / 10000); };
 
   const origin = await getMeta(d, 'public_origin');
-  const pending: { tid: number; r: Rec; s: db.Settings }[] = [];
+  // Баланс Steam (у кого вписан): сначала предлагаем то, что можно купить в Steam на эти деньги; дороже баланса в Steam — не предлагаем.
+  const balances = await steamBalances(d, new Map(eligible.map((id) => [id, settings.get(id)!])));
+  const pending: { tid: number; r: Rec; s: db.Settings; bal: number | null }[] = [];
   for (const tid of eligible) {
     const s = settings.get(tid)!;
     const limit = Math.min(10, Math.max(1, db.num(s.recs_per_day) || 3));
     if ((today.get(tid) ?? 0) >= limit) continue;
-    const r = comboOf(s).find(isNew);
+    const b = balances.get(tid) ?? null;
+    const r = pickRec(comboOf(s), b?.kop ?? null, isNew);
     if (!r) continue;
-    pending.push({ tid, r, s });
+    pending.push({ tid, r, s, bal: b && r.buyAt === 'steam' ? b.kop : null });
     sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, sent[hotKey(r)]?.p ?? 0), at: ctx.now };
   }
   // Ссылка «Купить» — сразу на страницу предмета (для Skinport адрес берём из его API): один запрос на всю рассылку.
   const spNames = pending.filter((x) => x.r.buyAt === 'skinport').map((x) => x.r.name);
   const pages = spNames.length ? await loadSkinportPages(d, spNames) : null;
   let queued = 0;
-  for (const { tid, r, s } of pending) {
+  for (const { tid, r, s, bal } of pending) {
     writes.push(d.prepare(`INSERT OR IGNORE INTO outbox (telegram_id, kind, ref, signal_id, text, keyboard, edit_msg_id, not_before, created_at)
-      VALUES (?, 'recs', ?, NULL, ?, ?, NULL, ?, ?)`).bind(tid, `${hotKey(r)}:${scan.fetchedAt}`, hotText(r), JSON.stringify(hotKeyboard(r, origin, pages)),
+      VALUES (?, 'recs', ?, NULL, ?, ?, NULL, ?, ?)`).bind(tid, `${hotKey(r)}:${scan.fetchedAt}`, hotText(r, bal), JSON.stringify(hotKeyboard(r, origin, pages)),
       nextAllowed(ctx.now, db.num(s.quiet_start), db.num(s.quiet_end)), ctx.now));
     queued++;
   }

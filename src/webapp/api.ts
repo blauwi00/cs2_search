@@ -42,6 +42,7 @@ import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
 import { findCandidates, capital, buyBlockers, checkChain, RALLY_KEYS, RALLY_DEFAULTS, UNLOCK_SEC, type RallyTrade, type RallySettings } from '../core/rally.ts';
+import { steamBalanceFor } from '../core/steambalance.ts';
 import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, rallyProven, BOT_MIN_CLOSED } from '../core/rallyjob.ts';
 import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
@@ -313,6 +314,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),
         inventory: { lots: lots.length, costKop: cost, valueKop: value, unknown },
+        steamBalance: await (async () => { const b = await steamBalanceFor(d, tid, st); return b ? { kop: b.kop, at: b.at } : null; })(),
         today: {
           steamKop: todays.filter((s) => s.wallet === 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
           cashKop: todays.filter((s) => s.wallet !== 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
@@ -320,6 +322,19 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         },
         lastPriceAt: Math.max(0, ...sources.filter((s) => s.source === 'steam' || s.source === 'skinport').map((s) => s.last_ok_at ?? 0)) || null,
       });
+    }
+
+    // Баланс кошелька Steam — вписывается вручную (бот не входит в аккаунт). null/пусто — убрать.
+    if (path === 'steam-balance' && method === 'POST') {
+      const v = body.kop;
+      if (v === null || v === '') {
+        await d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key IN ('steam_balance_kop', 'steam_balance_at')`).bind(tid).run();
+        return json({ ok: true, steamBalance: null });
+      }
+      const k = Number(v);
+      if (!Number.isSafeInteger(k) || k < 0 || k > 1e11) return bad('Неверная сумма');
+      await d.batch([db.setSettingStmt(d, tid, 'steam_balance_kop', String(k), now), db.setSettingStmt(d, tid, 'steam_balance_at', String(now), now)]);
+      return json({ ok: true, steamBalance: { kop: k, at: now } });
     }
 
     // ---------- Steam: вход (только SteamID) и открытый инвентарь ----------

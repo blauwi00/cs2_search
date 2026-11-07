@@ -1,6 +1,5 @@
 out/
 .hyperframes/
 assets/transcript.json
-# Голос автора не хранится в репозитории
-assets/voice.*
+# Запись голоса автора (raw) не хранится; озвучка ElevenLabs (voice.mp3) — хранится, чтобы ролик можно было пересобрать
 assets/raw.*

@@ -145,6 +145,7 @@ export async function statsCommand(h: H): Promise<void> {
     'Ссылки с меткой для рекламы:',
     user ? `• TikTok: <code>https://t.me/${user}?start=tt</code>` : '',
     user ? `• канал: <code>https://t.me/${user}?start=ch</code>` : '',
+    user ? `• «Пригласить друга» в приложении: <code>?start=fr</code>` : '',
     user ? '• любая своя метка: <code>?start=имя</code> (латиница, цифры, _)' : '',
     '', `<b>🕵️ Копии бота</b> (запущены из твоего кода): ${copies.length ? '' : 'не найдено'}`,
     ...copies.slice(0, 10).map(([host, at]) => `• <code>${esc(host)}</code> — последний раз ${new Date(at * 1000).toISOString().slice(0, 10)}`),

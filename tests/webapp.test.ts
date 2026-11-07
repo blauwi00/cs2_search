@@ -115,3 +115,16 @@ test('«Цены»: карточка скина по названию из ка�
   assert.equal((d.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE market_hash_name = 'Totally Fake Item'`).get() as { n: number }).n, 0);
   assert.equal((await call('item/' + r.id)).ok, true, 'карточка открывается');
 });
+
+test('«Пригласить друга»: сводка отдаёт имя бота для ссылки ?start=fr', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { signInitData } = await import('../src/webapp/auth.ts');
+  const { handleAppApi } = await import('../src/webapp/api.ts');
+  const d = migratedDb();
+  const env = testEnv(d);
+  const T0 = Date.parse('2026-11-07T10:00:00Z') / 1000;
+  d.db.exec(`INSERT INTO meta (key, value) VALUES ('bot_username', 'cenolov_bot')`);
+  const init = await signInitData({ auth_date: String(T0), query_id: 'Q', user: JSON.stringify({ id: 4343 }) }, 'TEST_TOKEN');
+  const r = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': init } }), env, T0)).json() as Record<string, any>;
+  assert.equal(r.botUser, 'cenolov_bot');
+});

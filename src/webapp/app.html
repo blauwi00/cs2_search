@@ -418,6 +418,7 @@ function api(path, opt) {
       if (j.admin) state.isAdmin = true;
       if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
       if (j.channelUrl !== undefined) state.channelUrl = j.channelUrl || '';
+      if (j.botUser) state.botUser = j.botUser;
       if (j.steamBalance !== undefined) { state.bal = j.steamBalance; state.byBalance = !!j.byBalance; renderBal(); }
       // Записали продажу или покупку — баланс Steam мог измениться: обновим шапку.
       if (opt.method === 'POST' && /^(inventory|sales)/.test(path)) refreshBal();
@@ -1967,6 +1968,29 @@ function bindRally(r) {
   });
 }
 // ---------- #18: панель владельца ----------
+// «Пригласить друга»: ссылка на бота с меткой fr — в /stats видно, сколько пришло по приглашениям.
+function inviteFriend() {
+  var go2 = function () {
+    if (!state.botUser) return toast('Не получилось получить ссылку на бота — попробуй позже');
+    var link = 'https://t.me/' + state.botUser + '?start=fr';
+    var text = 'Ценолов — бот по скинам CS2: где дешевле купить, где дороже продать, сколько стоит инвентарь. Бесплатно 👇';
+    var share = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text);
+    if (tg && tg.openTelegramLink) tg.openTelegramLink(share); else openLink(share);
+  };
+  if (state.botUser) go2(); else api('summary').then(go2).catch(function (e) { toast(e.message); });
+}
+// Только владельцу: план бесплатного продвижения (из разбора 07.11.2026).
+function promoSheet() {
+  var step = function (n, t, d) { return '<div class="kv" style="display:block;padding:10px 0"><b>' + n + '. ' + t + '</b><div class="mut" style="font-size:13px;margin-top:3px">' + d + '</div></div>'; };
+  sheet('<h2>📣 Продвижение бесплатно</h2><div class="sub">Видно только тебе. Откуда пришли люди — в «Панели владельца» и /stats (метки ?start=…).</div><div class="card">' +
+    step(1, 'Каталог приложений Telegram', 'Заявка бесплатно через официального бота Telegram @app_moderation_bot: название, описание, иконка, скриншоты. После проверки бот попадает в каталог Mini App.') +
+    step(2, 'Поиск внутри Telegram', 'Слова «CS2», «скины», «цены» в имени и описании бота (BotFather → /setname, /setdescription) — так бота находят через поиск.') +
+    step(3, 'Взаимная реклама с CS2-каналами', 'Каналы похожего размера: их пост у нас — наш у них. Ссылка для них: ?start=ch.') +
+    step(4, 'Короткие видео', 'TikTok / Shorts / Reels: «Окупается ли кейс?», «Где скин дешевле на 20%». Ссылка в профиле: ?start=tt.') +
+    step(5, 'Discord и группы Steam по трейду', 'Только там, где есть канал для саморекламы — в остальных за рекламу банят.') +
+    step(6, '«Пригласить друга»', 'Кнопка у всех в «Ещё» — ссылка ?start=fr, приходы видны в /stats.') +
+    '</div><div class="note">Не использовать накрутку подписчиков и «рефералов»: это против правил Telegram, бот могут ограничить.</div>');
+}
 function ownerPanel() {
   sheet('<div class="skel"></div><div class="skel" style="height:200px"></div><div class="skel"></div>');
   api('owner').then(function (o) {
@@ -2087,7 +2111,7 @@ function donateSheet() {
 }
 function more() {
   var row = function (id, ic, n, d) { return '<div class="row" id="' + id + '"><div class="ic">' + ic + '</div><div class="m"><div class="n">' + n + '</div><div class="d">' + d + '</div></div><div class="mut">›</div></div>'; };
-  view.innerHTML = '<div class="grp">' +
+  view.innerHTML = '<div class="grp">' + row('m-invite', '🎁', 'Пригласить друга', 'Отправь ссылку на бота — откроется у друга в Telegram') + '</div><div class="grp">' +
     row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
     row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
     row('m-theme', '🎨', 'Тема оформления', 'Сейчас: ' + esc(THEMES[THEME].name)) +
@@ -2099,8 +2123,9 @@ function more() {
     sheet('<div class="list-s">' + items.map(function (x, i) { return '<div class="row" data-mm="' + i + '"><div class="ic">' + x[0] + '</div><div class="m"><div class="n">' + x[1] + '</div><div class="d">' + x[2] + '</div></div><div class="mut">›</div></div>'; }).join('') + '</div>');
     Array.prototype.forEach.call(document.querySelectorAll('[data-mm]'), function (el) { el.onclick = function () { haptic(); items[+el.getAttribute('data-mm')][3](); }; });
   };
-  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
+  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
+  $('#m-invite').onclick = function () { haptic(); inviteFriend(); };
   $('#m-sites').onclick = function () { haptic(); sitesSheet(); };
   $('#m-theme').onclick = function () { haptic(); themeSheet(); };
   $('#m-help').onclick = function () {

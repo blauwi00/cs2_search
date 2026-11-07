@@ -86,7 +86,8 @@ export async function steamBalanceFor(d: D1Database, tid: number, s: Settings, n
 }
 
 /**
- * Предел цены для идей «купить в Steam» при включённой галочке: баланс, а если задана «Макс. цена покупки» — меньшее.
+ * Предел цены покупки для идей при включённой галочке: баланс, а если задана «Макс. цена покупки» — меньшее.
+ * Действует на ВСЕ идеи (так хочет владелец: с галочкой показывать только то, на что хватает баланса), покупки в Steam — первыми.
  * null — галочка выключена или баланса нет (идеи как раньше). Баланс расходится со Steam (< 0) — предел 0.
  */
 export function steamBuyLimit(bal: SteamBalance | null, s: Settings): number | null {
@@ -96,10 +97,9 @@ export function steamBuyLimit(bal: SteamBalance | null, s: Settings): number | n
   return maxBuy > 0 ? Math.min(lim, maxBuy) : lim;
 }
 
-/** Разделить идеи по пределу: подходящие покупки в Steam — первыми, дороже предела — отдельно (в приложении «Ещё N — показать»). */
+/** Разделить идеи по пределу: укладываются в баланс — показываем (покупки в Steam первыми), дороже — отдельно («Ещё N — показать»). */
 export function splitByBalance<T extends { buyAt: string; payKop: number }>(list: T[], limit: number | null): { shown: T[]; hidden: T[] } {
   if (limit === null) return { shown: list, hidden: [] };
-  const fit = list.filter((x) => x.buyAt === 'steam' && x.payKop <= limit);
-  const other = list.filter((x) => x.buyAt !== 'steam');
-  return { shown: [...fit, ...other], hidden: list.filter((x) => x.buyAt === 'steam' && x.payKop > limit) };
+  const fit = list.filter((x) => x.payKop <= limit);
+  return { shown: [...fit.filter((x) => x.buyAt === 'steam'), ...fit.filter((x) => x.buyAt !== 'steam')], hidden: list.filter((x) => x.payKop > limit) };
 }

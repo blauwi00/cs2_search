@@ -8,7 +8,7 @@ export interface SettingMeta { key: SettingKey; label: string; kind: SettingKind
 export const SETTINGS_META: SettingMeta[] = [
   { key: 'budget_kop', label: 'Бюджет', kind: 'uah', hint: '0 — бюджет не задан (бот только показывает сделки, не считая их доступными)' },
   { key: 'max_buy_kop', label: 'Макс. цена покупки', kind: 'uah', hint: '0 — без ограничения' },
-  { key: 'recs_by_balance', label: 'Подбирать идеи под баланс Steam', kind: 'toggle', hint: 'Покупки в Steam — только те, на которые хватает баланса Steam (и не дороже «Макс. цены покупки»). Идеи с покупкой на других сайтах не меняются.' },
+  { key: 'recs_by_balance', label: 'Подбирать идеи под баланс Steam', kind: 'toggle', hint: 'Показывать и присылать только идеи, на покупку которых хватает баланса Steam (и не дороже «Макс. цены покупки»). Покупки в Steam — первыми.' },
   { key: 'min_profit_kop', label: 'Мин. разница после комиссий', kind: 'uah' },
   { key: 'min_roi_bp', label: 'Мин. доходность', kind: 'percent', min: 0, max: 1000 },
   { key: 'deposit_fee_bp', label: 'Комиссия при оплате', kind: 'percent', min: 0, max: 30, hint: 'Сколько % берёт банк/способ оплаты при пополнении площадки (карта, крипта). Добавляется к цене покупки на сайтах.' },

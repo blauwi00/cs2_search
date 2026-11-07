@@ -75,12 +75,15 @@ test('предел: галочка выкл или без баланса — к�
   const sp = splitByBalance(list, 5000);
   assert.deepEqual(sp.shown.map((x) => x.name), ['Small Steam', 'A'], 'подходящие покупки в Steam — первыми, сайты — остаются');
   assert.deepEqual(sp.hidden.map((x) => x.name), ['Big Steam']);
+  const sp2 = splitByBalance([rec('Pricey Site', 'skinport', 9000), rec('A', 'skinport', 500)], 5000);
+  assert.deepEqual([sp2.shown.map((x) => x.name), sp2.hidden.map((x) => x.name)], [['A'], ['Pricey Site']], 'с галочкой — и покупки на сайтах только в пределах баланса');
+  assert.equal(pickRec([rec('Pricey Site', 'skinport', 9000)], 5000, () => true), undefined);
   assert.equal(pickRec(list, null, () => true)!.name, 'A');
   assert.equal(pickRec(list, 5000, () => true)!.name, 'Small Steam');
-  assert.match(hotText(rec('Small Steam', 'steam', 2000), 5000), /Хватает твоего баланса Steam/);
+  assert.match(hotText(rec('Small Steam', 'steam', 2000), 5000), /В пределах твоего баланса Steam/);
 });
 
-test('галочка вкл: дорогая покупка в Steam не приходит ни в уведомлении, ни в списке «Рекомендации» (там — «Ещё N»); покупка на сайте приходит', async () => {
+test('галочка вкл: идеи дороже баланса не приходят ни в уведомлении, ни в списке «Рекомендации» (там — «Ещё N»), ни на главной; дешевле — приходят', async () => {
   const { d, D, env, call } = await setup();
   await db.ensureUser(D, U, false, NOW);
   // Steam: 1400 ₴ → Skinport продают за 40 € (1800 ₴): выгодно, но дороже баланса. Skinport: 24 € → медиана 30 € — выгодно.
@@ -92,7 +95,7 @@ test('галочка вкл: дорогая покупка в Steam не при�
   await scan(NOW - 600); await scan(NOW);
   const before = await call('recs');
   assert.ok(before.deals.some((x: any) => x.name === 'Expensive Steam Item' && x.buyAt === 'steam'), 'без галочки — дорогая Steam-покупка видна');
-  await call('steam-balance', 'POST', { kop: 10000 });
+  await call('steam-balance', 'POST', { kop: 120000 }); // 1200 ₴: Steam-покупка 1400 ₴ — дороже, покупка на Skinport ≈1080 ₴ — в пределах
   assert.ok((await call('recs')).deals.some((x: any) => x.name === 'Expensive Steam Item'), 'баланс вписан, галочка выкл — как раньше');
   const s1 = await call('settings');
   assert.equal(s1.hasBalance, true);
@@ -101,7 +104,14 @@ test('галочка вкл: дорогая покупка в Steam не при�
   assert.ok(!after.deals.some((x: any) => x.name === 'Expensive Steam Item' && x.buyAt === 'steam'), 'дороже баланса — не в списке');
   assert.ok(after.hidden.some((x: any) => x.name === 'Expensive Steam Item'), '…но не потеряна: «Ещё N — показать»');
   assert.ok(after.deals.some((x: any) => x.name === 'Cheap Site Item'), 'покупка на сайте — как раньше');
-  assert.equal((await call('summary')).recs.hidden, after.hidden.length, 'сводка на главной считает так же');
+  const sum = await call('summary');
+  assert.equal(sum.recs.hidden, after.hidden.length, 'сводка на главной считает так же');
+  assert.equal(sum.recs.total, after.deals.length + after.trends.length, 'на главной — только идеи в пределах баланса');
+  await call('steam-balance', 'POST', { kop: 50000 }); // 500 ₴ — меньше обеих покупок
+  const tight = await call('recs');
+  assert.ok(!tight.deals.some((x: any) => x.payKop > 50000), 'покупки на сайтах дороже баланса тоже скрыты');
+  assert.ok(tight.hidden.some((x: any) => x.name === 'Cheap Site Item'));
+  await call('steam-balance', 'POST', { kop: 120000 });
   await jobHotRecs({ db: D, now: NOW + 60 });
   const pushed = (d.db.prepare(`SELECT text FROM outbox WHERE kind = 'recs' AND telegram_id = ?`).all(U) as { text: string }[]).map((r) => r.text).join('\n');
   assert.doesNotMatch(pushed, /Expensive Steam Item/, 'и в уведомлении нет');

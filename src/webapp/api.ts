@@ -49,8 +49,8 @@ import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '..
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 /**
- * Идеи по всему рынку для человека. Галочка «Подбирать идеи под баланс Steam» (и вписанный баланс): покупки в Steam,
- * на которые хватает баланса, — первыми, дороже — в hidden («Ещё N идей дороже твоего баланса — показать»). Как в уведомлениях.
+ * Идеи по всему рынку для человека. Галочка «Подбирать идеи под баланс Steam» (и вписанный баланс): только идеи,
+ * на покупку которых хватает баланса (покупки в Steam — первыми), дороже — в hidden («Ещё N идей дороже твоего баланса — показать»). Как в уведомлениях.
  * bal — уже посчитанный баланс (сводка считает его сама, чтобы не делать запросы дважды).
  */
 async function recsFor(d: D1Database, tid: number, now: number, pre?: { st: db.Settings; bal: SteamBalance | null }) {
@@ -62,10 +62,10 @@ async function recsFor(d: D1Database, tid: number, now: number, pre?: { st: db.S
   });
   const bal = pre ? pre.bal : st.recs_by_balance === '1' ? await steamBalanceFor(d, tid, st, now) : null;
   const limitKop = steamBuyLimit(bal, st);
-  const split = splitByBalance(r.deals, limitKop);
+  const split = splitByBalance(r.deals, limitKop), splitT = splitByBalance(r.trends, limitKop);
   const pages = await loadSkinportPages(d, [...r.deals, ...r.trends].filter((x) => x.buyAt === 'skinport' || x.sellAt === 'skinport').map((x) => x.name).slice(0, 200));
-  const dto = (x: Rec): RecDto => ({ ...recDto(x, pages), fitsBalance: limitKop !== null && x.buyAt === 'steam' && x.payKop <= limitKop });
-  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: split.shown.map(dto), trends: r.trends.map(dto), hidden: split.hidden.map(dto), limitKop };
+  const dto = (x: Rec): RecDto => ({ ...recDto(x, pages), fitsBalance: limitKop !== null && x.payKop <= limitKop });
+  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: split.shown.map(dto), trends: splitT.shown.map(dto), hidden: [...split.hidden, ...splitT.hidden].map(dto), limitKop };
 }
 /** Баланс Steam для приложения (шапка, окно баланса). byBalance — галочка (действует только при вписанном балансе). */
 function balanceDto(b: SteamBalance | null, st: db.Settings) {

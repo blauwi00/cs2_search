@@ -540,7 +540,7 @@ function balanceSheet() {
   h += '<label class="f"><span>' + (b ? 'Новый баланс' : 'Баланс') + ', ' + CUR.sign + '</span><input id="sbv" inputmode="decimal" placeholder="например 1 250,40"></label>';
   h += '<button class="btn" id="sbok">Сохранить</button>';
   h += '<div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Подбирать идеи под баланс Steam<div class="mut" style="font-size:12px">' +
-    (b ? 'Покупки в Steam — только на которые хватает баланса, и они первыми. Покупки на других сайтах не меняются.' : 'Сначала впиши баланс') +
+    (b ? 'Только идеи, на покупку которых хватает баланса. Покупки в Steam — первыми.' : 'Сначала впиши баланс') +
     '</div></span><label class="sw"><input type="checkbox" id="sbby"' + (state.byBalance ? ' checked' : '') + (b ? '' : ' disabled') + '><b></b></label></div></div>';
   if (b) h += '<button class="btn sec2" id="sbdel">Убрать баланс</button>';
   sheet(h);
@@ -663,7 +663,7 @@ function recCard(r) {
   if (r.kind === 'trend') {
     return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + '<div class="mut" style="font-size:13px">' + esc(r.reason) + '</div></div>';
   }
-  return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + flowHtml(r) + (r.fitsBalance ? '<span class="fitb">💳 Хватает баланса Steam' + (state.bal ? ' (≈' + uahShort(state.bal.kop) + ')' : '') + '</span>' : '') + '</div>';
+  return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + flowHtml(r) + (r.fitsBalance ? '<span class="fitb">💳 В пределах баланса Steam' + (state.bal ? ' (≈' + uahShort(state.bal.kop) + ')' : '') + '</span>' : '') + '</div>';
 }
 function flowHtml(r) {
   var st = function (l, mk, v, cls2) { return '<div class="st' + (cls2 || '') + '"><div class="l">' + l + '</div>' + (mk ? '<div class="mk">' + esc(mk) + '</div>' : '') + '<div class="v">' + uahShort(v) + '</div></div>'; };

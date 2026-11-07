@@ -29,18 +29,18 @@ export function hotText(r: Rec, balanceKop: number | null = null): string {
     `💰 Продать: ${MARKETS[r.sellAt].name} — ${formatUah(r.sellKop)}`,
     `✅ Чистыми: <b>${formatSignedUah(r.profitKop ?? 0)}</b> (+${Math.round((r.roiBp ?? 0) / 100)}%) · ${r.wallet === 'cash' ? 'деньгами' : 'на баланс Steam'}`,
     r.sales7 ? `📊 ${r.sales7} продаж за неделю` : '',
-    balanceKop !== null && r.buyAt === 'steam' ? `💳 Хватает твоего баланса Steam (≈${formatUah(balanceKop)})` : '',
+    balanceKop !== null ? `💳 В пределах твоего баланса Steam (≈${formatUah(balanceKop)})` : '',
     '', '<i>Цена на момент проверки, комиссии учтены по твоим настройкам. Не финансовый совет — проверь цену на сайте.</i>',
   ].filter((x) => x !== '').join('\n').replace('\n\n<i>', '\n\n<i>');
 }
 
-/** Какую сделку предложить. Есть предел (галочка + баланс Steam) — сначала покупка в Steam, которая в него укладывается; дороже — никогда. */
+/** Какую сделку предложить. Есть предел (галочка + баланс Steam) — только то, что в него укладывается, покупки в Steam первыми. */
 export function pickRec(list: Rec[], balanceKop: number | null, isNew: (r: Rec) => boolean): Rec | undefined {
   if (balanceKop !== null) {
     const fit = list.find((x) => x.buyAt === 'steam' && x.payKop <= balanceKop && isNew(x));
     if (fit) return fit;
   }
-  return list.find((x) => isNew(x) && (x.buyAt !== 'steam' || balanceKop === null || x.payKop <= balanceKop));
+  return list.find((x) => isNew(x) && (balanceKop === null || x.payKop <= balanceKop));
 }
 
 export function hotKeyboard(r: Rec, origin: string | null, pages?: ItemPages | null): Keyboard {
@@ -101,7 +101,7 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
     const buyLim = steamBuyLimit(b, s);
     const r = pickRec(comboOf(s), buyLim, isNew);
     if (!r) continue;
-    pending.push({ tid, r, s, bal: buyLim !== null && b && r.buyAt === 'steam' ? b.kop : null });
+    pending.push({ tid, r, s, bal: buyLim !== null && b ? b.kop : null });
     sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, sent[hotKey(r)]?.p ?? 0), at: ctx.now };
   }
   // Ссылка «Купить» — сразу на страницу предмета (для Skinport адрес берём из его API): один запрос на всю рассылку.

@@ -52,6 +52,13 @@ export async function searchCatalog(db: D1Database, query: string, limit = 15): 
   return searchSmart(r.results.map((x) => x.names), query, limit);
 }
 
+/** Есть ли точное название в каталоге (для карточки скина из поиска). */
+export async function catalogHas(db: D1Database, name: string): Promise<boolean> {
+  const r = await db.prepare('SELECT names FROM catalog_chunks').all<{ names: string }>();
+  // Строка каталога: «упрощённое название<TAB>точное название».
+  return r.results.some((x) => (x.names + '\n').includes('\t' + name + '\n'));
+}
+
 /** #13: сначала как есть; если в запросе русские/сленговые слова — по переводу; незнакомые русские слова — пробуем без них. */
 export function searchSmart(texts: string[], query: string, limit = 15): string[] {
   const t = translateQuery(query);

@@ -24,11 +24,11 @@ button{font:inherit;color:inherit}
 .top{position:sticky;top:0;z-index:5;background:var(--bg2);padding:calc(12px + var(--safe-top)) 16px 8px;display:flex;align-items:center;gap:10px}
 :root{--safe-top:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
 .top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px;flex:1}
-.balbtn{flex:none;border:1px solid var(--line,rgba(127,127,127,.25));background:var(--card,transparent);color:inherit;border-radius:999px;padding:6px 11px;font:600 14px/1.1 inherit;white-space:nowrap;cursor:pointer}
+.balbtn{flex:none;min-height:44px;border:1px solid var(--line,rgba(127,127,127,.25));background:var(--card,transparent);color:inherit;border-radius:999px;padding:6px 11px;font:600 14px/1.1 inherit;white-space:nowrap;cursor:pointer}
 .balbtn.warn{border-color:var(--amber,#e0a030)}
 .balbtn .w{color:var(--amber,#e0a030)}
 .fitb{display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:var(--pos,#3a3)}
-.menubtn{background:var(--card);border:0;border-radius:12px;width:38px;height:34px;font-size:22px;line-height:1;color:var(--text);cursor:pointer}
+.menubtn{background:var(--card);border:0;border-radius:12px;width:44px;height:44px;font-size:22px;line-height:1;color:var(--text);cursor:pointer}
 .top{flex-wrap:wrap}
 .ticker{flex:0 0 calc(100% + 32px);margin:2px -16px 0;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--hint);cursor:pointer;
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
@@ -85,7 +85,7 @@ button{font:inherit;color:inherit}
 .b-low{background:color-mix(in srgb,var(--hint) 22%,transparent);color:var(--hint)}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:0 4px 10px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:none;padding:7px 13px;border-radius:999px;background:var(--card);color:var(--text);font-size:14px;border:0}
+.chip{flex:none;min-height:40px;padding:9px 14px;border-radius:999px;background:var(--card);color:var(--text);font-size:14px;border:0}
 .chip.on{background:var(--accent);color:var(--accent-t)}
 .search{display:flex;gap:8px;margin-bottom:10px}
 input,select{width:100%;background:var(--card);border:1px solid var(--sep);color:var(--text);border-radius:12px;padding:12px 13px;font:inherit;outline:none}
@@ -237,10 +237,9 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
   <button class="tab on" data-t="home"><span class="t">🏠</span>Главная</button>
-  <button class="tab" data-t="deals"><span class="t">💡</span>Рекомендации</button>
-  <button class="tab" data-t="market"><span class="t">📊</span>Рынок</button>
-  <button class="tab" data-t="inv"><span class="t">🎒</span>Инвентарь</button>
-  <button class="tab" data-t="trades"><span class="t">🤝</span>Сделки</button>
+  <button class="tab" data-t="deals"><span class="t">💡</span>Идеи</button>
+  <button class="tab" data-t="market"><span class="t">🔍</span>Цены</button>
+  <button class="tab" data-t="inv"><span class="t">🎒</span>Мои скины</button>
   <button class="tab" data-t="more"><span class="t">⚙️</span>Ещё</button>
 </nav>
 <div class="sheet-bg" id="sbg"></div>
@@ -422,7 +421,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { rally: 'Разгон баланса', home: 'Ценолов', deals: 'Рекомендации', market: 'Рынок', inv: 'Инвентарь', trades: 'Сделки', more: 'Ещё' };
+var TITLES = { rally: 'Разгон баланса', home: 'Ценолов', deals: 'Идеи', market: 'Цены', inv: 'Скины', trades: 'Скины', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -440,10 +439,11 @@ function setMenu(items) {
 function go(t) {
   setMenu(null);
   state.tab = t; closeSheet();
-  var bt = t === 'rally' ? 'deals' : t; // «Разгон» — часть «Рекомендаций»
+  var bt = t === 'rally' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
   // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
-  ['#ticker', '#ticker2'].forEach(function (id) { var el = $(id); if (el) el.style.display = t === 'home' ? '' : 'none'; });
+  // Бегущая строка идей — только на главной; строка «Топ поддержки» переехала в «Ещё» → «Связь с автором».
+  ['#ticker', '#ticker2'].forEach(function (id) { var el = $(id); if (el) el.style.display = t === 'home' && id === '#ticker' ? '' : 'none'; });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
   view.classList.remove('enter'); view._fresh = true;
@@ -519,8 +519,8 @@ function rateHtml(x) {
 // Баланс Steam — в шапке на каждой вкладке. Вписывается вручную (бот не входит в аккаунт Steam),
 // дальше бот сам учитывает продажи и покупки в Steam, которые ты отмечаешь.
 function balText(b) {
-  if (!b) return '💳 Вписать баланс';
-  return '💳 ' + (b.mismatch ? '<span class="w">⚠️ ' + uahShort(b.kop) + '</span>' : uahShort(b.kop)) + (b.stale && !b.mismatch ? ' <span class="w">•</span>' : '');
+  if (!b) return '💳 Steam: вписать';
+  return '💳 Steam ' + (b.mismatch ? '<span class="w">⚠️ ' + uahShort(b.kop) + '</span>' : uahShort(b.kop)) + (b.stale && !b.mismatch ? ' <span class="w">•</span>' : '');
 }
 function renderBal() {
   var el = $('#balbtn'); if (!el || !INIT) return;
@@ -533,7 +533,7 @@ var balT = 0;
 function refreshBal() { clearTimeout(balT); balT = setTimeout(function () { api('steam-balance').catch(function () {}); }, 400); }
 function balanceSheet() {
   var b = state.bal;
-  var h = '<h2>💳 Баланс Steam</h2><div class="sub">Сколько сейчас на кошельке Steam, в ' + esc(CUR.code) + '. Бот не входит в твой аккаунт — баланс вписываешь ты, а продажи и покупки в Steam, которые ты отмечаешь в боте, он учитывает сам.</div>';
+  var h = '<h2>💳 Баланс Steam</h2><div class="sub">Сколько сейчас в кошельке Steam (' + esc(CUR.code) + ') — бот не видит его сам.</div>';
   if (b && b.mismatch) h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ Расходится со Steam: по записанным покупкам потрачено больше, чем было. Впиши баланс заново.</div>';
   else if (b && b.stale) h += '<div class="card" style="color:var(--amber);font-size:14px">Баланс не обновлялся больше двух недель — проверь, совпадает ли со Steam.</div>';
   if (b) h += '<div class="card" style="font-size:14px">' + kv('Сейчас', uah(b.kop)) + kv('Вписан', ago(b.at)) + kv('Учтено после этого', 'продаж в Steam: ' + b.sales + ' · покупок: ' + b.buys) + '</div>';
@@ -593,27 +593,37 @@ function privacy() {
     $('#sc').innerHTML = h;
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
+// Площадки и их рейтинг (раньше были на главной) — теперь в «Ещё».
+function sitesSheet() {
+  var show = function (sites) {
+    var h = '<h2>🛒 Площадки</h2><div class="sub">Где покупать и продавать. ★ — оценка на Trustpilot из 5 (отзывы людей, не гарантия); ⚠️ ниже 3.5 — много жалоб.</div><div class="sgrid">' + sites.map(function (x) {
+      return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">🤝</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div>' + rateHtml(x) + '</div>';
+    }).join('') + '</div>';
+    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">🤝 — партнёрская ссылка: сайт может платить автору бота процент со своей комиссии. Для тебя цена не меняется.</div>';
+    sheet(h);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
+      el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
+    });
+  };
+  if (state.sites && state.sites.length) show(state.sites); else api('summary').then(function (s) { state.sites = s.sites || []; show(state.sites); }).catch(function (e) { toast(e.message); });
+}
 function home() {
   loading(5);
   api('summary').then(function (s) {
     renderTicker(s);
     var h = heroCard(s);
     h += setupCard(s.setup);
-    // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
-    var sites = s.sites || [];
-    h += '<div class="sec">Площадки</div><div class="sgrid">' + sites.map(function (x) {
-      return '<div class="stile" data-site="' + esc(x.key) + '"><div class="sq"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" loading="lazy" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + (x.ref ? '<i title="партнёрская ссылка">🤝</i>' : '') + '</div><div class="sn">' + esc(x.name) + '</div>' + rateHtml(x) + '</div>';
-    }).join('') + '</div>';
-    h += '<div class="note">★ — оценка на Trustpilot из 5 (по сводке CSDB, июль 2026). Это отзывы людей, а не гарантия. ⚠️ ниже 3.5 — много жалоб, будь осторожнее.</div>';
-    if (sites.some(function (x) { return x.ref; })) h += '<div class="note">🤝 — партнёрская ссылка: если зарегистрируешься по ней, сайт может платить автору бота процент со своей комиссии. Для тебя цена и условия не меняются.</div>';
-    h += '<div class="note">Бот не связан с этими сайтами. Покупаешь и продаёшь сам, на свой риск — <a id="h-terms">условия</a>.</div>';
+    state.sites = s.sites || [];
+    // Быстрые входы для новичка: два главных вопроса, кроме «на чём заработать».
+    h += '<div class="row" id="h-price"><div class="ic">🔍</div><div class="m"><div class="n">Сколько стоит скин?</div><div class="d">Цены на всех площадках и уведомление, когда подешевеет</div></div><div class="mut">›</div></div>';
+    h += '<div class="row" id="h-skins"><div class="ic">🎒</div><div class="m"><div class="n">Мои скины</div><div class="d">Сколько стоит инвентарь, покупки и продажи с прибылью</div></div><div class="mut">›</div></div>';
+    h += '<div class="note">Бот не связан с площадками и ничего не покупает сам. Сделки — на свой риск: <a id="h-terms">условия</a>. Площадки и их рейтинг — в «Ещё».</div>';
     view.innerHTML = h;
     bindSetup();
     bindHero(s);
     $('#h-terms').onclick = termsSheet;
-    Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
-      el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
-    });
+    $('#h-price').onclick = function () { haptic(); go('market'); };
+    $('#h-skins').onclick = function () { haptic(); go('inv'); };
   }).catch(fail);
 }
 // Сводка сверху главной: сколько идей нашёл бот и лучшая из них. Только реальные данные из summary.
@@ -710,7 +720,7 @@ function recSheet(r) {
   if (r.sellAt !== r.buyAt) $('#r-sell').onclick = function () { openLink(r.sellUrl); };
   var plat = { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other';
   $('#r-bought').onclick = function () { buyForm({ name: r.name, priceKop: r.payKop, platform: plat }); };
-  $('#r-watch').onclick = function () { api('watch', { method: 'POST', body: { name: r.name } }).then(function () { haptic('ok'); toast('Добавлено в «Рынок»'); }).catch(function (e) { toast(e.message); }); };
+  $('#r-watch').onclick = function () { api('watch', { method: 'POST', body: { name: r.name } }).then(function () { haptic('ok'); toast('Добавлено: «Цены» → Слежу'); }).catch(function (e) { toast(e.message); }); };
 }
 // Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
 function recSwitch(on) {
@@ -722,26 +732,22 @@ function bindRecSwitch() {
 }
 function deals() {
   loading(6);
-  Promise.all([api('recs'), api('deals?order=spread').catch(function () { return { deals: [] }; })]).then(function (res) {
-    var r = res[0], mine = res[1].deals || [];
+  Promise.all([api('recs')]).then(function (res) {
+    var r = res[0], mine = [];
     var h = recSwitch('recs');
     if (!r.fetchedAt) {
       h += '<div class="empty"><div class="e">⏳</div>Рынок ещё не проверен.<br>Бот проверяет цены каждые 10 минут — загляни чуть позже.</div>';
     } else {
       state.cache.recsAt = r.fetchedAt;
       h += '<div class="mut" style="font-size:13px;margin:0 2px 6px">Проверено ' + ago(r.fetchedAt) + ' · 5 площадок · комиссии учтены · <a id="r-how" style="color:var(--link)">как это работает?</a>' + (r.stale && state.isAdmin ? ' ⚠️ данные устарели' : '') + '</div>';
-      h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
       h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
       // Галочка «под баланс Steam»: дорогие покупки в Steam не теряем — показываем по нажатию.
       var hid = r.hidden || [];
-      if (hid.length) h += '<div id="r-hid"><div class="row" id="r-hid-b"><div class="ic">💳</div><div class="m"><div class="n">Ещё ' + hid.length + ' ' + (hid.length === 1 ? 'идея' : hid.length < 5 ? 'идеи' : 'идей') + ' дороже твоего баланса Steam</div><div class="d">Показать</div></div><div class="mut">›</div></div></div>';
-      if (mine.length) {
-        h += '<div class="sec">Из твоего списка: купить → продать в Steam</div>';
-        h += mine.slice(0, 10).map(dealRow).join('');
-      }
+      if (hid.length) h += '<div id="r-hid"><div class="row" id="r-hid-b"><div class="ic">💳</div><div class="m"><div class="n">Ещё ' + hid.length + ' ' + (hid.length === 1 ? 'идея' : hid.length < 5 ? 'идеи' : 'идей') + ' дороже баланса</div><div class="d">Показать</div></div><div class="mut">›</div></div></div>';
       h += '<div class="sec">Растут в цене</div>';
       h += r.trends.length ? r.trends.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас ничего заметно не дорожает.</div>';
+      h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
     }
     view.innerHTML = h;
     if ($('#r-how')) $('#r-how').onclick = function () {
@@ -804,62 +810,33 @@ function dealSheet(d) {
 function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
 
 // ---------- Рынок (наблюдение) ----------
+// «Цены»: найти любой скин → цены на всех площадках, график, «Следить за ценой». Ниже — «Слежу»: свои цели.
+// Предметы, попавшие в список сами из покупок, здесь не показываем — они в «Моих скинах».
+function openByName(name) {
+  sheet('<div class="skel"></div><div class="skel" style="height:180px"></div>');
+  api('item-id?name=' + encodeURIComponent(name)).then(function (r) { itemSheet(r.id); }).catch(function (e) { closeSheet(); toast(e.message); });
+}
 function market() {
-  loading(6);
+  loading(4);
   api('watch').then(function (r) {
     state.cache.watch = r.items;
-    var cnt = { all: r.items.length }; r.items.forEach(function (x) { var a = x.advice ? x.advice.action : 'nodata'; cnt[a] = (cnt[a] || 0) + 1; });
-    if (state.mkAct !== 'all' && !cnt[state.mkAct]) state.mkAct = 'all';
-    var h = '';
-    if (state.edit) {
-      var k = Object.keys(state.sel).length;
-      h += '<div class="editbar"><button class="btn sec2" id="e-done">Готово</button><button class="btn sec2" id="e-all">Выбрать все</button><span style="flex:1"></span><button class="btn danger" id="e-del"' + (k ? '' : ' disabled') + '>🗑 Удалить (' + k + ')</button></div>';
-    } else {
-      h += '<div class="tool"><button class="btn" id="m-add">＋ Добавить</button><button class="btn sec2" id="m-edit">✏️ Изменить список</button></div>';
-      if (r.limit) h += '<div class="mut" style="font-size:13px;margin:-4px 2px 8px">' + r.own + ' из ' + r.limit + (r.own >= r.limit ? ' — лимит, удали ненужные' : '') + '</div>';
-    }
-    h += '<div class="chips" id="acts"><button class="chip ' + (state.mkAct === 'all' ? 'on' : '') + '" data-a="all">Все · ' + cnt.all + '</button>' +
-      ['buy', 'sell', 'avoid', 'hold', 'nodata'].filter(function (a) { return cnt[a]; }).map(function (a) {
-        return '<button class="chip ' + (state.mkAct === a ? 'on' : '') + '" data-a="' + a + '">' + ACT_LABEL[a] + ' · ' + cnt[a] + '</button>'; }).join('') + '</div>';
-    var list = r.items.filter(function (x) { return state.mkAct === 'all' || (x.advice ? x.advice.action : 'nodata') === state.mkAct; });
-    list.sort(function (a, b) {
-      var d = ACT_ORDER[a.advice ? a.advice.action : 'nodata'] - ACT_ORDER[b.advice ? b.advice.action : 'nodata'];
-      return d || a.name.localeCompare(b.name);
-    });
+    var list = r.items.filter(function (x) { return x.source !== 'inventory'; });
+    var h = '<div class="search"><input id="pq" placeholder="🔍 Найти скин: «ак азимов», «керамбит», AWP…" autocomplete="off"></div><div id="psr"></div>';
+    h += '<div class="mut" style="font-size:13px;margin:-2px 2px 10px">Цены на всех площадках, график за месяц и уведомление, когда подешевеет.</div>';
+    h += '<div class="sec">Слежу' + (list.length ? ' · ' + list.length + (r.limit ? ' из ' + r.limit : '') : '') + '</div>';
     h += list.length ? list.map(function (x) {
-      var right = state.edit ? '<div class="cb">' + (state.sel[x.watchId] ? '✓' : '') + '</div>'
-        : '<div class="r"><div class="big">' + (x.steamLowKop != null ? uahShort(x.steamLowKop) : x.steamAvgKop != null ? '≈ ' + uahShort(x.steamAvgKop) : '<span class="mut">—</span>') + '</div><div style="margin-top:3px">' + (x.advice ? actPill(x.advice) : '') + '</div></div>';
-      return '<div class="row' + (state.sel[x.watchId] ? ' sel' : '') + '" data-w="' + x.watchId + '" data-item="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎲') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' +
-        (x.advice && x.advice.action !== 'hold' && x.advice.action !== 'nodata' ? esc(x.advice.reason) : (x.skinportKop != null ? 'Skinport ' + uahShort(x.skinportKop) : 'Skinport —') + (x.sales24h != null ? ' · продаж ' + x.sales24h.toLocaleString('ru-RU') : '')) +
-        '</div></div>' + right + '</div>';
-    }).join('') : '<div class="empty"><div class="e">📭</div>Список пуст. Нажми «＋ Добавить».</div>';
-    h += '<div class="note">Цена справа — самое дешёвое объявление в Steam («≈» — средняя цена продаж). Нажми на предмет — график и подсказка.</div>';
+      var now = x.steamLowKop != null ? x.steamLowKop : x.steamAvgKop, goal;
+      if (!x.targetKop) goal = '<span class="mut">цель не задана — нажми</span>';
+      else if (now != null && now <= x.targetKop) goal = '<span class="pos">✅ цель ' + uahShort(x.targetKop) + ' достигнута</span>';
+      else goal = '🎯 ' + uahShort(x.targetKop) + (now != null ? ' · осталось −' + Math.max(1, Math.round((now - x.targetKop) * 100 / now)) + '%' : '');
+      return '<div class="row" data-item="' + x.itemId + '">' + pic(x.img, ICON[x.category] || '🎲') + '<div class="m"><div class="n">' + esc(x.name) + '</div><div class="d">' + goal + '</div></div>' +
+        '<div class="r"><div class="big">' + (x.steamLowKop != null ? uahShort(x.steamLowKop) : x.steamAvgKop != null ? '≈ ' + uahShort(x.steamAvgKop) : '<span class="mut">—</span>') + '</div><div class="mut" style="font-size:12px;margin-top:3px">в Steam</div></div></div>';
+    }).join('') : '<div class="empty"><div class="e">🔔</div>Найди скин выше и нажми «Следить за ценой» — бот напишет, когда цена упадёт до твоей.</div>';
     view.innerHTML = h;
-    Array.prototype.forEach.call(document.querySelectorAll('#acts .chip'), function (b) { b.onclick = function () { haptic(); state.mkAct = b.getAttribute('data-a'); market(); }; });
-    Array.prototype.forEach.call(document.querySelectorAll('[data-w]'), function (el) {
-      el.onclick = function () {
-        haptic();
-        if (!state.edit) return itemSheet(+el.getAttribute('data-item'));
-        var w = el.getAttribute('data-w');
-        if (state.sel[w]) delete state.sel[w]; else state.sel[w] = 1;
-        el.classList.toggle('sel', !!state.sel[w]); el.querySelector('.cb').textContent = state.sel[w] ? '✓' : '';
-        var k = Object.keys(state.sel).length; $('#e-del').textContent = '🗑 Удалить (' + k + ')'; $('#e-del').disabled = !k;
-      };
+    bindSearch($('#pq'), $('#psr'), function (name) { haptic(); openByName(name); }, '›');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-item]'), function (el) {
+      el.onclick = function () { haptic(); itemSheet(+el.getAttribute('data-item')); };
     });
-    if (state.edit) {
-      $('#e-done').onclick = function () { state.edit = false; state.sel = {}; market(); };
-      $('#e-all').onclick = function () { list.forEach(function (x) { state.sel[x.watchId] = 1; }); market(); };
-      $('#e-del').onclick = function () {
-        var ids = Object.keys(state.sel).map(Number); if (!ids.length) return;
-        var run = function () {
-          api('watch/delete', { method: 'POST', body: { ids: ids } }).then(function () { haptic('ok'); toast('Удалено: ' + ids.length); state.sel = {}; state.edit = false; market(); }).catch(function (e) { toast(e.message); });
-        };
-        if (tg && tg.showConfirm) tg.showConfirm('Убрать из списка ' + ids.length + ' шт.?', function (ok) { if (ok) run(); }); else run();
-      };
-    } else {
-      $('#m-add').onclick = addSheet;
-      $('#m-edit').onclick = function () { haptic(); state.edit = true; state.sel = {}; market(); };
-    }
   }).catch(fail);
 }
 function addSheet() {
@@ -947,7 +924,7 @@ function itemSheet(id, days) {
     if (r.watchId) {
       h += '<label class="f"><span>🎯 Уведомить, когда в Steam будет не дороже (' + CUR.sign + ')</span><input id="tg" inputmode="decimal" placeholder="например 120" value="' + (r.targetKop ? units(r.targetKop) : '') + '"></label>';
       h += '<div class="btns"><button class="btn" id="i-tg">Сохранить цель</button><button class="btn danger" id="i-del">Убрать</button></div>';
-    } else h += '<button class="btn" id="i-add">＋ Добавить в наблюдение</button>';
+    } else h += '<button class="btn" id="i-add">🔔 Следить за ценой</button>';
     h += '<button class="btn sec2" id="i-buy">🎒 Записать покупку</button>';
     h += reportLink();
     $('#sc').innerHTML = h;
@@ -964,7 +941,7 @@ function itemSheet(id, days) {
         api('watch/' + r.watchId + '/target', { method: 'POST', body: { kop: kop } }).then(function () { haptic('ok'); toast(kop ? 'Цель сохранена' : 'Цель убрана'); }).catch(function (e) { toast(e.message); });
       };
       $('#i-del').onclick = function () { api('watch/' + r.watchId, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Убрано из наблюдения'); closeSheet(); if (state.tab === 'market') market(); }); };
-    } else $('#i-add').onclick = function () { api('watch', { method: 'POST', body: { name: it.name } }).then(function () { haptic('ok'); toast('Добавлено'); itemSheet(id, days); }); };
+    } else $('#i-add').onclick = function () { api('watch', { method: 'POST', body: { name: it.name } }).then(function () { haptic('ok'); toast('Слежу — впиши цель ниже'); if (state.tab === 'market') market(); itemSheet(id, days); }).catch(function (e) { toast(e.message); }); };
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(e.message) + '</div>'; });
 }
 function chart(series, days, avg) {
@@ -995,10 +972,20 @@ function chart(series, days, avg) {
 
 // ---------- Инвентарь ----------
 // ---------- Инвентарь: только предметы Steam (цены — в валюте каждой площадки) ----------
+// «Мои скины»: Steam (инвентарь) / Покупки / Продажи — одна вкладка вместо двух.
+function skinSeg(cur) {
+  return '<div class="seg" id="skseg"><button data-k="steam" class="' + (cur === 'steam' ? 'on' : '') + '">🎮 Steam</button><button data-k="mine" class="' + (cur === 'mine' ? 'on' : '') + '">🧾 Покупки</button><button data-k="sales" class="' + (cur === 'sales' ? 'on' : '') + '">💸 Продажи</button></div>';
+}
+function bindSkinSeg() {
+  Array.prototype.forEach.call(document.querySelectorAll('#skseg button'), function (b) {
+    b.onclick = function () { haptic(); var k = b.getAttribute('data-k'); if (k === 'steam') go('inv'); else { state.invTab = k; go('trades'); } };
+  });
+}
 function inventory() {
   loading(4);
   api('steam').then(function (st) {
-    view.innerHTML = steamBlock(st);
+    view.innerHTML = skinSeg('steam') + steamBlock(st);
+    bindSkinSeg();
     bindSteamBlock(st);
   }).catch(fail);
 }
@@ -1011,18 +998,18 @@ function trades() {
     var cost = 0, val = 0, unk = 0;
     r.lots.forEach(function (l) { if (l.valueKop == null) unk++; else { cost += l.costKop; val += l.valueKop; } });
     var stN = st && st.items ? st.items.length : 0;
-    var h = '<div class="seg" id="invseg"><button data-v="mine" class="' + (state.invTab === 'mine' ? 'on' : '') + '">🧾 Покупки' + (r.lots.length ? ' · ' + r.lots.length : '') + '</button><button data-v="sales" class="' + (state.invTab === 'sales' ? 'on' : '') + '">💸 Продажи</button></div>';
+    var h = skinSeg(state.invTab === 'sales' ? 'sales' : 'mine');
     if (state.invTab === 'sales') {
       if (st && st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
       h += '<div id="salesbox"><div class="skel"></div><div class="skel"></div></div>';
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
-      if (r.lots.length) h += '<div class="grid2">' + stat('Если продать в Steam', uahShort(val), 'после комиссии') + stat('Потенциальная', '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span>', unk ? 'без актуальной цены: ' + unk : 'если продать сейчас · не заработано') + '</div>';
-      if (r.salesCount) {
-        // Steam Wallet и живые деньги — раздельно: деньги из Steam вывести нельзя.
+      // Две главные цифры: сколько уже заработано и сколько выйдет, если продать сейчас (Steam и живые деньги — раздельно).
+      if (r.lots.length || r.salesCount) {
         var rS = r.realizedSteamKop || 0, rC = r.realizedCashKop || 0;
-        var real = (rC || !rS ? '<span class="' + cls(rC) + '">' + uah(rC, true) + '</span>' : '') + (rS ? (rC ? '<br>' : '') + '<span class="' + cls(rS) + '">' + uah(rS, true) + '</span> <span class="mut" style="font-size:12px">в Steam</span>' : '');
-        h += '<div class="grid2">' + stat('Фактическая прибыль', real, 'по ' + r.salesCount + ' записанным продажам') + stat('Вложено сейчас', uahShort(cost), 'себестоимость непроданного') + '</div>';
+        var real = r.salesCount ? (rC || !rS ? '<span class="' + cls(rC) + '">' + uah(rC, true) + '</span>' : '') + (rS ? (rC ? '<br>' : '') + '<span class="' + cls(rS) + '">' + uah(rS, true) + '</span> <span class="mut" style="font-size:12px">в Steam</span>' : '') : '—';
+        h += '<div class="grid2">' + stat('Заработано', real, r.salesCount ? 'по ' + r.salesCount + ' продажам' : 'запиши продажу — посчитаю') +
+          stat('Если продать сейчас', r.lots.length ? uahShort(val) : '—', r.lots.length ? (unk ? 'без цены: ' + unk : '<span class="' + cls(val - cost) + '">' + uah(val - cost, true) + '</span> к цене покупки') : 'нет покупок') + '</div>';
       }
       h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
       h += r.lots.length ? r.lots.map(function (l) {
@@ -1037,7 +1024,7 @@ function trades() {
       ['🧮 Калькулятор комиссий', function () { calcSheet(); }],
     ]);
     if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
-    Array.prototype.forEach.call(document.querySelectorAll('#invseg button'), function (b) { b.onclick = function () { haptic(); state.invTab = b.getAttribute('data-v'); trades(); }; });
+    bindSkinSeg();
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
       el.onclick = function () { haptic(); var id = +el.getAttribute('data-lot'); lotSheet(r.lots.filter(function (x) { return x.id === id; })[0]); };
@@ -1062,7 +1049,7 @@ function steamBlock(st) {
     (st.pending ? '⏳ Загружаю инвентарь — до ~10 минут' : st.syncedAt ? 'Обновлено ' + ago(st.syncedAt) : '') + '</div></div>' +
     '<button class="btn sec2" id="st-ref" style="width:auto;margin:0;padding:8px 12px">Обновить</button></div>';
   if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
-  if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Сделки → Продажи» ›</div>';
+  if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Продажи» (вкладка выше) ›</div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
     h += st.items.slice(0, 60).map(function (x) {
@@ -1889,7 +1876,7 @@ function bindRally(r) {
   var each = function (sel, attr, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) { el.onclick = function () { haptic(); fn(list[+el.getAttribute(attr)]); }; }); };
   each('[data-rbuy]', 'data-rbuy', function (x) { rallyBuyForm(x, 'sim'); });
   each('[data-rsteam]', 'data-rsteam', function (x) { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); });
-  each('[data-rwatch]', 'data-rwatch', function (x) { api('watch', { method: 'POST', body: { name: x.name } }).then(function () { haptic('ok'); toast('Добавлено в «Рынок»'); }).catch(function (e) { toast(e.message); }); });
+  each('[data-rwatch]', 'data-rwatch', function (x) { api('watch', { method: 'POST', body: { name: x.name } }).then(function () { haptic('ok'); toast('Добавлено: «Цены» → Слежу'); }).catch(function (e) { toast(e.message); }); });
   each('[data-rhist]', 'data-rhist', function (x) { itemSheet(x.itemId, 30); });
   each('[data-rcalc]', 'data-rcalc', function (x) { calcSheet(x.targetKop); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-rpos]'), function (el) { el.onclick = function () { haptic(); rallyPosSheet(r.positions.filter(function (p) { return p.id === +el.getAttribute('data-rpos'); })[0]); }; });
@@ -2028,6 +2015,7 @@ function more() {
   var row = function (id, ic, n, d) { return '<div class="row" id="' + id + '"><div class="ic">' + ic + '</div><div class="m"><div class="n">' + n + '</div><div class="d">' + d + '</div></div><div class="mut">›</div></div>'; };
   view.innerHTML = (state.isAdmin ? row('m-own', '🛠', 'Для владельца', 'Панель, состояние системы') : '') +
     row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
+    row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
     row('m-theme', '🎨', 'Тема оформления', 'Сейчас: ' + esc(THEMES[THEME].name)) +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
     row('m-talk', '✉️', 'Связь с автором', 'Предложить пост, сообщить об ошибке, поддержать') +
@@ -2038,6 +2026,7 @@ function more() {
   };
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
+  $('#m-sites').onclick = function () { haptic(); sitesSheet(); };
   $('#m-theme').onclick = function () { haptic(); themeSheet(); };
   $('#m-help').onclick = function () {
     haptic();
@@ -2053,7 +2042,7 @@ function more() {
       var items = [
         ['💡', 'Предложить пост в канал', 'Новость, находка, идея', suggestSheet],
         ['📮', 'Сообщить об ошибке', 'Неверная цена, битая ссылка, идея', function () { reportSheet(null, 'раздел «Ещё»'); }],
-        ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно', donateSheet],
+        ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно · топ поддержки', donateSheet],
       ];
       // Ссылка на канал — из сводки (сервер берёт её из своей памяти, без запроса к Telegram).
       if (state.channelUrl) items.unshift(['📣', 'Канал', 'Рекомендации дня, кейсы, итоги недели', function () { openLink(state.channelUrl); }]);

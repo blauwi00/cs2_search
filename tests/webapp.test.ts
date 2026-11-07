@@ -95,3 +95,23 @@ test('каталог: части принимаются с проверкой, �
   assert.equal((await send({ part: 0, parts: 1, items: ['x'] })).status, 400, 'слишком маленький каталог не принимается');
   assert.equal((await send({ part: 5, parts: 2, items: many('C') })).status, 400);
 });
+
+test('«Цены»: карточка скина по названию из каталога; чужое название — ошибка, без мусора в базе', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { signInitData } = await import('../src/webapp/auth.ts');
+  const { handleAppApi } = await import('../src/webapp/api.ts');
+  const d = migratedDb();
+  const env = testEnv(d);
+  const NOW2 = Date.parse('2026-11-07T10:00:00Z') / 1000;
+  const { catalogLines } = await import('../src/catalog.ts');
+  d.db.prepare('INSERT INTO catalog_chunks (chunk, names, updated_at) VALUES (0, ?, 0)').run(catalogLines(['AK-47 | Redline (Field-Tested)', 'AWP | Asiimov (Field-Tested)']));
+  const init = await signInitData({ auth_date: String(NOW2), query_id: 'Q', user: JSON.stringify({ id: 4242 }) }, 'TEST_TOKEN');
+  const call = async (path: string) => (await handleAppApi(new Request('https://w/app/api/' + path, { headers: { 'X-Init-Data': init } }), env, NOW2)).json() as Promise<Record<string, any>>;
+  const r = await call('item-id?name=' + encodeURIComponent('AWP | Asiimov (Field-Tested)'));
+  assert.equal(r.ok, true);
+  assert.equal((await call('item-id?name=' + encodeURIComponent('AWP | Asiimov (Field-Tested)'))).id, r.id, 'второй раз — тот же предмет');
+  const bad = await call('item-id?name=' + encodeURIComponent('Totally Fake Item'));
+  assert.equal(bad.ok, false);
+  assert.equal((d.db.prepare(`SELECT COUNT(*) AS n FROM items WHERE market_hash_name = 'Totally Fake Item'`).get() as { n: number }).n, 0);
+  assert.equal((await call('item/' + r.id)).ok, true, 'карточка открывается');
+});

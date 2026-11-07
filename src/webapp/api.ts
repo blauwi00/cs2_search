@@ -5,7 +5,7 @@ import * as db from '../storage/db.ts';
 import * as T from '../storage/trades.ts';
 import { budgetedDb, newBudget } from '../storage/budget.ts';
 import { verifyInitData } from './auth.ts';
-import { searchCatalog, catalogInfo } from '../catalog.ts';
+import { searchCatalog, catalogInfo, catalogHas } from '../catalog.ts';
 import { parseMarketHashName, CATEGORY_RU } from '../core/normalization.ts';
 import { classifyLiquidity, LIQUIDITY_RU } from '../core/liquidity.ts';
 import { stats } from '../core/analyzer.ts';
@@ -496,6 +496,15 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const results = q.length >= 2 ? await searchCatalog(d, q, 20) : [];
       return json({ ok: true, results, images: Object.fromEntries(await imagesFor(d, results)), catalog: cat });
     }
+    // Карточка скина из поиска во вкладке «Цены»: id предмета по точному названию из каталога (новый — создаётся, только если он есть в каталоге).
+    if (path === 'item-id' && method === 'GET') {
+      const name = (url.searchParams.get('name') ?? '').trim().slice(0, 200);
+      if (name.length < 3) return bad('Нет названия');
+      const known = await d.prepare('SELECT id FROM items WHERE market_hash_name = ?').bind(name).first<{ id: number }>();
+      if (known) return json({ ok: true, id: known.id });
+      if (!(await catalogHas(d, name))) return bad('Такого предмета нет в каталоге');
+      return json({ ok: true, id: (await db.upsertItem(d, name, now)).id });
+    }
     if (path === 'watch' && method === 'GET') {
       const w = await db.listWatch(d, tid);
       const ids = w.map((x) => x.item_id).slice(0, 360);
@@ -522,7 +531,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           const ref = [...hist].reverse().find((hh) => hh.observed_at <= now - 24 * 3600) ?? hist[0];
           const ch = ref?.price_minor && low?.price_minor ? Math.trunc(((low.price_minor - ref.price_minor) * 10000) / ref.price_minor) : null;
           return {
-            watchId: x.id, itemId: x.item_id, name: x.market_hash_name, category: x.category, categoryRu: CATEGORY_RU[x.category as 'case'] ?? x.category,
+            watchId: x.id, itemId: x.item_id, name: x.market_hash_name, category: x.category, source: x.source, categoryRu: CATEGORY_RU[x.category as 'case'] ?? x.category,
             steamLowKop: low?.price_kop ?? null, steamMedKop: g('steam', 'median_24h')?.price_kop ?? null, sales24h: g('steam', 'median_24h')?.volume ?? null,
             skinportKop: g('skinport', 'lowest_listing')?.price_kop ?? null, skinportQty: g('skinport', 'lowest_listing')?.quantity ?? null,
             change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null, img: imgs.get(x.market_hash_name) ?? null,

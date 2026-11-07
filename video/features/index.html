@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<script src="assets/gsap.min.js"></script>
+<style>
+  html, body { margin: 0; background: #070b0c; }
+  * { box-sizing: border-box; }
+  #main { font-family: Inter, sans-serif; color: #fff; overflow: hidden; }
+  #bg { position: absolute; inset: 0; background: radial-gradient(900px 700px at 50% 35%, rgba(46,196,160,.22), transparent 70%), radial-gradient(700px 600px at 50% 100%, rgba(62,224,143,.12), transparent 70%), #070b0c; }
+  #bg:after { content: ""; position: absolute; inset: 0; opacity: .5; background-image: radial-gradient(rgba(62,224,143,.08) 2px, transparent 2px); background-size: 46px 46px; }
+  .pill { position: absolute; left: 0; right: 0; text-align: center; }
+  .pill span { display: inline-block; background: #12201c; border: 2px solid rgba(62,224,143,.35); color: #eafff6; font-size: 46px; font-weight: 800; padding: 14px 34px; border-radius: 999px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  .pill.lt span { background: #3ee08f; color: #06110c; border: 0; }
+  #hdr { position: absolute; left: 60px; top: 70px; display: flex; align-items: center; gap: 16px; font-size: 34px; font-weight: 800; opacity: 0; }
+  #hdr img { width: 48px; height: 48px; border-radius: 12px; }
+  /* 1. Логотип в бейдже */
+  #badge { position: absolute; left: 340px; top: 760px; width: 400px; height: 400px; }
+  #badge .r { position: absolute; inset: 0; border-radius: 32%; background: conic-gradient(from 0deg, #1d6b55, #3ee08f, #1d6b55, #3ee08f, #1d6b55); filter: drop-shadow(0 0 40px rgba(62,224,143,.45)); }
+  #badge img { position: absolute; left: 50px; top: 50px; width: 300px; height: 300px; border-radius: 26%; }
+  #name { position: absolute; left: 0; right: 0; top: 420px; text-align: center; font-size: 150px; font-weight: 900; letter-spacing: -4px; }
+  #name b { display: block; font-size: 96px; color: #3ee08f; letter-spacing: -2px; margin-top: 4px; }
+  /* 2. Плитки */
+  .tile { position: absolute; width: 400px; height: 300px; border-radius: 40px; background: #121a19; border: 2px solid rgba(255,255,255,.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; font-size: 44px; font-weight: 800; opacity: 0; }
+  .tile i { font-style: normal; font-size: 96px; line-height: 1; }
+  .tile.on { background: linear-gradient(160deg, #3ee08f, #1fb37c); color: #06110c; border: 0; }
+  /* 3. Экран приложения в карточке */
+  .shot { position: absolute; left: 120px; width: 840px; top: 380px; height: 1180px; border-radius: 44px; overflow: hidden; background: #0b1220; box-shadow: 0 40px 100px rgba(0,0,0,.6), 0 0 0 3px rgba(255,255,255,.07); opacity: 0; }
+  .shot img { position: absolute; left: 0; width: 840px; }
+  .hl { position: absolute; border: 6px solid #3ee08f; border-radius: 26px; box-shadow: 0 0 0 9999px rgba(0,0,0,.38), 0 0 30px rgba(62,224,143,.7); opacity: 0; }
+  #site span { font-size: 64px; padding: 20px 46px; }
+</style>
+</head>
+<body>
+<!-- Обзор функций бота «Ценолов» (9:16, 16 с): бейдж-логотип, плитки функций, экраны приложения с подсветкой. Без голоса. -->
+<div id="main" data-composition-id="main" data-start="0" data-duration="16" data-width="1080" data-height="1920">
+  <div id="bg"></div>
+  <div id="hdr"><img src="assets/avatar.png" alt=""><span>Ценолов · Telegram</span></div>
+
+  <div class="pill" id="p0" style="top:300px"><span>Наконец-то</span></div>
+  <div id="name">Ценолов<b>для скинов CS2</b></div>
+  <div id="badge"><div class="r"></div><img src="assets/avatar.png" alt=""></div>
+  <div class="pill" id="p1" style="top:1260px"><span>бесплатный бот в Telegram</span></div>
+
+  <div class="pill" id="pg" style="top:200px"><span>Всё в одном приложении</span></div>
+  <div class="tile on" id="t1" style="left:120px;top:380px"><i>💡</i>Идеи</div>
+  <div class="tile" id="t2" style="left:560px;top:380px"><i>🔍</i>Цены</div>
+  <div class="tile" id="t3" style="left:120px;top:720px"><i>🎒</i>Мои скины</div>
+  <div class="tile" id="t4" style="left:560px;top:720px"><i>💳</i>Баланс Steam</div>
+  <div class="tile" id="t5" style="left:120px;top:1060px"><i>🔔</i>Уведомления</div>
+  <div class="tile" id="t6" style="left:560px;top:1060px"><i>📣</i>Канал</div>
+  <div class="pill" id="pmini" style="top:1420px"><span>Telegram Mini App</span></div>
+
+  <!-- Экраны: картинка 780×1688 показана шириной 840 (×1,077). top картинки подобран так, чтобы нужное место было в центре карточки. -->
+  <div class="pill" id="f1t" style="top:200px"><span>💡 Купи → продай дороже</span></div>
+  <div class="shot" id="f1"><img src="assets/ideas.png" style="top:-180px" alt=""><div class="hl" style="left:20px;top:222px;width:800px;height:428px"></div></div>
+  <div class="pill" id="f2t" style="top:200px"><span>🔍 Цена любого скина</span></div>
+  <div class="shot" id="f2"><img src="assets/search.png" style="top:0px" alt=""><div class="hl" style="left:20px;top:126px;width:800px;height:520px"></div></div>
+  <div class="pill" id="f3t" style="top:200px"><span>🎯 Цель — и бот напишет</span></div>
+  <div class="shot" id="f3"><img src="assets/prices.png" style="top:-140px" alt=""><div class="hl" style="left:20px;top:280px;width:800px;height:176px"></div></div>
+  <div class="pill" id="f4t" style="top:200px"><span>🎒 Инвентарь после комиссии</span></div>
+  <div class="shot" id="f4"><img src="assets/skins.png" style="top:-220px" alt=""><div class="hl" style="left:20px;top:262px;width:800px;height:206px"></div></div>
+  <div class="pill" id="f5t" style="top:200px"><span>💳 Идеи под баланс Steam</span></div>
+  <div class="shot" id="f5"><img src="assets/balance.png" style="top:-560px" alt=""><div class="hl" style="left:20px;top:925px;width:800px;height:176px"></div></div>
+
+  <div class="pill lt" id="site" style="top:1560px"><span>@cenolow_bot</span></div>
+  <div class="pill" id="free" style="top:1700px"><span>бесплатно · без пароля Steam</span></div>
+</div>
+<script>
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+  var pop = function (sel, at) { tl.fromTo(sel, { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, at); };
+  var out = function (sel, at) { tl.to(sel, { opacity: 0, scale: 0.96, duration: 0.2 }, at); };
+  // 1. «Наконец-то» → название → бейдж (0–2 с)
+  pop('#p0', 0.1); tl.fromTo('#name', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 0.35);
+  tl.fromTo('#badge', { opacity: 0, scale: 0.4, rotation: -20 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.6, ease: 'back.out(1.7)' }, 0.55);
+  tl.to('#badge .r', { rotation: 45, duration: 2, ease: 'none' }, 0.55);
+  pop('#p1', 1.0);
+  ['#p0', '#name', '#badge', '#p1'].forEach(function (s) { out(s, 2.0); });
+  // 2. Плитки функций (2,2–4,4 с)
+  tl.fromTo('#hdr', { opacity: 0 }, { opacity: 1, duration: 0.3 }, 2.2);
+  pop('#pg', 2.2);
+  ['#t1', '#t2', '#t3', '#t4', '#t5', '#t6'].forEach(function (s, i) { pop(s, 2.35 + i * 0.12); });
+  pop('#pmini', 3.1);
+  ['#pg', '#t1', '#t2', '#t3', '#t4', '#t5', '#t6', '#pmini'].forEach(function (s) { out(s, 4.4); });
+  // 3. Функции: плашка + экран с подсветкой (по 1,8 с)
+  ['1', '2', '3', '4', '5'].forEach(function (n, i) {
+    var t0 = 4.65 + i * 1.85;
+    pop('#f' + n + 't', t0);
+    tl.fromTo('#f' + n, { opacity: 0, y: 120 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, t0 + 0.05);
+    tl.fromTo('#f' + n + ' .hl', { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.3, ease: 'power2.out' }, t0 + 0.5);
+    tl.fromTo('#f' + n + ' .hl', { scale: 1 }, { scale: 1.02, duration: 0.25, yoyo: true, repeat: 1 }, t0 + 0.9);
+    out('#f' + n + 't', t0 + 1.65); out('#f' + n, t0 + 1.65);
+  });
+  // 4. Финал: плитки снова + имя бота (14–16 с)
+  ['#t1', '#t2', '#t3', '#t4', '#t5', '#t6'].forEach(function (s, i) { tl.fromTo(s, { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(2)' }, 13.95 + i * 0.06); });
+  pop('#site', 14.3); pop('#free', 14.55);
+  tl.to('#site', { scale: 1.06, duration: 0.3, yoyo: true, repeat: 3, ease: 'sine.inOut' }, 14.8);
+  window.__timelines['main'] = tl;
+</script>
+</body>
+</html>

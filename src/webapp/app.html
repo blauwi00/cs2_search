@@ -308,7 +308,19 @@ function curSelect(id, key) {
   return '<select id="' + id + '" class="cursel" style="width:auto;padding:8px 10px">' + Object.keys(FX).map(function (c) { return '<option value="' + c + '"' + (c === def ? ' selected' : '') + '>' + (CUR_SIGN[c] || c) + ' ' + c + '</option>'; }).join('') + '</select>';
 }
 /** Сумма в выбранной валюте → копейки бота (гривны). */
-function toKopIn(v, code) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * (FX[code] || CUR.per)); }
+/** Сумма из поля ввода: «1 234,56», «1.234,56», «1,234.56», «1.200» (= 1200), «12,5». Последний из «,» и «.» — дробная часть,
+ *  если после него 1–2 цифры; одиночный разделитель с ровно 3 цифрами после — разделитель тысяч. null — пусто, NaN — не число. */
+function parseAmt(v) {
+  v = String(v == null ? '' : v).replace(/[^\d,.]/g, '');
+  if (v === '') return null;
+  var i = Math.max(v.lastIndexOf(','), v.lastIndexOf('.')), frac = i >= 0 ? v.slice(i + 1) : '';
+  var dec = i >= 0 && frac.length > 0 && frac.length <= 2 && /^\d+$/.test(frac);
+  var whole = (dec ? v.slice(0, i) : v).replace(/[,.]/g, '');
+  if (whole === '' && !dec) return NaN;
+  var n = parseFloat((whole || '0') + (dec ? '.' + frac : ''));
+  return isNaN(n) ? NaN : n;
+}
+function toKopIn(v, code) { var n = parseAmt(v); return n == null || isNaN(n) ? n : Math.round(n * 100 * (FX[code] || CUR.per)); }
 function unitsIn(k, code) { return k == null ? '' : String(+(k / 100 / (FX[code] || CUR.per)).toFixed(2)).replace('.', ','); }
 var NO_CENTS = { JPY: 1, KRW: 1, HUF: 1, KZT: 1, ARS: 1 };
 /** Сумма в валюте, выбранной для площадки (💱 Валюта площадок); не выбрана — в валюте бота. */
@@ -1211,7 +1223,7 @@ function platformOptions(sel, noGift) {
   return p.filter(function (x) { return !(noGift && x.v === 'gift'); }).map(function (x) { return '<option value="' + x.v + '"' + (x.v === sel ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
 }
 function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-function toKop(v) { v = String(v || '').replace(/[^\d,.]/g, '').replace(',', '.'); if (v === '') return null; var n = parseFloat(v); return isNaN(n) ? NaN : Math.round(n * 100 * CUR.per); }
+function toKop(v) { var n = parseAmt(v); return n == null || isNaN(n) ? n : Math.round(n * 100 * CUR.per); }
 function buyForm(pre) {
   var h = '<h2>Записать покупку</h2><div class="sub">Бот ничего не покупает сам — это учёт твоих реальных сделок.</div>';
   h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Название — можно по-русски: «ак красная линия»" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';

@@ -97,13 +97,16 @@ export async function goneStmts(d: D1Database, tid: number, fresh: Map<number, n
   const old = (await d.prepare(`SELECT s.item_id, s.qty, COALESCE((SELECT SUM(ts.quantity) FROM trade_sales ts JOIN trades t ON t.id = ts.trade_id
       WHERE t.telegram_id = s.telegram_id AND t.item_id = s.item_id AND ts.created_at >= COALESCE(u.inv_synced_at, 0)), 0)
       + COALESCE((SELECT SUM(p.quantity) FROM pending_sales p JOIN trades t ON t.id = p.trade_id
-      WHERE p.telegram_id = s.telegram_id AND t.item_id = s.item_id AND p.created_at >= COALESCE(u.inv_synced_at, 0)), 0) AS sold
+      WHERE p.telegram_id = s.telegram_id AND t.item_id = s.item_id AND p.created_at >= COALESCE(u.inv_synced_at, 0)), 0)
+      -- …но не то, что записано через само «Пропало»: эта пропажа уже учтена прошлым обновлением (иначе вычли бы дважды).
+      - COALESCE((SELECT SUM(g.qty) FROM inv_gone g WHERE g.telegram_id = s.telegram_id AND g.item_id = s.item_id AND g.status = 'sold'
+      AND g.gone_at >= COALESCE(u.inv_synced_at, 0)), 0) AS sold
     FROM steam_inventory s JOIN users u ON u.telegram_id = s.telegram_id WHERE s.telegram_id = ?`).bind(tid).all<{ item_id: number; qty: number; sold: number }>()).results;
   const out: D1PreparedStatement[] = [];
   for (const o of old) {
     const n = fresh.get(o.item_id);
     if (n === undefined && partial) continue;
-    const diff = o.qty - (n ?? 0) - o.sold;
+    const diff = o.qty - (n ?? 0) - Math.max(0, o.sold);
     if (diff > 0) out.push(d.prepare('INSERT INTO inv_gone (telegram_id, item_id, qty, gone_at) VALUES (?, ?, ?, ?)').bind(tid, o.item_id, diff, now));
     if (out.length >= 200) break;
   }

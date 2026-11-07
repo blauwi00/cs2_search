@@ -216,6 +216,20 @@ test('пропало: без цены покупки записана тольк
   assert.equal(salesN(d), 2);
 });
 
+test('пропало: продажи, записанные через «Пропало», не вычитаются второй раз — новая пропажа видна', async () => {
+  const { d, D, call } = await goneSetup([['Kilowatt Case', 5]]);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'Kilowatt Case', qty: 3, marketable: 1, tradable: 1, img: null }], partial: false }, NOW);
+  const g = (await call('inventory/gone')).items[0];
+  assert.equal(g.qty, 2);
+  await call('inventory/gone/save', 'POST', { rows: [{ id: g.id, action: 'sold', platform: 'csgomarket', receivedKop: 3000, buyKop: 0 }] }, NOW + 60);
+  assert.equal(salesN(d), 2);
+  // Следующее обновление: ушла ещё 1 штука.
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'Kilowatt Case', qty: 2, marketable: 1, tradable: 1, img: null }], partial: false }, NOW + 600);
+  const g2 = (await call('inventory/gone', 'GET', undefined, NOW + 600)).items;
+  assert.equal(g2.length, 1, 'новая пропажа появилась');
+  assert.equal(g2[0].qty, 1);
+});
+
 test('пачка продаж: сервер говорит, сколько строк обработал, — приложение продолжает с нужной, без дублей', async () => {
   const { d, call } = await goneSetup([]);
   const rows = Array.from({ length: 12 }, (_, i) => ({ name: `Batch Case ${i}`, qty: 1, receivedKop: 1000, platform: 'csgomarket', buyKop: 500 }));

@@ -6,7 +6,7 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { decodeCertificate } from './inspect.mjs';
 import { russianSummary } from './patchnotes.mjs';
-import { computeCaseEV } from './caseev.mjs';
+// caseev.mjs подключается только там, где нужен (не в домашнем агенте: у него этого файла может не быть).
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -198,6 +198,7 @@ try {
         return r.json();
       }));
       const price = (n) => { const v = steamAvg.get(n); const usd = v?.d7 ?? v?.d30 ?? null; return usd && usd > 0 ? Math.round(usd * 100) : null; };
+      const { computeCaseEV } = await import('./caseev.mjs');
       const ev = computeCaseEV(crates, skins, price);
       console.log('Окупаемость кейсов:', ev.length, await toWorker('/ingest', { kind: 'case_ev', fetchedAt: now(), items: ev.slice(0, 60) }));
     } catch (e) {

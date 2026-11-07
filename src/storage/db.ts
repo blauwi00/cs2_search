@@ -48,8 +48,10 @@ export const DEFAULT_SETTINGS = {
   currency_ok: '',           // 1 = человек сам выбрал или подтвердил валюту
   setup_hidden: '',          // 1 = скрыл карточку «Настрой бота»
   terms_ok: '',
-  steam_balance_kop: '',     // баланс кошелька Steam, вписанный вручную (копейки бота); пусто — не задан
+  steam_balance_kop: '',     // баланс кошелька Steam, вписанный вручную: в мин. единицах валюты кошелька (steam_balance_cur); пусто — не задан
   steam_balance_at: '',      // когда вписан: продажи в Steam и покупки в Steam после этого меняют баланс сами
+  steam_balance_cur: '',     // валюта кошелька Steam на момент ввода (пусто — старая запись в копейках гривны)
+  recs_by_balance: '0',      // 1 = подбирать идеи с покупкой в Steam под баланс Steam
   suggest_ban: '0',          // 1 — владелец закрыл этому человеку предложку              // версия принятых условий использования (TERMS_VERSION)
 } as const;
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;

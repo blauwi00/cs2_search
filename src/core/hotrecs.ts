@@ -12,7 +12,7 @@ import { esc } from '../telegram/api.ts';
 import { TERMS_VERSION } from './terms.ts';
 import { IDEA_SETTINGS } from './insights.ts';
 import type { Keyboard } from '../telegram/api.ts';
-import { steamBalances } from './steambalance.ts';
+import { steamBalances, steamBuyLimit } from './steambalance.ts';
 
 export const HOT_FRESH_SEC = 40 * 60;
 export const HOT_REPEAT_SEC = 24 * 3600;
@@ -34,7 +34,7 @@ export function hotText(r: Rec, balanceKop: number | null = null): string {
   ].filter((x) => x !== '').join('\n').replace('\n\n<i>', '\n\n<i>');
 }
 
-/** Какую сделку предложить. Есть баланс Steam — сначала покупка в Steam, которая в него укладывается; дороже баланса в Steam — никогда. */
+/** Какую сделку предложить. Есть предел (галочка + баланс Steam) — сначала покупка в Steam, которая в него укладывается; дороже — никогда. */
 export function pickRec(list: Rec[], balanceKop: number | null, isNew: (r: Rec) => boolean): Rec | undefined {
   if (balanceKop !== null) {
     const fit = list.find((x) => x.buyAt === 'steam' && x.payKop <= balanceKop && isNew(x));
@@ -89,17 +89,19 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
   const isNew = (r: Rec) => { const p = before[hotKey(r)]; return !p || ctx.now - p.at >= HOT_REPEAT_SEC || (r.profitKop ?? 0) >= p.p * (1 + HOT_UP_BP / 10000); };
 
   const origin = await getMeta(d, 'public_origin');
-  // Баланс Steam (у кого вписан): сначала предлагаем то, что можно купить в Steam на эти деньги; дороже баланса в Steam — не предлагаем.
-  const balances = await steamBalances(d, new Map(eligible.map((id) => [id, settings.get(id)!])));
+  // Галочка «Подбирать идеи под баланс Steam»: сначала покупки в Steam, на которые хватает баланса; дороже — не предлагаем.
+  // Балансы считаем только тем, у кого галочка включена (2 запроса на всю рассылку).
+  const balances = await steamBalances(d, new Map(eligible.map((id) => [id, settings.get(id)!])), ctx.now, { onlyByBalance: true });
   const pending: { tid: number; r: Rec; s: db.Settings; bal: number | null }[] = [];
   for (const tid of eligible) {
     const s = settings.get(tid)!;
     const limit = Math.min(10, Math.max(1, db.num(s.recs_per_day) || 3));
     if ((today.get(tid) ?? 0) >= limit) continue;
     const b = balances.get(tid) ?? null;
-    const r = pickRec(comboOf(s), b?.kop ?? null, isNew);
+    const buyLim = steamBuyLimit(b, s);
+    const r = pickRec(comboOf(s), buyLim, isNew);
     if (!r) continue;
-    pending.push({ tid, r, s, bal: b && r.buyAt === 'steam' ? b.kop : null });
+    pending.push({ tid, r, s, bal: buyLim !== null && b && r.buyAt === 'steam' ? b.kop : null });
     sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, sent[hotKey(r)]?.p ?? 0), at: ctx.now };
   }
   // Ссылка «Купить» — сразу на страницу предмета (для Skinport адрес берём из его API): один запрос на всю рассылку.

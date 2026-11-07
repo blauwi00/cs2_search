@@ -42,23 +42,36 @@ import { steamNetKop } from '../core/fees.ts';
 import { MAX_SELL_ALERTS } from '../core/sellalerts.ts';
 import { calcFees } from '../core/calc.ts';
 import { findCandidates, capital, buyBlockers, checkChain, RALLY_KEYS, RALLY_DEFAULTS, UNLOCK_SEC, type RallyTrade, type RallySettings } from '../core/rally.ts';
-import { steamBalanceFor } from '../core/steambalance.ts';
+import { steamBalanceFor, steamBuyLimit, splitByBalance, type SteamBalance } from '../core/steambalance.ts';
 import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, rallyProven, BOT_MIN_CLOSED } from '../core/rallyjob.ts';
 import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
-async function recsFor(d: D1Database, tid: number, now: number) {
-  const [scan, fx, st] = await Promise.all([loadScan(d), db.loadLatestFx(d), db.getSettings(d, tid)]);
-  if (!scan || now - scan.fetchedAt > 86400) return { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[] };
+/**
+ * Идеи по всему рынку для человека. Галочка «Подбирать идеи под баланс Steam» (и вписанный баланс): покупки в Steam,
+ * на которые хватает баланса, — первыми, дороже — в hidden («Ещё N идей дороже твоего баланса — показать»). Как в уведомлениях.
+ * bal — уже посчитанный баланс (сводка считает его сама, чтобы не делать запросы дважды).
+ */
+async function recsFor(d: D1Database, tid: number, now: number, pre?: { st: db.Settings; bal: SteamBalance | null }) {
+  const [scan, fx, st] = await Promise.all([loadScan(d), db.loadLatestFx(d), pre ? pre.st : db.getSettings(d, tid)]);
+  const empty = { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[], hidden: [] as RecDto[], limitKop: null as number | null };
+  if (!scan || now - scan.fetchedAt > 86400) return empty;
   const r = buildRecs(scan.entries, fx, {
     minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp),
   });
+  const bal = pre ? pre.bal : st.recs_by_balance === '1' ? await steamBalanceFor(d, tid, st, now) : null;
+  const limitKop = steamBuyLimit(bal, st);
+  const split = splitByBalance(r.deals, limitKop);
   const pages = await loadSkinportPages(d, [...r.deals, ...r.trends].filter((x) => x.buyAt === 'skinport' || x.sellAt === 'skinport').map((x) => x.name).slice(0, 200));
-  const dto = (x: Rec) => recDto(x, pages);
-  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: r.deals.map(dto), trends: r.trends.map(dto) };
+  const dto = (x: Rec): RecDto => ({ ...recDto(x, pages), fitsBalance: limitKop !== null && x.buyAt === 'steam' && x.payKop <= limitKop });
+  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: split.shown.map(dto), trends: r.trends.map(dto), hidden: split.hidden.map(dto), limitKop };
 }
-type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string; buyName: string; sellName: string };
+/** Баланс Steam для приложения (шапка, окно баланса). byBalance — галочка (действует только при вписанном балансе). */
+function balanceDto(b: SteamBalance | null, st: db.Settings) {
+  return { steamBalance: b ? { kop: b.kop, minor: b.minor, cur: b.cur, at: b.at, sales: b.sales, buys: b.buys, stale: b.stale, mismatch: b.mismatch } : null, byBalance: st.recs_by_balance === '1' };
+}
+type RecDto = Rec & { buyUrl: string; sellUrl: string; category: string; buyName: string; sellName: string; fitsBalance?: boolean };
 function recDto(r: Rec, pages?: ItemPages): RecDto {
   return { ...r, buyUrl: itemUrl(r.buyAt, r.name, pages), sellUrl: itemUrl(r.sellAt, r.name, pages), buyName: MARKETS[r.buyAt].name, sellName: MARKETS[r.sellAt].name,
     category: CATEGORY_RU[parseMarketHashName(r.name).category] ?? '' };
@@ -288,7 +301,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const actions = wl.map((w) => ({ itemId: w.item_id, name: w.market_hash_name, category: w.category, advice: adv.get(w.item_id)!, img: imgs.get(w.market_hash_name) ?? null }))
         .filter((x) => x.advice && (x.advice.action === 'buy' || x.advice.action === 'sell'))
         .sort((a, b) => ACTION_RANK[a.advice.action] - ACTION_RANK[b.advice.action]).slice(0, 8);
-      const [recs, st, su] = await Promise.all([recsFor(d, tid, now), db.getSettings(d, tid),
+      const st = await db.getSettings(d, tid);
+      const bal = await steamBalanceFor(d, tid, st, now);
+      const [recs, su] = await Promise.all([recsFor(d, tid, now, { st, bal }),
         d.prepare('SELECT steam_id, steam_vanity, inv_status FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null; inv_status: string | null }>()]);
       const myWatch = wl.length;
       return json({
@@ -307,14 +322,14 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           const c = capital(tr, rs, 'real', now);
           return { balanceKop: c.balanceKop, availableKop: c.availableKop, reserveKop: rs.reserveKop, realizedKop: c.realizedKop, openCount: c.openCount, maxPositions: rs.maxPositions };
         })() : null,
-        recs: { fetchedAt: recs.fetchedAt, deals: await (async () => { const top = recs.deals.slice(0, 6); const im = top.length ? await imagesFor(d, top.map((x) => x.name)) : new Map<string, string>(); return top.map((x) => ({ ...x, img: im.get(x.name) ?? null })); })(), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length },
+        recs: { fetchedAt: recs.fetchedAt, deals: await (async () => { const top = recs.deals.slice(0, 6); const im = top.length ? await imagesFor(d, top.map((x) => x.name)) : new Map<string, string>(); return top.map((x) => ({ ...x, img: im.get(x.name) ?? null })); })(), trends: recs.trends.slice(0, 2), total: recs.deals.length + recs.trends.length, hidden: recs.hidden.length },
         sites: sitesFor(await loadRefLinks(d)),
         donors: await topDonors(d, 10),
         cronAlive: lastRun > 0 && now - lastRun < 300,
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),
         inventory: { lots: lots.length, costKop: cost, valueKop: value, unknown },
-        steamBalance: await (async () => { const b = await steamBalanceFor(d, tid, st); return b ? { kop: b.kop, at: b.at } : null; })(),
+        ...balanceDto(bal, st),
         today: {
           steamKop: todays.filter((s) => s.wallet === 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
           cashKop: todays.filter((s) => s.wallet !== 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
@@ -325,16 +340,32 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
 
     // Баланс кошелька Steam — вписывается вручную (бот не входит в аккаунт). null/пусто — убрать.
+    // Шапка приложения: баланс виден на каждой вкладке.
+    if (path === 'steam-balance' && method === 'GET') {
+      const st = await db.getSettings(d, tid);
+      return json({ ok: true, ...balanceDto(await steamBalanceFor(d, tid, st, now), st) });
+    }
+    // kop — новая сумма (в копейках бота; хранится в валюте кошелька Steam = валюта бота), null — убрать; byBalance — галочка.
     if (path === 'steam-balance' && method === 'POST') {
-      const v = body.kop;
-      if (v === null || v === '') {
-        await d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key IN ('steam_balance_kop', 'steam_balance_at')`).bind(tid).run();
-        return json({ ok: true, steamBalance: null });
+      const writes: D1PreparedStatement[] = [];
+      if ('kop' in body) {
+        const v = body.kop;
+        if (v === null || v === '') {
+          writes.push(d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key IN ('steam_balance_kop', 'steam_balance_at', 'steam_balance_cur')`).bind(tid));
+        } else {
+          const k = Number(v);
+          if (!Number.isSafeInteger(k) || k < 0 || k > 1e11) return bad('Неверная сумма');
+          const w = await walletCur();
+          const minor = w.code === 'UAH' ? k : Math.round(k / w.per);
+          writes.push(db.setSettingStmt(d, tid, 'steam_balance_kop', String(minor), now), db.setSettingStmt(d, tid, 'steam_balance_at', String(now), now),
+            db.setSettingStmt(d, tid, 'steam_balance_cur', w.code, now));
+        }
       }
-      const k = Number(v);
-      if (!Number.isSafeInteger(k) || k < 0 || k > 1e11) return bad('Неверная сумма');
-      await d.batch([db.setSettingStmt(d, tid, 'steam_balance_kop', String(k), now), db.setSettingStmt(d, tid, 'steam_balance_at', String(now), now)]);
-      return json({ ok: true, steamBalance: { kop: k, at: now } });
+      if (typeof body.byBalance === 'boolean') writes.push(db.setSettingStmt(d, tid, 'recs_by_balance', body.byBalance ? '1' : '0', now));
+      if (!writes.length) return bad('Нечего менять');
+      await d.batch(writes);
+      const st = await db.getSettings(d, tid);
+      return json({ ok: true, ...balanceDto(await steamBalanceFor(d, tid, st, now), st) });
     }
 
     // ---------- Steam: вход (только SteamID) и открытый инвентарь ----------
@@ -832,7 +863,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     // ---------- Настройки и состояние ----------
     if (path === 'settings' && method === 'GET') {
       const [s, rates] = await Promise.all([db.getSettings(d, tid), loadRates(d)]);
-      return json({ ok: true, currencies: availableCurrencies(rates), settings: settingsFor(isAdmin).map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
+      return json({ ok: true, currencies: availableCurrencies(rates), hasBalance: s.steam_balance_kop !== '', settings: settingsFor(isAdmin).map((m) => ({ key: m.key, label: m.label, kind: m.kind, value: s[m.key], display: displayValue(m, s), choices: m.choices ?? null, hint: m.hint ?? null })) });
     }
     if (path === 'settings' && method === 'POST' && body.key === 'currency') {
       const rates = await loadRates(d);

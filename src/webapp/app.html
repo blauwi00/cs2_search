@@ -24,6 +24,10 @@ button{font:inherit;color:inherit}
 .top{position:sticky;top:0;z-index:5;background:var(--bg2);padding:calc(12px + var(--safe-top)) 16px 8px;display:flex;align-items:center;gap:10px}
 :root{--safe-top:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
 .top h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px;flex:1}
+.balbtn{flex:none;border:1px solid var(--line,rgba(127,127,127,.25));background:var(--card,transparent);color:inherit;border-radius:999px;padding:6px 11px;font:600 14px/1.1 inherit;white-space:nowrap;cursor:pointer}
+.balbtn.warn{border-color:var(--amber,#e0a030)}
+.balbtn .w{color:var(--amber,#e0a030)}
+.fitb{display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:var(--pos,#3a3)}
 .menubtn{background:var(--card);border:0;border-radius:12px;width:38px;height:34px;font-size:22px;line-height:1;color:var(--text);cursor:pointer}
 .top{flex-wrap:wrap}
 .ticker{flex:0 0 calc(100% + 32px);margin:2px -16px 0;overflow:hidden;white-space:nowrap;font-size:13px;color:var(--hint);cursor:pointer;
@@ -228,7 +232,7 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 </style>
 </head>
 <body>
-<div class="top"><div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-t)" stroke-width="2.2"><circle cx="12" cy="12" r="8.5" stroke-opacity=".55"></circle><circle cx="12" cy="12" r="4" stroke-opacity=".35"></circle><g class="sweep"><path d="M12 12 L12 3.5" stroke-linecap="round"></path></g><circle cx="12" cy="12" r="1.6" fill="var(--accent-t)" stroke="none"></circle></svg></div><h1 id="title">Ценолов</h1><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker chips2" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
+<div class="top"><div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-t)" stroke-width="2.2"><circle cx="12" cy="12" r="8.5" stroke-opacity=".55"></circle><circle cx="12" cy="12" r="4" stroke-opacity=".35"></circle><g class="sweep"><path d="M12 12 L12 3.5" stroke-linecap="round"></path></g><circle cx="12" cy="12" r="1.6" fill="var(--accent-t)" stroke="none"></circle></svg></div><h1 id="title">Ценолов</h1><button id="balbtn" class="balbtn" aria-label="Баланс Steam" style="display:none">💳 …</button><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker chips2" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
 <div id="splash" style="display:none" aria-hidden="true"><div class="sp"><svg width="120" height="120" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-opacity=".25"></circle><circle cx="60" cy="60" r="36" fill="none" stroke="var(--accent)" stroke-opacity=".18"></circle><circle class="ring" cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-width="2"></circle><g class="sweep" style="transform-origin:60px 60px"><path d="M60 60 L60 4 A56 56 0 0 1 108 32 Z" fill="var(--accent)" fill-opacity=".35"></path></g><circle cx="60" cy="60" r="4" fill="var(--accent)"></circle></svg><div class="nm">Ценолов</div><div class="sb">ищу выгодные цены…</div></div></div>
 <div class="wrap" id="view"></div>
 <nav class="tabs" id="tabs">
@@ -392,6 +396,9 @@ function api(path, opt) {
       if (j.admin) state.isAdmin = true;
       if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
       if (j.channelUrl !== undefined) state.channelUrl = j.channelUrl || '';
+      if (j.steamBalance !== undefined) { state.bal = j.steamBalance; state.byBalance = !!j.byBalance; renderBal(); }
+      // Записали продажу или покупку — баланс Steam мог измениться: обновим шапку.
+      if (opt.method === 'POST' && /^(inventory|sales)/.test(path)) refreshBal();
       return j;
     });
   });
@@ -509,23 +516,44 @@ function rateHtml(x) {
   if (x.rating == null) return '<div class="sr off">нет оценки</div>';
   return '<div class="sr ' + (x.rating >= 4.5 ? 'hi' : x.rating >= 3.5 ? 'mid' : 'lo') + '">' + (x.rating < 3.5 ? '⚠️ ' : '') + '★ ' + x.rating.toFixed(1) + '</div>';
 }
-// Баланс Steam: вписывается вручную (бот не входит в аккаунт), дальше бот сам учитывает продажи и покупки в Steam.
-function balanceCard(s) {
-  var b = s.steamBalance, inv = s.inventory || {};
-  if (!b) return '<div class="row" id="bal" style="border:1px dashed var(--accent)"><div class="ic">💳</div><div class="m"><div class="n">Баланс Steam</div><div class="d">Впиши — бот покажет итог и будет подбирать идеи под эти деньги</div></div><div class="mut">›</div></div>';
-  var v = inv.valueKop || 0;
-  return '<div class="grid2" id="bal" style="cursor:pointer">' + stat('Баланс Steam', uahShort(b.kop), 'вписан ' + ago(b.at) + ' · ✏️ изменить') +
-    stat('Всего', uahShort(b.kop + v), 'баланс + инвентарь' + (inv.lots ? ' (оценка ' + uahShort(v) + ')' : '')) + '</div>';
+// Баланс Steam — в шапке на каждой вкладке. Вписывается вручную (бот не входит в аккаунт Steam),
+// дальше бот сам учитывает продажи и покупки в Steam, которые ты отмечаешь.
+function balText(b) {
+  if (!b) return '💳 Вписать баланс';
+  return '💳 ' + (b.mismatch ? '<span class="w">⚠️ ' + uahShort(b.kop) + '</span>' : uahShort(b.kop)) + (b.stale && !b.mismatch ? ' <span class="w">•</span>' : '');
 }
-function balanceSheet(cur, done) {
-  sheet('<h2>💳 Баланс Steam</h2><div class="sub">Сколько сейчас на кошельке Steam. Бот не входит в твой аккаунт, поэтому баланс вписываешь ты — дальше продажи и покупки в Steam, которые ты отмечаешь в боте, он учтёт сам.</div>' +
-    '<label class="f"><span>Баланс, ' + CUR.sign + '</span><input id="sbv" inputmode="decimal" value="' + (cur ? units(cur.kop) : '') + '" placeholder="например 250,40"></label>' +
-    '<button class="btn" id="sbok">Сохранить</button>' + (cur ? '<button class="btn sec2" id="sbdel">Убрать баланс</button>' : ''));
-  var save = function (kop) {
-    api('steam-balance', { method: 'POST', body: { kop: kop } }).then(function () { haptic('ok'); closeSheet(); if (done) done(); }).catch(function (e) { toast(e.message); });
+function renderBal() {
+  var el = $('#balbtn'); if (!el || !INIT) return;
+  el.style.display = '';
+  el.innerHTML = balText(state.bal);
+  el.classList.toggle('warn', !!(state.bal && (state.bal.mismatch || state.bal.stale)));
+  el.onclick = function () { haptic(); balanceSheet(); };
+}
+var balT = 0;
+function refreshBal() { clearTimeout(balT); balT = setTimeout(function () { api('steam-balance').catch(function () {}); }, 400); }
+function balanceSheet() {
+  var b = state.bal;
+  var h = '<h2>💳 Баланс Steam</h2><div class="sub">Сколько сейчас на кошельке Steam, в ' + esc(CUR.code) + '. Бот не входит в твой аккаунт — баланс вписываешь ты, а продажи и покупки в Steam, которые ты отмечаешь в боте, он учитывает сам.</div>';
+  if (b && b.mismatch) h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ Расходится со Steam: по записанным покупкам потрачено больше, чем было. Впиши баланс заново.</div>';
+  else if (b && b.stale) h += '<div class="card" style="color:var(--amber);font-size:14px">Баланс не обновлялся больше двух недель — проверь, совпадает ли со Steam.</div>';
+  if (b) h += '<div class="card" style="font-size:14px">' + kv('Сейчас', uah(b.kop)) + kv('Вписан', ago(b.at)) + kv('Учтено после этого', 'продаж в Steam: ' + b.sales + ' · покупок: ' + b.buys) + '</div>';
+  h += '<label class="f"><span>' + (b ? 'Новый баланс' : 'Баланс') + ', ' + CUR.sign + '</span><input id="sbv" inputmode="decimal" placeholder="например 1 250,40"></label>';
+  h += '<button class="btn" id="sbok">Сохранить</button>';
+  h += '<div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Подбирать идеи под баланс Steam<div class="mut" style="font-size:12px">' +
+    (b ? 'Покупки в Steam — только на которые хватает баланса, и они первыми. Покупки на других сайтах не меняются.' : 'Сначала впиши баланс') +
+    '</div></span><label class="sw"><input type="checkbox" id="sbby"' + (state.byBalance ? ' checked' : '') + (b ? '' : ' disabled') + '><b></b></label></div></div>';
+  if (b) h += '<button class="btn sec2" id="sbdel">Убрать баланс</button>';
+  sheet(h);
+  var post = function (body, msg) {
+    return api('steam-balance', { method: 'POST', body: body }).then(function () { haptic('ok'); if (msg) toast(msg); state.cache = {}; if (state.tab === 'home' || state.tab === 'deals') go(state.tab); });
   };
-  $('#sbok').onclick = function () { var k = toKop($('#sbv').value); if (k == null || isNaN(k) || k < 0) return toast('Впиши сумму, например 250,40'); save(k); };
-  if ($('#sbdel')) $('#sbdel').onclick = function () { save(null); };
+  $('#sbok').onclick = function () {
+    var k = toKop($('#sbv').value);
+    if (k == null || isNaN(k) || k < 0) return toast('Впиши сумму, например 1 250,40');
+    post({ kop: k }, 'Баланс сохранён').then(function () { closeSheet(); }).catch(function (e) { toast(e.message); });
+  };
+  $('#sbby').onchange = function () { var on = $('#sbby').checked; post({ byBalance: on }, on ? 'Идеи — под баланс Steam' : 'Идеи — как раньше').catch(function (e) { $('#sbby').checked = !on; toast(e.message); }); };
+  if ($('#sbdel')) $('#sbdel').onclick = function () { post({ kop: null }, 'Баланс убран').then(function () { closeSheet(); }).catch(function (e) { toast(e.message); }); };
 }
 function setupCard(su) {
   if (!su) return '';
@@ -570,7 +598,6 @@ function home() {
   api('summary').then(function (s) {
     renderTicker(s);
     var h = heroCard(s);
-    h += balanceCard(s);
     h += setupCard(s.setup);
     // Площадки: где покупать и продавать. Партнёрские ссылки помечены честно.
     var sites = s.sites || [];
@@ -583,7 +610,6 @@ function home() {
     view.innerHTML = h;
     bindSetup();
     bindHero(s);
-    if ($('#bal')) $('#bal').onclick = function () { haptic(); balanceSheet(s.steamBalance, home); };
     $('#h-terms').onclick = termsSheet;
     Array.prototype.forEach.call(document.querySelectorAll('[data-site]'), function (el) {
       el.onclick = function () { haptic(); var x = sites.filter(function (y) { return y.key === el.getAttribute('data-site'); })[0]; if (x) openLink(x.url); };
@@ -637,7 +663,7 @@ function recCard(r) {
   if (r.kind === 'trend') {
     return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + '<div class="mut" style="font-size:13px">' + esc(r.reason) + '</div></div>';
   }
-  return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + flowHtml(r) + '</div>';
+  return '<div class="rc" data-rec="' + esc(r.kind + '|' + r.name) + '">' + head + flowHtml(r) + (r.fitsBalance ? '<span class="fitb">💳 Хватает баланса Steam' + (state.bal ? ' (≈' + uahShort(state.bal.kop) + ')' : '') + '</span>' : '') + '</div>';
 }
 function flowHtml(r) {
   var st = function (l, mk, v, cls2) { return '<div class="st' + (cls2 || '') + '"><div class="l">' + l + '</div>' + (mk ? '<div class="mk">' + esc(mk) + '</div>' : '') + '<div class="v">' + uahShort(v) + '</div></div>'; };
@@ -707,6 +733,9 @@ function deals() {
       h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
       h += '<div class="sec">Купить и продать дороже</div>';
       h += r.deals.length ? r.deals.map(recCard).join('') : '<div class="card mut" style="font-size:14px">Сейчас нет вариантов, где после всех комиссий остаётся прибыль.</div>';
+      // Галочка «под баланс Steam»: дорогие покупки в Steam не теряем — показываем по нажатию.
+      var hid = r.hidden || [];
+      if (hid.length) h += '<div id="r-hid"><div class="row" id="r-hid-b"><div class="ic">💳</div><div class="m"><div class="n">Ещё ' + hid.length + ' ' + (hid.length === 1 ? 'идея' : hid.length < 5 ? 'идеи' : 'идей') + ' дороже твоего баланса Steam</div><div class="d">Показать</div></div><div class="mut">›</div></div></div>';
       if (mine.length) {
         h += '<div class="sec">Из твоего списка: купить → продать в Steam</div>';
         h += mine.slice(0, 10).map(dealRow).join('');
@@ -718,7 +747,8 @@ function deals() {
     if ($('#r-how')) $('#r-how').onclick = function () {
       sheet('<h2>Как бот подбирает рекомендации</h2><div class="card info"><p>Каждые 10 минут бот сравнивает цены Steam, Skinport, Market.CSGO, Waxpeer и LIS-SKINS.</p><p>💸 <b>Купить и продать дороже</b> — где купить дешевле, чем потом можно продать, <b>после всех комиссий</b>. Только предметы, которые реально покупают (не меньше 7 продаж за неделю).</p><p>📈 <b>Растут в цене</b> — что уже дорожает последнюю неделю. Рост может развернуться.</p><p>«Получишь деньгами» — можно вывести с сайта. «На Steam» — останется на балансе Steam, вывести нельзя.</p></div><div class="note"><b>Честно:</b> «100% вырастет» не бывает. Цены — на момент проверки, перед покупкой проверь на сайте. Бот ничего не покупает сам. Свои пороги прибыли и комиссии банка — в Ещё → Настройки.</div>');
     };
-    bindRecs(r.deals.concat(r.trends));
+    bindRecs(r.deals.concat(r.trends, r.hidden || []));
+    if ($('#r-hid-b')) $('#r-hid-b').onclick = function () { haptic(); $('#r-hid').innerHTML = (r.hidden || []).map(recCard).join(''); bindRecs(r.deals.concat(r.trends, r.hidden || [])); };
     bindDeals(mine);
     bindRecSwitch();
     if ($('#r-stats')) {
@@ -2036,7 +2066,7 @@ function settings() {
   sheet('<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   api('settings').then(function (r) {
     var h = '<h2>Настройки</h2><div class="sub">Сохраняются сразу. Суммы — в ' + esc(CUR.code) + '.</div>';
-    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'notify_recs', 'recs_per_day', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['weekly_report', 'daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
+    var groups = [['Сделки', ['budget_kop', 'max_buy_kop', 'recs_by_balance', 'min_profit_kop', 'min_roi_bp', 'min_liquidity']], ['Комиссии при оплате и выводе', ['deposit_fee_bp', 'withdraw_fee_bp']], ['Уведомления', ['notify_enabled', 'notify_recs', 'recs_per_day', 'min_priority', 'max_per_hour', 'quiet_start', 'quiet_end', 'sig_arbitrage', 'sig_change', 'sig_target', 'sig_inventory', 'change_threshold_bp']], ['Сводка и данные', ['weekly_report', 'daily_report', 'daily_hour', 'max_stale_min', 'src_steam', 'src_skinport', 'src_csfloat']]];
     var by = {}; r.settings.forEach(function (s) { by[s.key] = s; });
     if (r.currencies && r.currencies.length) {
       h += '<div class="sec">Валюта</div><div class="card" style="padding:4px 14px"><div class="kv" style="align-items:center"><span>Показывать цены в<div class="mut" style="font-size:12px">Пересчёт по курсу НБУ (RUB, BRL, ARS — через доллар). В Steam цена в твоём кошельке может немного отличаться.</div></span><select id="curSel" style="width:auto;max-width:46%;padding:7px 10px">' +
@@ -2046,7 +2076,9 @@ function settings() {
       h += '<div class="sec">' + g[0] + '</div><div class="card" style="padding:4px 14px">';
       g[1].forEach(function (k) {
         var s = by[k]; if (!s) return;
-        if (s.kind === 'toggle') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><label class="sw"><input type="checkbox" data-k="' + k + '"' + (s.value === '1' ? ' checked' : '') + '><b></b></label></div>';
+        // «Подбирать идеи под баланс Steam» — неактивна, пока баланс не вписан.
+        var off = k === 'recs_by_balance' && !r.hasBalance, hint = k === 'recs_by_balance' ? (off ? 'Сначала впиши баланс — кнопка 💳 вверху' : s.hint) : null;
+        if (s.kind === 'toggle') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + (hint ? '<div class="mut" style="font-size:12px">' + esc(hint) + '</div>' : '') + '</span><label class="sw"><input type="checkbox" data-k="' + k + '"' + (s.value === '1' ? ' checked' : '') + (off ? ' disabled' : '') + '><b></b></label></div>';
         else if (s.kind === 'choice') h += '<div class="kv" style="align-items:center"><span>' + esc(s.label) + '</span><select data-k="' + k + '" style="width:auto;padding:7px 10px">' + s.choices.map(function (c) { return '<option value="' + c.v + '"' + (c.v === s.value ? ' selected' : '') + '>' + esc(c.t) + '</option>'; }).join('') + '</select></div>';
         else {
           var raw = s.kind === 'uah' ? units(Number(s.value)) : s.kind === 'percent' ? (Number(s.value) / 100).toString().replace('.', ',') : s.value;
@@ -2065,7 +2097,7 @@ function settings() {
       var k = el.getAttribute('data-k');
       var save = function () {
         var val = el.type === 'checkbox' ? el.checked : el.value;
-        api('settings', { method: 'POST', body: { key: k, value: val } }).then(function () { haptic('ok'); toast('Сохранено'); }).catch(function (e) { toast(e.message); });
+        api('settings', { method: 'POST', body: { key: k, value: val } }).then(function () { haptic('ok'); toast('Сохранено'); if (k === 'recs_by_balance') { state.cache = {}; refreshBal(); } }).catch(function (e) { toast(e.message); });
       };
       if (el.tagName === 'INPUT' && el.type !== 'checkbox') el.onchange = save; else el.onchange = save;
     });
@@ -2103,6 +2135,7 @@ loading(3);
   var hide = function () { sp.classList.add('out'); setTimeout(function () { sp.style.display = 'none'; }, 480); };
   sp.onclick = hide; setTimeout(hide, 1300);
 })();
+renderBal(); refreshBal();
 api('terms').then(function (t) { if (t.accepted && !t.onboarded) onboarding(first); else if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });
 })();
 </script>

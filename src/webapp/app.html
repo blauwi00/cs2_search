@@ -1352,11 +1352,13 @@ function buyForm(pre) {
   if (!pre.name) bindSearch($('#bq'), $('#bsr'), function (n) { name = n; $('#bq').parentNode.style.display = 'none'; $('#bname').style.display = 'block'; $('#bname').textContent = n; }, '✓');
   $('#bsave').onclick = function () {
     var bc = $('#bcur').value, price = toKopIn($('#bpr').value, bc), fee = toKopIn($('#bfee').value, bc) || 0;
+    var pa = parseAmt($('#bpr').value), fa = parseAmt($('#bfee').value);
     lsSet('cur_buy', bc);
     if (!name) return toast('Выбери предмет');
     if (price == null || isNaN(price) || price < 0) return toast('Введи цену');
-    api('inventory', { method: 'POST', body: { name: name, qty: +$('#bqty').value, priceKop: price, feeKop: fee, platform: $('#bpl').value, date: $('#bdt').value, signalId: pre.signalId || null } })
-      .then(function () { haptic('ok'); toast('Записано в покупки'); state.invTab = 'mine'; go('trades'); }).catch(function (e) { toast(e.message); });
+    // Сумма — в валюте, в которой платил: сервер пересчитает по курсу НБУ на дату покупки.
+    api('inventory', { method: 'POST', body: { name: name, qty: +$('#bqty').value, priceKop: price, feeKop: fee, cur: bc, priceMinor: Math.round(pa * 100), feeMinor: fa ? Math.round(fa * 100) : 0, platform: $('#bpl').value, date: $('#bdt').value, signalId: pre.signalId || null } })
+      .then(function (r) { haptic('ok'); toast(r.rateExact === false ? 'Записано. Курса на эту дату нет — взят сегодняшний' : 'Записано в покупки'); state.invTab = 'mine'; go('trades'); }).catch(function (e) { toast(e.message); });
   };
 }
 function lotSheet(l) {

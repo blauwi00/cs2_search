@@ -23,7 +23,7 @@ import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop } from '../currency/nbu.ts';
 import { steamLoginUrl, newNonce, parseSteamProfile } from '../steam_link.ts';
 import { floatNote, type AssetDetail } from '../core/inspect.ts';
-import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency } from '../currency/display.ts';
+import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency, parseNbuDisplay } from '../currency/display.ts';
 import { renderMoney } from '../utils/money.ts';
 import { PRIVACY_POINTS } from '../core/privacy.ts';
 import { steamSellPrice } from '../core/sellprice.ts';
@@ -76,6 +76,26 @@ async function watchedCountCached(d: D1Database, m: Memo, now: number): Promise<
   const n = await db.countActiveWatched(d);
   m.watched = { n, at: now };
   return n;
+}
+
+/**
+ * Курс валюты (гривен за 1 единицу) на дату покупки — по НБУ за тот день (кэш в meta nbu_day:ГГГГ-ММ-ДД).
+ * Сегодня — текущий курс. Нет курса на дату (НБУ не ответил, валюты нет — например, рубль) — сегодняшний, exact=false.
+ */
+async function rateOn(d: D1Database, code: string, date: string, today: string): Promise<{ per: number; exact: boolean } | null> {
+  if (code === 'UAH') return { per: 1, exact: true };
+  const nowRates = await loadRates(d);
+  const fallback = nowRates[code] ? { per: nowRates[code], exact: date === today } : null;
+  if (date === today) return fallback;
+  let day: Record<string, number> | null = null;
+  try { day = JSON.parse((await getMeta(d, `nbu_day:${date}`)) ?? 'null'); } catch { day = null; }
+  if (!day) {
+    try {
+      const r = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?date=${date.replace(/-/g, '')}&json`, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) { day = parseNbuDisplay(await r.json()); if (Object.keys(day).length) await setMetaStmt(d, `nbu_day:${date}`, JSON.stringify(day)).run(); }
+    } catch { day = null; }
+  }
+  return day?.[code] ? { per: day[code], exact: true } : fallback;
 }
 
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
@@ -708,9 +728,20 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'inventory' && method === 'POST') {
       if (!isAdmin && (await T.openTrades(d, tid)).length >= LOTS_LIMIT) return bad(`Лимит — ${LOTS_LIMIT} открытых позиций в инвентаре. Отметь проданные или удали лишние.`);
       const name = typeof body.name === 'string' ? body.name.trim() : '';
-      const qty = Number(body.qty), price = Number(body.priceKop), fee = Number(body.feeKop ?? 0);
+      const qty = Number(body.qty);
+      let price = Number(body.priceKop), fee = Number(body.feeKop ?? 0);
       const platform = String(body.platform ?? '');
       const date = parseDateInput(String(body.date ?? 'сегодня'), warsawDate(now));
+      // Сумма в валюте, в которой платил (cur + сотые доли): пересчёт по курсу НБУ на дату покупки.
+      let rate: { per: number; exact: boolean } | null = null;
+      if (body.cur !== undefined && date) {
+        if (!isCurrency(body.cur)) return bad('Неизвестная валюта');
+        const pm = Number(body.priceMinor), fm = Number(body.feeMinor ?? 0);
+        if (!Number.isSafeInteger(pm) || pm < 0 || !Number.isSafeInteger(fm) || fm < 0) return bad('Неверная цена');
+        rate = await rateOn(d, body.cur, date, warsawDate(now));
+        if (!rate) return bad('Нет курса для этой валюты');
+        price = Math.round(pm * rate.per); fee = Math.round(fm * rate.per);
+      }
       if (name.length < 3) return bad('Укажи предмет');
       if (!Number.isInteger(qty) || qty < 1 || qty > 10000) return bad('Количество: от 1 до 10000');
       if (!Number.isSafeInteger(price) || price < 0) return bad('Неверная цена');
@@ -721,7 +752,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const signalId = Number.isSafeInteger(Number(body.signalId)) && Number(body.signalId) > 0 ? Number(body.signalId) : null;
       const id = await T.addTrade(d, { tid, itemId: item.id, signalId, quantity: qty, buyPriceKop: price, buyFeeKop: fee, platform, buyDate: date, note: null, now });
       await T.addWatchFromInventory(d, tid, item.id, now);
-      return json({ ok: true, id });
+      return json({ ok: true, id, rateExact: rate ? rate.exact : true });
     }
     // «Пропало из инвентаря Steam» — предложить записать как продажи.
     if (path === 'inventory/gone' && method === 'GET') {

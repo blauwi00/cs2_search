@@ -128,3 +128,32 @@ test('«Пригласить друга»: сводка отдаёт имя бо
   const r = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': init } }), env, T0)).json() as Record<string, any>;
   assert.equal(r.botUser, 'cenolov_bot');
 });
+
+test('покупка в другой валюте: курс НБУ на дату покупки (кэш на день); нет курса на дату — сегодняшний с пометкой', async () => {
+  const { migratedDb, testEnv } = await import('./helpers.ts');
+  const { signInitData } = await import('../src/webapp/auth.ts');
+  const { handleAppApi } = await import('../src/webapp/api.ts');
+  const d = migratedDb();
+  const env = testEnv(d);
+  const T0 = Date.parse('2026-11-07T10:00:00Z') / 1000;
+  d.db.exec(`INSERT INTO meta (key, value) VALUES ('fx_display', '{"USD":42,"EUR":48,"RUB":0.5}') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+  const g = globalThis as { fetch: typeof fetch }, orig = g.fetch;
+  let calls = 0;
+  g.fetch = (async (u: string) => { calls++; assert.match(String(u), /date=20260901/); return new Response(JSON.stringify([{ cc: 'USD', rate: 41.5 }, { cc: 'EUR', rate: 45 }]), { status: 200 }); }) as typeof fetch;
+  try {
+    const init = await signInitData({ auth_date: String(T0), query_id: 'Q', user: JSON.stringify({ id: 4545 }) }, 'TEST_TOKEN');
+    const call = async (body: object) => (await handleAppApi(new Request('https://w/app/api/inventory', { method: 'POST', headers: { 'X-Init-Data': init }, body: JSON.stringify(body) }), env, T0)).json() as Promise<Record<string, any>>;
+    const lot = (id: number) => d.db.prepare('SELECT buy_price_kop, buy_fee_kop FROM trades WHERE id = ?').get(id) as { buy_price_kop: number; buy_fee_kop: number };
+    const base = { name: 'AK-47 | Slate (Field-Tested)', qty: 1, platform: 'skinport', priceKop: 1, feeKop: 0 };
+    const a = await call({ ...base, cur: 'USD', priceMinor: 1000, feeMinor: 50, date: '2026-09-01' });
+    assert.equal(a.rateExact, true);
+    assert.deepEqual({ ...lot(a.id) }, { buy_price_kop: 41500, buy_fee_kop: 2075 }, '10 $ по курсу 1 сентября (41,5), а не сегодняшнему (42)');
+    await call({ ...base, cur: 'EUR', priceMinor: 100, date: '2026-09-01' });
+    assert.equal(calls, 1, 'курс на этот день — из кэша, НБУ второй раз не спрашиваем');
+    const b = await call({ ...base, cur: 'USD', priceMinor: 1000, date: '2026-11-07' });
+    assert.equal(lot(b.id).buy_price_kop, 42000, 'сегодня — текущий курс');
+    const c = await call({ ...base, cur: 'RUB', priceMinor: 10000, date: '2026-09-01' });
+    assert.equal(c.rateExact, false, 'рубля в НБУ нет — сегодняшний курс с пометкой');
+    assert.equal(lot(c.id).buy_price_kop, 5000);
+  } finally { g.fetch = orig; }
+});

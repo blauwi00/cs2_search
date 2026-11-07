@@ -27,7 +27,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'kick_collector', intervalSec: 10 * 60, lockSec: 60, minD1: 2 },
   { name: 'channel', intervalSec: 5 * 60, lockSec: 60, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'ideas', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 3 * 60 },
-  { name: 'weekly', intervalSec: 20 * 60, lockSec: 90, minD1: 6, firstDelaySec: 4 * 60 },
+  { name: 'weekly', intervalSec: 10 * 60, lockSec: 90, minD1: 6, firstDelaySec: 4 * 60 },
   { name: 'hot_recs', intervalSec: 5 * 60, lockSec: 90, minD1: 4, firstDelaySec: 2 * 60 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },

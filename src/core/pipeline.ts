@@ -651,7 +651,7 @@ export async function jobDailyReport(ctx: Ctx): Promise<void> {
   ).bind(today).all<{ tid: number }>()).results.map((r) => r.tid);
   if (!cands.length) return;
   const st = await loadUserSettings(ctx.db, cands);
-  const due = cands.filter((t) => { const s = st.get(t)!; return s.daily_report === '1' && hour >= (db.num(s.daily_hour) || 20); }).slice(0, 4);
+  const due = cands.filter((t) => { const s = st.get(t)!; return s.daily_report === '1' && hour >= (db.num(s.daily_hour) || 20); }).slice(0, 12); // до 12 за запуск (раз в 5 мин); запас запросов проверяет canD1 ниже
   const pending: D1PreparedStatement[] = [];
   for (const tid of due) {
     if (!canD1(ctx, 6)) break;

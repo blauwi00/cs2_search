@@ -1,0 +1,36 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    .ttl { position: absolute; top: 200px; left: 60px; right: 60px; text-align: center; font-size: 84px; font-weight: 900; line-height: 1.05; letter-spacing: -1.5px; }
+    .ttl b { color: #3ee08f; }
+    .br { position: absolute; left: 90px; right: 90px; height: 92px; }
+    .br .n { position: absolute; left: 0; top: 0; width: 330px; height: 92px; display: flex; align-items: center; font-size: 40px; font-weight: 700; }
+    .br .t { position: absolute; left: 340px; right: 150px; top: 26px; height: 40px; border-radius: 20px; background: rgba(255,255,255,.07); overflow: hidden; }
+    .br .f { height: 100%; border-radius: 20px; background: #3ee08f; transform-origin: left; }
+    .br.hi .f { background: #ff8787; } .br .p { position: absolute; right: 0; top: 0; width: 140px; height: 92px; display: flex; align-items: center; justify-content: flex-end; font-size: 44px; font-weight: 900; }
+  </style>
+  <div id="root" data-composition-id="s3" data-width="1080" data-height="1920">
+    <div class="ttl">Сколько <b>забирают</b></div>
+    <div class="br hi" id="b0" style="top:470px"><div class="n">Steam</div><div class="t"><div class="f" style="width:100.0%"></div></div><div class="p">≈15%</div></div>
+    <div class="br " id="b1" style="top:582px"><div class="n">Skinport</div><div class="t"><div class="f" style="width:53.3%"></div></div><div class="p">8%</div></div>
+    <div class="br " id="b2" style="top:694px"><div class="n">Waxpeer</div><div class="t"><div class="f" style="width:40.0%"></div></div><div class="p">6%</div></div>
+    <div class="br " id="b3" style="top:806px"><div class="n">Market.CSGO</div><div class="t"><div class="f" style="width:33.3%"></div></div><div class="p">5%</div></div>
+    <div class="br " id="b4" style="top:918px"><div class="n">LIS-SKINS</div><div class="t"><div class="f" style="width:33.3%"></div></div><div class="p">5%</div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(".ttl", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 0);
+    tl.fromTo("#b0", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 0.25);
+    tl.fromTo("#b0 .f", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.30);
+    tl.fromTo("#b1", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 0.55);
+    tl.fromTo("#b1 .f", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.60);
+    tl.fromTo("#b2", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 0.85);
+    tl.fromTo("#b2 .f", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.90);
+    tl.fromTo("#b3", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 1.15);
+    tl.fromTo("#b3 .f", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out" }, 1.20);
+    tl.fromTo("#b4", { opacity: 0 }, { opacity: 1, duration: 0.25 }, 1.45);
+    tl.fromTo("#b4 .f", { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out" }, 1.50);
+
+    window.__timelines["s3"] = tl;
+  </script>
+</template>

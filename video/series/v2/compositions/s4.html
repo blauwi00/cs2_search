@@ -1,0 +1,24 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    .ttl { position: absolute; top: 200px; left: 60px; right: 60px; text-align: center; font-size: 84px; font-weight: 900; line-height: 1.05; letter-spacing: -1.5px; }
+    .ttl b { color: #3ee08f; }
+    .ck { position: absolute; left: 110px; right: 110px; height: 130px; border-radius: 28px; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 28px; padding: 0 36px; font-size: 44px; font-weight: 800; }
+    .ck i { font-style: normal; font-size: 54px; }
+  </style>
+  <div id="root" data-composition-id="s4" data-width="1080" data-height="1920">
+    <div class="ttl">Честный расчёт</div>
+    <div class="ck" id="c0" style="top:480px"><i>💵</i><span>реальные цены рынка</span></div>
+    <div class="ck" id="c1" style="top:640px"><i>🎲</i><span>шансы выпадения</span></div>
+    <div class="ck" id="c2" style="top:800px"><i>🧮</i><span>среднее на открытие</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(".ttl", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 0);
+    tl.fromTo("#c0", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.8)" }, 0.30);
+    tl.fromTo("#c1", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.8)" }, 0.75);
+    tl.fromTo("#c2", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.8)" }, 1.20);
+
+    window.__timelines["s4"] = tl;
+  </script>
+</template>

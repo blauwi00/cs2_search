@@ -1,0 +1,27 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    .ttl { position: absolute; top: 200px; left: 60px; right: 60px; text-align: center; font-size: 84px; font-weight: 900; line-height: 1.05; letter-spacing: -1.5px; }
+    .ttl b { color: #3ee08f; }
+    .ttl { top: 230px; font-size: 96px; }
+    #gl { position: absolute; left: 290px; top: 520px; width: 500px; height: 500px; border-radius: 50%; background: #74c0fc; opacity: .22; filter: blur(90px); }
+    #im { position: absolute; left: 290px; top: 540px; width: 500px; height: 400px; object-fit: contain; }
+    #tg { position: absolute; left: 0; right: 0; top: 990px; text-align: center; }
+    #tg span { display: inline-block; background: #74c0fc; color: #fff; font-size: 46px; font-weight: 900; padding: 14px 28px; border-radius: 20px; }
+  </style>
+  <div id="root" data-composition-id="s1" data-width="1080" data-height="1920">
+    <div id="gl" data-layout-ignore></div>
+    <div class="ttl">ДЕНЬГИ<br>НА БАЛАНСЕ STEAM?</div>
+    <img id="im" src="assets/case.png" alt="">
+    <div id="tg"><span>вывести нельзя</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(".ttl", { scale: 0.75, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(1.7)" }, 0);
+    tl.fromTo("#im", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" }, 0.2);
+    tl.to("#im", { y: -14, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.7);
+    tl.fromTo("#tg span", { scale: 0 }, { scale: 1, duration: 0.35, ease: "back.out(2.4)" }, 0.8);
+
+    window.__timelines["s1"] = tl;
+  </script>
+</template>

@@ -1,0 +1,31 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; font-family: Inter, sans-serif; color: #f1f3f5; }
+    .ttl { position: absolute; top: 200px; left: 60px; right: 60px; text-align: center; font-size: 84px; font-weight: 900; line-height: 1.05; letter-spacing: -1.5px; }
+    .ttl b { color: #3ee08f; }
+    .rw { position: absolute; left: 90px; right: 90px; height: 170px; border-radius: 30px; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.08); }
+    .rw .k { position: absolute; left: 40px; top: 28px; font-size: 27px; letter-spacing: 3px; color: #868e96; font-weight: 900; }
+    .rw .m { position: absolute; left: 40px; top: 72px; right: 330px; font-size: 40px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rw .v { position: absolute; right: 40px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 54px; font-weight: 900; }
+    .rw.g { background: rgba(62,224,143,.12); border-color: rgba(62,224,143,.4); } .rw.g .k, .rw.g .v { color: #3ee08f; }
+    .rw.r .v { color: #ff8787; } .rw.s .v { color: #adb5bd; font-size: 44px; }
+    #nt { position: absolute; left: 0; right: 0; top: 1060px; text-align: center; font-size: 28px; color: #6c757d; }
+  </style>
+  <div id="root" data-composition-id="s2" data-width="1080" data-height="1920">
+    <div class="ttl">Цена ≠<br><b>деньги на руки</b></div>
+    <div class="rw s" id="r0" style="top:470px"><div class="k">ЦЕНА В STEAM</div><div class="m">как в профиле</div><div class="v">2 684 ₴</div></div>
+    <div class="rw r" id="r1" style="top:660px"><div class="k">КОМИССИЯ STEAM</div><div class="m">около 15%</div><div class="v">−350 ₴</div></div>
+    <div class="rw g" id="r2" style="top:850px"><div class="k">НА РУКИ</div><div class="m">на баланс Steam</div><div class="v">2 334 ₴</div></div>
+    <div id="nt">пример расчёта</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo(".ttl", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 0);
+    tl.fromTo("#r0", { opacity: 0, x: 120 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 0.30);
+    tl.fromTo("#r1", { opacity: 0, x: 120 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 0.90);
+    tl.fromTo("#r2", { opacity: 0, x: 120 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 1.50);
+    tl.fromTo("#nt", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 2.30);
+
+    window.__timelines["s2"] = tl;
+  </script>
+</template>

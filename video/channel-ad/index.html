@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<script src="assets/gsap.min.js"></script>
+<style>
+  html, body { margin: 0; background: #05070d; }
+  * { box-sizing: border-box; }
+  #main { font-family: Inter, sans-serif; overflow: hidden; }
+  /* ---------- Комната: стена, подсветка, стол, клавиатура ---------- */
+  #cam { position: absolute; inset: 0; transform-origin: 50% 45%; }
+  #wall { position: absolute; inset: 0;
+    background: radial-gradient(900px 700px at 50% 30%, #1b2f6b 0%, #0d1838 45%, #060a18 80%),
+                linear-gradient(180deg, #0a1430, #050814); }
+  #wall:after { content: ""; position: absolute; inset: 0; opacity: .5;
+    background-image: radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px); background-size: 6px 6px; }
+  #lamp { position: absolute; left: 150px; right: 150px; top: 330px; height: 34px; border-radius: 10px; background: linear-gradient(180deg, #2a2f3a, #111318); box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+  #lamp:after { content: ""; position: absolute; left: 30px; right: 30px; top: 30px; height: 220px; background: radial-gradient(ellipse at 50% 0%, rgba(190,210,255,.28), transparent 70%); }
+  #desk { position: absolute; left: -100px; right: -100px; top: 1290px; bottom: -40px;
+    background: linear-gradient(180deg, #5a3f28 0%, #3e2b1b 35%, #22170e 100%);
+    transform: perspective(900px) rotateX(38deg); transform-origin: 50% 0%; }
+  #mat { position: absolute; left: 110px; right: 110px; top: 1340px; height: 330px; border-radius: 24px; background: #0e1015;
+    transform: perspective(900px) rotateX(40deg); transform-origin: 50% 0%; box-shadow: 0 -2px 0 rgba(255,255,255,.04) inset; }
+  #led { position: absolute; left: 70px; right: 70px; top: 1250px; height: 80px; border-radius: 40px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(40,120,255,.95), rgba(40,90,255,.35) 45%, transparent 75%); filter: blur(18px); }
+  #kb { position: absolute; left: 190px; width: 520px; top: 1400px; height: 200px; border-radius: 18px; background: #23262d;
+    transform: perspective(800px) rotateX(48deg) rotateZ(-6deg); transform-origin: 50% 0%; padding: 16px; display: grid; grid-template-columns: repeat(14, 1fr); gap: 7px;
+    box-shadow: 0 30px 40px rgba(0,0,0,.6), 0 0 0 2px #30343c inset; }
+  #kb i { display: block; height: 28px; border-radius: 6px; background: linear-gradient(180deg, #e9ecef, #b9bec6); box-shadow: 0 3px 0 #7c828c; }
+  #kb i.d { background: linear-gradient(180deg, #4a4f58, #33373e); box-shadow: 0 3px 0 #1b1d21; }
+  #plant { position: absolute; left: 130px; top: 1130px; width: 110px; height: 150px; }
+  #plant .pot { position: absolute; left: 25px; bottom: 0; width: 60px; height: 52px; border-radius: 8px 8px 14px 14px; background: #d8dbe0; }
+  #plant .lf { position: absolute; width: 34px; height: 70px; border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%; background: #3f8f4f; bottom: 44px; transform-origin: 50% 100%; }
+  /* ---------- Монитор под углом ---------- */
+  #mon { position: absolute; left: 0; right: 0; top: 520px; height: 700px; perspective: 1700px; }
+  #bez { position: absolute; left: 70px; width: 940px; top: 40px; height: 560px; border-radius: 22px; background: #0b0c10; padding: 14px;
+    transform: rotateY(-17deg) rotateX(3deg); transform-style: preserve-3d;
+    box-shadow: 0 0 0 3px #1c1f26, 0 50px 120px rgba(0,0,0,.75), 0 0 140px rgba(255,120,80,.12); }
+  #scr { position: relative; width: 100%; height: 100%; border-radius: 10px; overflow: hidden; background: #0a0608; }
+  #glare { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.07) 0%, transparent 35%, transparent 70%, rgba(255,255,255,.03) 100%); }
+  #stand { position: absolute; left: 470px; top: 600px; width: 110px; height: 90px; background: linear-gradient(180deg, #191b21, #0d0e12); transform: skewX(-8deg); }
+  /* ---------- Экран: реклама канала ---------- */
+  .sc { position: absolute; inset: 0; opacity: 0; color: #fff; }
+  .warm { position: absolute; inset: 0; background: radial-gradient(500px 360px at 85% 80%, rgba(255,120,90,.75), transparent 70%), radial-gradient(420px 320px at 10% 15%, rgba(255,90,120,.35), transparent 70%), linear-gradient(135deg, #1a0b0c, #2a0f12); }
+  #orb { position: absolute; left: 400px; top: 190px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, #fff 0%, #ffe9d6 40%, rgba(255,200,160,.0) 72%); filter: blur(1px); }
+  #logo { position: absolute; left: 0; right: 0; top: 200px; display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 92px; font-weight: 900; letter-spacing: -2px; }
+  #logo img { width: 104px; height: 104px; border-radius: 24px; }
+  #logo span { text-shadow: 0 0 24px rgba(255,170,120,.8); }
+  .box { position: absolute; left: 160px; right: 160px; top: 205px; height: 120px; border-radius: 18px; background: rgba(20,12,14,.85); border: 2px solid rgba(255,255,255,.12); padding: 18px 26px; }
+  .box .h { font-size: 22px; color: #ffb59a; letter-spacing: 2px; font-weight: 800; }
+  .box .t { font-size: 38px; font-weight: 700; margin-top: 8px; white-space: nowrap; overflow: hidden; }
+  .box .t:after { content: "▍"; color: #ff9b7a; }
+  #ttl3 { position: absolute; left: 0; right: 0; top: 40px; text-align: center; font-size: 40px; font-weight: 900; text-shadow: 0 0 16px rgba(255,150,110,.7); }
+  .cd { position: absolute; left: 140px; right: 140px; height: 76px; border-radius: 16px; background: rgba(28,16,18,.92); border: 2px solid rgba(255,160,130,.25); display: flex; align-items: center; gap: 20px; padding: 0 24px; font-size: 32px; font-weight: 700; }
+  .cd b { color: #ffb59a; width: 120px; font-weight: 900; }
+  .big { position: absolute; left: 0; right: 0; top: 190px; text-align: center; font-size: 120px; font-weight: 900; letter-spacing: -3px; opacity: 0; color: #ffd8c4; text-shadow: 0 0 30px rgba(255,130,90,.9), 0 0 70px rgba(255,90,60,.6); }
+  #fin1 { position: absolute; left: 0; right: 0; top: 140px; text-align: center; font-size: 74px; font-weight: 900; text-shadow: 0 0 24px rgba(255,160,120,.8); }
+  #fin2 { position: absolute; left: 0; right: 0; top: 260px; text-align: center; font-size: 36px; font-weight: 700; color: #ffd0bb; }
+  #fin3 { position: absolute; left: 220px; right: 220px; white-space: nowrap; top: 340px; text-align: center; padding: 16px 0; border-radius: 999px; background: #ff8a65; color: #1a0b0c; font-size: 34px; font-weight: 900; }
+  /* ---------- Подпись сверху, как в TikTok ---------- */
+  #pov { position: absolute; left: 0; right: 0; top: 190px; text-align: center; }
+  #pov span { display: inline-block; background: #fff; color: #000; font-size: 46px; font-weight: 800; padding: 6px 18px; border-radius: 10px; line-height: 1.25; }
+</style>
+</head>
+<body>
+<!-- Реклама Telegram-канала «Ценолов» (9:16, ~13 с): моушн-графика на мониторе в нарисованном сетапе, без голоса. -->
+<div id="main" data-composition-id="main" data-start="0" data-duration="13" data-width="1080" data-height="1920">
+  <div id="cam">
+    <div id="wall"></div>
+    <div id="lamp"></div>
+    <div id="led"></div>
+    <div id="desk"></div>
+    <div id="mat"></div>
+    <div id="mon">
+      <div id="bez"><div id="scr">
+        <!-- 1. Свет и логотип -->
+        <div class="sc" id="s1"><div class="warm" style="background:radial-gradient(600px 400px at 50% 50%, #2a1838, #0b0710)"></div><div id="orb"></div>
+          <div id="logo"><img src="assets/avatar.png" alt=""><span>Ценолов</span></div></div>
+        <!-- 2. Набор поста -->
+        <div class="sc" id="s2"><div class="warm"></div><div style="position:absolute;left:0;right:0;top:110px;text-align:center;font-size:44px;font-weight:900;text-shadow:0 0 18px rgba(255,150,110,.8)">✳ Канал Ценолова</div>
+          <div class="box"><div class="h">НОВЫЙ ПОСТ · 10:00</div><div class="t" id="typed"></div></div></div>
+        <!-- 3. Рубрики -->
+        <div class="sc" id="s3"><div class="warm"></div><div id="ttl3">Каждый день в канале</div>
+          <div class="cd" id="c1" style="top:120px"><b>10:00</b>💡 Рекомендации дня</div>
+          <div class="cd" id="c2" style="top:210px"><b>15:00</b>📈 Что растёт в цене</div>
+          <div class="cd" id="c3" style="top:300px"><b>20:00</b>📦 Кейсы Steam</div>
+          <div class="cd" id="c4" style="top:390px"><b>Вс</b>📅 Итоги недели</div></div>
+        <!-- 4. Слова в ритм -->
+        <div class="sc" id="s4"><div class="warm"></div>
+          <div class="big" id="w1">Цены.</div><div class="big" id="w2">Кейсы.</div><div class="big" id="w3">Рынок CS2.</div></div>
+        <!-- 5. Финал -->
+        <div class="sc" id="s5"><div class="warm"></div><div id="fin1">Ценолов</div><div id="fin2">рынок скинов CS2 — каждый день</div><div id="fin3">🔔 Включи уведомления</div></div>
+        <div id="glare"></div>
+      </div></div>
+      <div id="stand"></div>
+    </div>
+    <div id="plant"><div class="lf" style="left:20px;transform:rotate(-25deg)"></div><div class="lf" style="left:38px;transform:rotate(0deg);height:84px"></div><div class="lf" style="left:56px;transform:rotate(25deg)"></div><div class="pot"></div></div>
+    <div id="kb"></div>
+  </div>
+  <div id="pov"><span>POV: Ценолов нанял нас<br>на рекламу канала</span></div>
+</div>
+<script>
+  // Клавиатура: 5 рядов по 14 клавиш, часть — тёмные (модификаторы).
+  (function () { var kb = document.getElementById('kb'), h = ''; for (var i = 0; i < 70; i++) h += '<i class="' + ((i % 14 === 0 || i % 14 === 13 || i > 63) ? 'd' : '') + '"></i>'; kb.innerHTML = h; })();
+  window.__timelines = window.__timelines || {};
+  var tl = gsap.timeline({ paused: true });
+  // Камера: медленный наезд и лёгкий поворот — «живая» съёмка.
+  tl.fromTo('#cam', { scale: 1, rotation: 0.4, y: 0 }, { scale: 1.07, rotation: -0.3, y: -20, duration: 13, ease: 'none' }, 0);
+  tl.fromTo('#pov', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }, 0.1);
+  tl.fromTo('#led', { opacity: 0.7 }, { opacity: 1, duration: 1.2, yoyo: true, repeat: 9, ease: 'sine.inOut' }, 0);
+  // 1. Свет → логотип (0–2,2 с)
+  tl.fromTo('#s1', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 0.1);
+  tl.fromTo('#orb', { scale: 0.2, opacity: 0 }, { scale: 1.4, opacity: 1, duration: 0.8, ease: 'power2.out' }, 0.2);
+  tl.to('#orb', { scale: 6, opacity: 0, duration: 0.5, ease: 'power2.in' }, 1.0);
+  tl.fromTo('#logo', { opacity: 0, scale: 0.85, letterSpacing: '20px' }, { opacity: 1, scale: 1, letterSpacing: '-2px', duration: 0.6, ease: 'power3.out' }, 1.15);
+  tl.to('#s1', { opacity: 0, duration: 0.25 }, 2.2);
+  // 2. Набор поста (2,3–4,8 с)
+  tl.fromTo('#s2', { opacity: 0 }, { opacity: 1, duration: 0.25 }, 2.3);
+  var msg = 'Где купить скины дешевле?', st = { n: 0 };
+  tl.fromTo(st, { n: 0 }, { n: msg.length, duration: 1.6, ease: 'none', onUpdate: function () { document.getElementById('typed').textContent = msg.slice(0, Math.round(st.n)); } }, 2.6);
+  tl.fromTo('.box', { scale: 1 }, { scale: 1.04, duration: 0.15, yoyo: true, repeat: 1 }, 4.3);
+  tl.to('#s2', { opacity: 0, duration: 0.25 }, 4.8);
+  // 3. Рубрики (4,9–7,6 с)
+  tl.fromTo('#s3', { opacity: 0 }, { opacity: 1, duration: 0.25 }, 4.9);
+  tl.fromTo('#ttl3', { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.3 }, 5.0);
+  ['#c1', '#c2', '#c3', '#c4'].forEach(function (id, i) { tl.fromTo(id, { opacity: 0, x: 80 }, { opacity: 1, x: 0, duration: 0.35, ease: 'back.out(1.6)' }, 5.25 + i * 0.45); });
+  tl.to('#s3', { opacity: 0, duration: 0.25 }, 7.6);
+  // 4. Слова в ритм (7,7–9,9 с)
+  tl.fromTo('#s4', { opacity: 0 }, { opacity: 1, duration: 0.15 }, 7.7);
+  ['#w1', '#w2', '#w3'].forEach(function (id, i) {
+    var t0 = 7.75 + i * 0.7;
+    tl.fromTo(id, { opacity: 0, scale: 1.25, filter: 'blur(8px)' }, { opacity: 1, scale: 1, filter: 'blur(0px)', duration: 0.22, ease: 'power3.out' }, t0);
+    if (i < 2) tl.to(id, { opacity: 0, duration: 0.12 }, t0 + 0.55);
+  });
+  tl.to('#s4', { opacity: 0, duration: 0.2 }, 9.9);
+  // 5. Финал (10–13 с)
+  tl.fromTo('#s5', { opacity: 0 }, { opacity: 1, duration: 0.3 }, 10.0);
+  tl.fromTo('#fin1', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.8)' }, 10.1);
+  tl.fromTo('#fin2', { opacity: 0 }, { opacity: 1, duration: 0.35 }, 10.45);
+  tl.fromTo('#fin3', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, 10.8);
+  tl.to('#fin3', { scale: 1.07, duration: 0.3, yoyo: true, repeat: 3, ease: 'sine.inOut' }, 11.3);
+  window.__timelines['main'] = tl;
+</script>
+</body>
+</html>

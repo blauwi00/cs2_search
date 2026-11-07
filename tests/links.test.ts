@@ -34,16 +34,18 @@ test('#5: объявление «держится», только если це�
   assert.equal(s3[0].at, T + 1200);
 });
 
-test('#6: честная статистика — плюс/минус через сутки, «нет данных» не входит в процент', async () => {
+test('#6: честная статистика — плюс/минус через 7 дней, «нет данных» не входит в процент', async () => {
   const { migratedDb } = await import('./helpers.ts');
   const { recStats } = await import('../src/core/insights.ts');
   const d = migratedDb(); const D = d as unknown as D1Database;
   const T = Date.parse('2026-11-04T12:00:00Z') / 1000;
   const ins = (name: string, profit: number, p24: number | null, outcome: string | null, at: number) => d.db.prepare(
     `INSERT INTO idea_log (day, name, buy_at, sell_at, pay_kop, sell_kop, get_kop, profit_kop, roi_bp, wallet, created_at, checked_at, profit_kop_24, outcome)
-     VALUES ('2026-11-03', ?, 'skinport', 'csgomarket', 1000, 1300, 1200, ?, 2000, 'cash', ?, ?, ?, ?)`).run(name, profit, at, outcome ? at + 86400 : null, p24, outcome);
-  ins('A', 200, 150, 'plus', T - 3 * 86400); ins('B', 300, -50, 'minus', T - 2 * 86400); ins('C', 100, 20, 'plus', T - 2 * 86400);
-  ins('D', 100, null, 'gone', T - 2 * 86400); ins('E', 100, null, null, T - 3600); ins('Old', 100, 100, 'plus', T - 40 * 86400);
+     VALUES ('2026-11-03', ?, 'skinport', 'csgomarket', 1000, 1300, 1200, ?, 2000, 'cash', ?, ?, ?, ?)`).run(name, profit, at, outcome ? at + 7 * 86400 : null, p24, outcome);
+  ins('A', 200, 150, 'plus', T - 10 * 86400); ins('B', 300, -50, 'minus', T - 9 * 86400); ins('C', 100, 20, 'plus', T - 9 * 86400);
+  ins('D', 100, null, 'gone', T - 9 * 86400);
+  d.db.prepare(`INSERT INTO idea_log (day, name, buy_at, sell_at, pay_kop, sell_kop, get_kop, profit_kop, roi_bp, wallet, created_at, checked_at, profit_kop_24, outcome)
+     VALUES ('2026-11-01', 'Old24h', 'skinport', 'csgomarket', 1000, 1300, 1200, 100, 2000, 'cash', ?, ?, 100, 'plus')`).run(T - 5 * 86400, T - 4 * 86400); ins('E', 100, null, null, T - 3600); ins('Old', 100, 100, 'plus', T - 40 * 86400);
   const s = await recStats(D, T, 30);
   assert.deepEqual([s.total, s.plus, s.minus, s.gone, s.pending], [5, 2, 1, 1, 1]);
   assert.equal(s.avgPromisedKop, 200); assert.equal(s.avgActualKop, 40);

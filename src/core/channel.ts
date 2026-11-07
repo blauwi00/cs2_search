@@ -10,7 +10,7 @@ import { warsawDate, warsawHour } from '../utils/time.ts';
 import type { Currency } from '../types/market.ts';
 import { loadScan } from '../storage/scan.ts';
 import { loadLatestFx } from '../storage/db.ts';
-import { ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
+import { CHECK_AFTER, ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
 import { rubricFor, pickCaseEV, caseEvPost, trackedPost, storyPost, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
@@ -150,7 +150,8 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
   if (slot === 'ideas') {
     const today = await ensureTodayIdeas(d, fresh, fx, now);
     // Итог — по идеям недельной давности: раньше купленное не продать (блокировка 7 дней).
-    const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 7 * 86400)).all<IdeaRow>()).results;
+    // Старые итоги «через сутки» (до перехода на 7 дней) не показываем как недельные.
+    const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ? AND (checked_at IS NULL OR checked_at >= created_at + ?)').bind(warsawDate(now - 7 * 86400), CHECK_AFTER - 4 * 3600).all<IdeaRow>()).results;
     const checked = yesterday.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
     const bestY = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const card = today.length ? {
@@ -171,7 +172,7 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     return finish(p?.text ?? null, p?.lead ?? null, p ? { title: 'Кейсы Steam', subtitle: 'сутки к месяцу', up: p.up?.map(row), down: p.down?.map(row) } : null);
   }
   // Итоги недели: идеи, которые проверены за эту неделю (им как раз исполнилось 7 дней).
-  const week = (await d.prepare('SELECT * FROM idea_log WHERE checked_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
+  const week = (await d.prepare('SELECT * FROM idea_log WHERE checked_at >= ? AND checked_at >= created_at + ?').bind(now - 7 * 86400, CHECK_AFTER - 4 * 3600).all<IdeaRow>()).results;
   const u = await d.prepare('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS w FROM users').bind(now - 7 * 86400).first<{ n: number; w: number | null }>();
   const ch = cases.filter((c) => c.d7 && c.d30).map((c) => ({ name: c.name, bp: Math.trunc(((c.d7! - c.d30!) * 10000) / c.d30!), kop: null }));
   const leader = [...ch].sort((a, b) => b.bp - a.bp)[0];

@@ -69,7 +69,9 @@ export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry
 export interface RecStats { days: number; total: number; plus: number; minus: number; gone: number; pending: number; avgPromisedKop: number | null; avgActualKop: number | null;
   recent: { day: string; name: string; buyAt: string; sellAt: string; profitKop: number; profit24Kop: number | null; outcome: string | null }[] }
 export async function recStats(d: D1Database, now: number, days = 30): Promise<RecStats> {
-  const rows = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ? ORDER BY created_at DESC LIMIT 400').bind(now - days * 86400).all<IdeaRow>()).results;
+  // Итоги «через сутки» (до перехода на 7 дней) в статистику не берём — они про другое.
+  const rows = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ? AND (checked_at IS NULL OR checked_at >= created_at + ?) ORDER BY created_at DESC LIMIT 400')
+    .bind(now - days * 86400, CHECK_AFTER - 4 * 3600).all<IdeaRow>()).results;
   const checked = rows.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
   const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
   return {

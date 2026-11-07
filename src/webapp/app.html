@@ -1341,15 +1341,18 @@ function toKop(v) { var n = parseAmt(v); return n == null || isNaN(n) ? n : Math
 function buyForm(pre) {
   var h = '<h2>Записать покупку</h2><div class="sub">Бот ничего не покупает сам — это учёт твоих реальных сделок.</div>';
   h += pre.name ? '<div class="card" style="font-weight:600">' + esc(pre.name) + '</div>' : '<label class="f"><span>Предмет</span><input id="bq" placeholder="🔍 Название — можно по-русски: «ак красная линия»" autocomplete="off"></label><div id="bsr"></div><div class="card" id="bname" style="display:none;font-weight:600"></div>';
-  h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт., ' + CUR.sign + '</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? units(pre.priceKop) : '') + '" placeholder="0 — бесплатно"></label></div>';
+  h += '<div class="grid2" style="margin-top:10px"><label class="f" style="margin:0"><span>Количество</span><input id="bqty" inputmode="numeric" value="1"></label><label class="f" style="margin:0"><span>Цена за 1 шт.</span><input id="bpr" inputmode="decimal" value="' + (pre.priceKop != null ? units(pre.priceKop) : '') + '" placeholder="0 — бесплатно"></label></div>';
+  // Валюта, в которой платил (рубли, доллары, злотые…): пересчёт в валюту бота по курсу НБУ. Выбор запоминается.
+  h += '<label class="f" style="margin:10px 0 0"><span>Валюта цены и комиссии</span>' + curSelect('bcur', 'buy') + '</label>';
   h += '<label class="f"><span>Где куплено</span><select id="bpl">' + platformOptions(pre.platform || 'skinport') + '</select></label>';
-  h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего, ' + CUR.sign + '</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
+  h += '<div class="grid2"><label class="f" style="margin:10px 0 0"><span>Комиссии всего</span><input id="bfee" inputmode="decimal" placeholder="0"></label><label class="f" style="margin:10px 0 0"><span>Дата</span><input id="bdt" type="date" value="' + today() + '" max="' + today() + '"></label></div>';
   h += '<button class="btn" id="bsave">Сохранить</button>';
   sheet(h);
   var name = pre.name || null;
   if (!pre.name) bindSearch($('#bq'), $('#bsr'), function (n) { name = n; $('#bq').parentNode.style.display = 'none'; $('#bname').style.display = 'block'; $('#bname').textContent = n; }, '✓');
   $('#bsave').onclick = function () {
-    var price = toKop($('#bpr').value), fee = toKop($('#bfee').value) || 0;
+    var bc = $('#bcur').value, price = toKopIn($('#bpr').value, bc), fee = toKopIn($('#bfee').value, bc) || 0;
+    lsSet('cur_buy', bc);
     if (!name) return toast('Выбери предмет');
     if (price == null || isNaN(price) || price < 0) return toast('Введи цену');
     api('inventory', { method: 'POST', body: { name: name, qty: +$('#bqty').value, priceKop: price, feeKop: fee, platform: $('#bpl').value, date: $('#bdt').value, signalId: pre.signalId || null } })

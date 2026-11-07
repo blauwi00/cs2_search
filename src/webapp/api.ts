@@ -238,7 +238,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   const adm = user.id === Number(env.ADMIN_TELEGRAM_ID) ? '"admin":true,' : '';
   // Курсы основных валют (грн за единицу) — чтобы вводить суммы в валюте сайта или кошелька Steam, а не только в валюте бота.
   const fx: Record<string, number> = { UAH: 1 };
-  for (const c of ['USD', 'EUR', 'PLN', cur.code]) if (rates[c]) fx[c] = rates[c];
+  for (const c of ['USD', 'EUR', 'PLN', 'RUB', 'KZT', cur.code]) if (rates[c]) fx[c] = rates[c];
   if (text.startsWith('{')) text = `{"cur":${JSON.stringify(cur)},"fx":${JSON.stringify(fx)},${adm}` + (text.length > 2 ? text.slice(1) : '}');
   return new Response(text, { status: res.status, headers: res.headers });
 }

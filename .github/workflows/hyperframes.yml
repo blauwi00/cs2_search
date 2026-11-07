@@ -1,6 +1,6 @@
 name: hyperframes
 # Рендер роликов на HyperFrames (HTML → MP4): video/<проект>. Результат (mp4, кадры, отчёт проверки) — в ветке video-renders.
-# Голос автора в репозитории не хранится — ролик с голосом собирается не здесь. Запуск только вручную (без голоса).
+# Голос — video/promo/assets/voice.mp3 (озвучка ElevenLabs). Запуск только вручную.
 on:
   workflow_dispatch:
 permissions:

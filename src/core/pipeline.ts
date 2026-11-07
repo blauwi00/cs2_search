@@ -582,6 +582,10 @@ export async function jobCleanup(ctx: Ctx): Promise<void> {
     ctx.db.prepare('DELETE FROM price_snapshots WHERE observed_at < ?').bind(cutoff),
     ctx.db.prepare('DELETE FROM system_logs WHERE at < ?').bind(ctx.now - 14 * 86400),
     ctx.db.prepare('DELETE FROM notification_log WHERE sent_at < ?').bind(ctx.now - 30 * 86400),
+    // Очередь сообщений: отправленные и отброшенные старше недели не нужны (каждая строка — полный текст и кнопки).
+    ctx.db.prepare(`DELETE FROM outbox WHERE state IN ('sent', 'dropped') AND created_at < ?`).bind(ctx.now - 7 * 86400),
+    // Индекс для «сколько рекомендаций человек получил за сутки» (hot_recs) — без него каждый раз читается вся очередь.
+    ctx.db.prepare('CREATE INDEX IF NOT EXISTS idx_outbox_kind_time ON outbox(kind, created_at)'),
     ctx.db.prepare('DELETE FROM user_state WHERE expires_at < ?').bind(ctx.now),
     ctx.db.prepare("UPDATE signals SET state = 'expired' WHERE state IN ('confirmed','unconfirmed') AND updated_at < ?").bind(ctx.now - 6 * 3600),
     ctx.db.prepare('DELETE FROM usage_counters WHERE day < ?').bind(utcDay(ctx.now - 60 * 86400)),
@@ -691,11 +695,12 @@ export async function jobDailyReport(ctx: Ctx): Promise<void> {
  * Отправка очереди уведомлений. Лимиты: внешние запросы вызова, лимит «в час» у каждого человека.
  * Неактуальные к моменту отправки сделки не отправляются. Заблокировавшим бота — больше не пишем.
  */
-export const OUTBOX_PER_RUN = 25;
+/** Сообщений за один запуск (раз в минуту). Telegram позволяет ~30 в секунду — упираемся в лимит подзапросов воркера (50). */
+export const OUTBOX_PER_RUN = 40;
 export async function jobOutbox(ctx: Ctx): Promise<void> {
   const rows = (await ctx.db.prepare(
     `SELECT id, telegram_id, kind, signal_id, text, keyboard, edit_msg_id, created_at FROM outbox
-     WHERE state = 'pending' AND not_before <= ? ORDER BY edit_msg_id IS NULL, not_before LIMIT ?`,
+     WHERE state = 'pending' AND not_before <= ? ORDER BY edit_msg_id IS NULL, kind = 'recs', not_before LIMIT ?`,
   ).bind(ctx.now, OUTBOX_PER_RUN).all<{ id: number; telegram_id: number; kind: string; signal_id: number | null; text: string; keyboard: string | null; edit_msg_id: number | null; created_at: number }>()).results;
   if (!rows.length) return;
   const tids = [...new Set(rows.map((r) => r.telegram_id))];
@@ -711,7 +716,11 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
   const upd: D1PreparedStatement[] = [];
   const drop = (id: number) => upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'dropped' WHERE id = ?`).bind(id));
   const blocked = new Set<number>();
+  // Отметки «отправлено» пишем по ходу (пачками), а не в конце: если вызов оборвётся, отправленное не уйдёт второй раз.
+  const flush = async () => { if (upd.length) { const part = upd.splice(0, upd.length); for (let i = 0; i < part.length; i += 90) await ctx.db.batch(part.slice(i, i + 90)); } };
+  let sentNow = 0;
   for (const r of rows) {
+    if (sentNow && sentNow % 10 === 0 && upd.length) await flush();
     if (blocked.has(r.telegram_id)) { drop(r.id); continue; }
     if (r.signal_id !== null && !['confirmed', 'notified'].includes(sigState.get(r.signal_id) ?? '')) { drop(r.id); continue; }
     if (r.edit_msg_id === null) {
@@ -726,9 +735,11 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
     try {
       if (r.edit_msg_id !== null) {
         await ctx.tg.editMessage(r.telegram_id, r.edit_msg_id, r.text);
+        sentNow++;
         upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ? WHERE id = ?`).bind(ctx.now, r.id));
       } else {
         const m = await ctx.tg.sendMessage(r.telegram_id, r.text, r.keyboard ? JSON.parse(r.keyboard) as Keyboard : undefined);
+        sentNow++;
         upd.push(ctx.db.prepare(`UPDATE outbox SET state = 'sent', sent_at = ?, msg_id = ? WHERE id = ?`).bind(ctx.now, m.message_id, r.id));
         upd.push(ctx.db.prepare('INSERT INTO notification_log (telegram_id, kind, ref, sent_at) VALUES (?, ?, ?, ?)').bind(r.telegram_id, r.kind, String(r.id), ctx.now));
         if (!count.has(r.telegram_id)) upd.push(db.firstNotifStmt(ctx.db, r.telegram_id, ctx.now));
@@ -748,7 +759,7 @@ export async function jobOutbox(ctx: Ctx): Promise<void> {
       if (/\b429\b|Too Many Requests/i.test(msg)) break;
     }
   }
-  for (let i = 0; i < upd.length; i += 90) await ctx.db.batch(upd.slice(i, i + 90));
+  await flush();
 }
 
 /**

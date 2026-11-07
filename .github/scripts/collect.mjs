@@ -187,7 +187,7 @@ try {
   if (fresh && !send.length && fileAt) await toWorker('/ingest', { kind: 'steam_avg', fetchedAt: now(), fileAt, items: [] });
   // Все кейсы — для «индекса кейсов» и вечернего поста в канале.
   const cases = [...steamAvg.entries()].filter(([n]) => / Case$/.test(n)).map(([name, v]) => ({ name, ...v }));
-  if (cases.length) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
+  if (cases.length && !HOME) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
   // «Окупается ли кейс» — раз в сутки (по запросу Worker): состав кейсов из открытого набора ByMykel/CSGO-API.
   if (needCaseEv && !HOME) {
     try {

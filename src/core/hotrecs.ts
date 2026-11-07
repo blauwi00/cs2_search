@@ -17,6 +17,8 @@ import { steamBalances, steamBuyLimit } from './steambalance.ts';
 export const HOT_FRESH_SEC = 40 * 60;
 export const HOT_REPEAT_SEC = 24 * 3600;
 export const HOT_UP_BP = 2500;
+/** Людей за один запуск: рассылка по одной проверке рынка идёт частями (курсор в meta hot_cursor), без потолка по числу людей. */
+export const HOT_BATCH = 300;
 
 export const hotKey = (r: Rec) => `${r.name}|${r.buyAt}|${r.sellAt}`;
 
@@ -59,12 +61,19 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
   if (!scan || ctx.now - scan.fetchedAt > HOT_FRESH_SEC) return { queued: 0 };
   if (Number(await getMeta(d, 'hot_scan_at')) >= scan.fetchedAt) return { queued: 0 }; // эту проверку рынка уже разослали
   const fx = await db.loadLatestFx(d);
-  let sent: Record<string, { p: number; at: number }> = {};
+  // s — по какой проверке рынка сделка уже разослана: в следующих частях той же рассылки она по-прежнему «новая».
+  let sent: Record<string, { p: number; at: number; s?: number }> = {};
   try { sent = JSON.parse((await getMeta(d, 'hot_sent')) ?? '{}'); } catch { sent = {}; }
-  const writes: D1PreparedStatement[] = [setMetaStmt(d, 'hot_scan_at', String(scan.fetchedAt))];
+  let cur: { scan?: number; after?: number } = {};
+  try { cur = JSON.parse((await getMeta(d, 'hot_cursor')) ?? '{}'); } catch { cur = {}; }
+  const after = cur.scan === scan.fetchedAt ? Number(cur.after) || 0 : 0;
 
-  // Кто получает: уведомления включены, горячие рекомендации включены, условия приняты.
-  const ids = (await d.prepare('SELECT telegram_id FROM users ORDER BY telegram_id LIMIT 2000').all<{ telegram_id: number }>()).results.map((r) => r.telegram_id);
+  // Кто получает: уведомления включены, горячие рекомендации включены, условия приняты. По HOT_BATCH человек за запуск.
+  const ids = (await d.prepare('SELECT telegram_id FROM users WHERE telegram_id > ? ORDER BY telegram_id LIMIT ?').bind(after, HOT_BATCH).all<{ telegram_id: number }>()).results.map((r) => r.telegram_id);
+  const more = ids.length === HOT_BATCH;
+  const writes: D1PreparedStatement[] = [more
+    ? setMetaStmt(d, 'hot_cursor', JSON.stringify({ scan: scan.fetchedAt, after: ids[ids.length - 1] }))
+    : setMetaStmt(d, 'hot_scan_at', String(scan.fetchedAt))];
   const settings = new Map<number, db.Settings>();
   for (let i = 0; i < ids.length; i += 90) for (const [k, v] of await loadUserSettings(d, ids.slice(i, i + 90))) settings.set(k, v);
   const eligible = ids.filter((id) => { const s = settings.get(id)!; return s.notify_enabled === '1' && s.notify_recs === '1' && s.terms_ok === TERMS_VERSION; });
@@ -82,11 +91,11 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
       depositFeeBp: db.num(s.deposit_fee_bp), withdrawFeeBp: db.num(s.withdraw_fee_bp), minHeldSec: HELD_SEC,
     };
     const key = `${rs.minProfitKop}|${rs.minRoiBp}|${rs.depositFeeBp}|${rs.withdrawFeeBp}`;
-    if (!combos.has(key)) combos.set(key, combos.size < 12 ? buildRecs(scan.entries, fx, rs).deals : []);
+    if (!combos.has(key)) combos.set(key, combos.size < 40 ? buildRecs(scan.entries, fx, rs).deals : []);
     return combos.get(key)!;
   };
-  const before = { ...sent }; // «новизна» — относительно прошлых рассылок, а не этой
-  const isNew = (r: Rec) => { const p = before[hotKey(r)]; return !p || ctx.now - p.at >= HOT_REPEAT_SEC || (r.profitKop ?? 0) >= p.p * (1 + HOT_UP_BP / 10000); };
+  const before = { ...sent }; // «новизна» — относительно прошлых рассылок, а не этой (и не прошлых частей этой же)
+  const isNew = (r: Rec) => { const p = before[hotKey(r)]; return !p || p.s === scan.fetchedAt || ctx.now - p.at >= HOT_REPEAT_SEC || (r.profitKop ?? 0) >= p.p * (1 + HOT_UP_BP / 10000); };
 
   const origin = await getMeta(d, 'public_origin');
   // Галочка «Подбирать идеи под баланс Steam»: сначала покупки в Steam, на которые хватает баланса; дороже — не предлагаем.
@@ -102,7 +111,8 @@ export async function jobHotRecs(ctx: Ctx): Promise<{ queued: number }> {
     const r = pickRec(comboOf(s), buyLim, isNew);
     if (!r) continue;
     pending.push({ tid, r, s, bal: buyLim !== null && b ? b.kop : null });
-    sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, sent[hotKey(r)]?.p ?? 0), at: ctx.now };
+    const prevSent = sent[hotKey(r)];
+    sent[hotKey(r)] = { p: Math.max(r.profitKop ?? 0, prevSent?.p ?? 0), at: prevSent?.s === scan.fetchedAt ? prevSent.at : ctx.now, s: scan.fetchedAt };
   }
   // Ссылка «Купить» — сразу на страницу предмета (для Skinport адрес берём из его API): один запрос на всю рассылку.
   const spNames = pending.filter((x) => x.r.buyAt === 'skinport').map((x) => x.r.name);

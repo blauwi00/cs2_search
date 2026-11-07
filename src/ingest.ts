@@ -46,7 +46,15 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
   if (!env.INGEST_SECRET || !safeEqual(given, env.INGEST_SECRET.trim())) {
     // Ключ домашнего агента: хранится только его хэш (meta agent_key_hash), выдаётся владельцу в приложении.
     const hash = given && given.length >= 32 ? await (rawDb ?? env.DB).prepare(`SELECT value FROM meta WHERE key = 'agent_key_hash'`).first<{ value: string }>() : null;
-    if (!hash?.value || !safeEqual(await sha256Hex(given!), hash.value)) return json({ ok: false, error: 'forbidden' }, 403);
+    if (!hash?.value || !safeEqual(await sha256Hex(given!), hash.value)) {
+      // Похоже на ключ агента, но не подошёл — отметим (не чаще раза в 5 минут), чтобы в /stats было видно «ключ не подошёл».
+      if (given?.startsWith('ag_')) {
+        const DB = rawDb ?? env.DB;
+        const last = Number((await DB.prepare(`SELECT value FROM meta WHERE key = 'agent_denied'`).first<{ value: string }>())?.value) || 0;
+        if (now - last > 300) await DB.prepare(`INSERT INTO meta (key, value) VALUES ('agent_denied', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(String(now)).run();
+      }
+      return json({ ok: false, error: 'forbidden' }, 403);
+    }
     agentOnly = true;
     if (!((req.method === 'GET' && url.pathname === '/ingest/items') || (req.method === 'POST' && url.pathname === '/ingest'))) return json({ ok: false, error: 'forbidden' }, 403);
   }

@@ -68,7 +68,10 @@ export async function loadUserSettings(d: D1Database, tids: number[]): Promise<M
   if (!uniq.length) return out;
   const rows = (await d.prepare(`SELECT telegram_id, key, value FROM user_settings WHERE telegram_id IN (${uniq.map(() => '?').join(',')})`)
     .bind(...uniq).all<{ telegram_id: number; key: string; value: string }>()).results;
-  for (const t of uniq) out.set(t, withDefaults(rows.filter((r) => r.telegram_id === t)));
+  // Группируем за один проход (раньше для каждого человека заново перебиралась вся выборка).
+  const by = new Map<number, { key: string; value: string }[]>();
+  for (const r of rows) { const l = by.get(r.telegram_id); if (l) l.push(r); else by.set(r.telegram_id, [r]); }
+  for (const t of uniq) out.set(t, withDefaults(by.get(t) ?? []));
   return out;
 }
 

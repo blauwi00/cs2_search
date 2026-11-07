@@ -121,7 +121,9 @@ export async function statsCommand(h: H): Promise<void> {
       let ag: { at?: number; requests?: number; limited?: boolean } = {};
       try { ag = JSON.parse((await getMeta(h.d, 'agent_at')) ?? '{}'); } catch { ag = {}; }
       const pause = Number(await getMeta(h.d, 'steam_pause_until')) || 0;
-      return [`🏠 Домашний агент Steam: ${ag.at ? `${Math.round((h.now - ag.at) / 60)} мин назад, запросов ${ag.requests ?? 0}${ag.limited ? ', Steam ограничил' : ''}` : 'не подключён'}`,
+      const denied = Number(await getMeta(h.d, 'agent_denied')) || 0;
+      const deniedTxt = denied > (ag.at ?? 0) ? ` · ⚠️ ключ агента не подошёл ${Math.round((h.now - denied) / 60)} мин назад — получи новый ключ и установи заново` : '';
+      return [`🏠 Домашний агент Steam: ${ag.at ? `${Math.round((h.now - ag.at) / 60)} мин назад, запросов ${ag.requests ?? 0}${ag.limited ? ', Steam ограничил' : ''}` : 'не подключён'}${deniedTxt}`,
         `☁️ Steam с GitHub: ${pause > h.now ? `пауза ещё ${Math.round((pause - h.now) / 60)} мин (Steam ограничил)` : 'без паузы'}`].join('\n');
     })(),
     await (async () => {

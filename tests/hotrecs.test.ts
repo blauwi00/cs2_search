@@ -36,3 +36,20 @@ test('горячие рекомендации: новая сделка уход�
   assert.equal(r.queued, 1, 'новая сделка — только тому, у кого не исчерпан лимит в сутки');
   assert.equal((d.db.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind = 'recs' AND telegram_id = 4").get() as { n: number }).n, 1);
 });
+
+test('горячие рекомендации частями: 650 человек — по 300 за запуск, каждый получает одну, без потолка и без повторов', async () => {
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  const env = testEnv(d, { INGEST_SECRET: SECRET });
+  await db.storeFx(D, [{ base: 'EUR', rateMicro: 45_000_000, rateDate: '2026-11-04', source: 'nbu' }, { base: 'USD', rateMicro: 40_000_000, rateDate: '2026-11-04', source: 'nbu' }], NOW);
+  const ins = d.db.prepare('INSERT INTO users (telegram_id, is_admin, created_at) VALUES (?, 0, ?)');
+  for (let u = 1; u <= 650; u++) ins.run(u, NOW);
+  const scan = (items: object[], at: number) => handleIngest(new Request('https://w.example.dev/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'scan', fetchedAt: at, items }) }), env, at);
+  await scan([item('Revolution Case', 10, 13)], NOW - 600);
+  await scan([item('Revolution Case', 10, 13)], NOW);
+  const n = () => ({ ...(d.db.prepare("SELECT COUNT(*) AS n, COUNT(DISTINCT telegram_id) AS u FROM outbox WHERE kind = 'recs'").get() as { n: number; u: number }) });
+  assert.equal((await jobHotRecs({ db: D, now: NOW + 60 })).queued, 300);
+  await jobHotRecs({ db: D, now: NOW + 120 });
+  await jobHotRecs({ db: D, now: NOW + 180 });
+  assert.deepEqual(n(), { n: 650, u: 650 }, 'все 650 получили по одной');
+  assert.equal((await jobHotRecs({ db: D, now: NOW + 240 })).queued, 0, 'рассылка по этой проверке закончена');
+});

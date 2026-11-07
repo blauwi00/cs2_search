@@ -13,7 +13,8 @@ const SECRET = process.env.INGEST_SECRET || '';
 if (!WORKER || !SECRET) { console.error('Нужны WORKER_URL и секрет INGEST_SECRET'); process.exit(1); }
 
 const UA = 'cs2-market-bot-collector/1.0 (personal price monitor)';
-const STEAM_GAP_MS = 3000;          // ~20 запросов в минуту
+// Пауза между запросами к Steam. Дома — реже: Steam ограничивает адрес, если за пару минут сделать 20–40 запросов подряд.
+const STEAM_GAP_MS = process.env.STEAM_ONLY === '1' ? 7000 : 3000;
 const TIME_BUDGET_MS = 7 * 60_000;  // укладываемся в 10-минутное расписание
 const STEAM_CHUNK = 25;             // предметов в одной отправке в Worker
 const SALES_CHUNK = 40;
@@ -49,7 +50,7 @@ const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUnti
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
-const STEAM_MAX_REQ = HOME ? 40 : 24;  // дома адрес свой — можно чуть больше
+const STEAM_MAX_REQ = HOME ? 15 : 24;  // дома: 15 запросов раз в 10 минут, без рывков — так Steam не ограничивает
 let homePause = 0;
 if (HOME) { try { homePause = JSON.parse(readFileSync('.cache/steam_pause.json', 'utf8')).until || 0; } catch { homePause = 0; } }
 const steamPaused = HOME ? homePause > now() : steamPauseUntil > now();

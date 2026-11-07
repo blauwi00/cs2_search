@@ -31,6 +31,7 @@ import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '..
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
+import { sha256Hex } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
@@ -1138,6 +1139,13 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       return json({ ok: true, display: displayValue(m, s), value });
     }
     if ((path === 'status' || path === 'jobs/enable' || path.startsWith('owner')) && !isAdmin) return bad('admin_only', 403);
+    // Ключ домашнего агента: новый ключ заменяет старый; в базе — только хэш, сам ключ показывается один раз.
+    if (path === 'owner/agent-key' && method === 'POST') {
+      const bytes = crypto.getRandomValues(new Uint8Array(24));
+      const key = 'ag_' + [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+      await setMetaStmt(d, 'agent_key_hash', await sha256Hex(key)).run();
+      return json({ ok: true, key, worker: url.origin });
+    }
     // #18: панель владельца — всё о боте в одном месте, с iPhone.
     if (path === 'owner' && method === 'GET') {
       const day = now - 86400, week = now - 7 * 86400;

@@ -31,11 +31,27 @@ const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { sta
 interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: unknown; error?: unknown }
 interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown; done?: unknown }
 
+/** Что может присылать домашний агент (свой ключ, а не общий ключ сборщика): только данные Steam со своего компьютера. */
+export const AGENT_KINDS = ['steam', 'steam_inventory', 'steam_avg', 'rally_scan', 'agent_ping'] as const;
+
+export async function sha256Hex(s: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+  return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function handleIngest(req: Request, env: Env, now: number, rawDb?: D1Database): Promise<Response> {
-  if (!env.INGEST_SECRET || !safeEqual(req.headers.get('X-Ingest-Secret')?.trim(), env.INGEST_SECRET.trim())) return json({ ok: false, error: 'forbidden' }, 403);
+  const given = req.headers.get('X-Ingest-Secret')?.trim();
+  const url = new URL(req.url);
+  let agentOnly = false;
+  if (!env.INGEST_SECRET || !safeEqual(given, env.INGEST_SECRET.trim())) {
+    // Ключ домашнего агента: хранится только его хэш (meta agent_key_hash), выдаётся владельцу в приложении.
+    const hash = given && given.length >= 32 ? await (rawDb ?? env.DB).prepare(`SELECT value FROM meta WHERE key = 'agent_key_hash'`).first<{ value: string }>() : null;
+    if (!hash?.value || !safeEqual(await sha256Hex(given!), hash.value)) return json({ ok: false, error: 'forbidden' }, 403);
+    agentOnly = true;
+    if (!((req.method === 'GET' && url.pathname === '/ingest/items') || (req.method === 'POST' && url.pathname === '/ingest'))) return json({ ok: false, error: 'forbidden' }, 403);
+  }
   const budget = newBudget();
   const d = budgetedDb(rawDb ?? env.DB, budget);
-  const url = new URL(req.url);
 
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
@@ -115,6 +131,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
   if (text.length > MAX_INGEST_BYTES) return json({ ok: false, error: 'too_large' }, 413);
   let body: IngestBody;
   try { body = JSON.parse(text) as IngestBody; } catch { return json({ ok: false, error: 'bad_json' }, 400); }
+  if (agentOnly && !(AGENT_KINDS as readonly unknown[]).includes(body.kind)) return json({ ok: false, error: 'forbidden' }, 403);
 
   // Время наблюдения: время сборщика, но не в будущем и не старше часа.
   const fa = typeof body.fetchedAt === 'number' ? Math.floor(body.fetchedAt) : now;

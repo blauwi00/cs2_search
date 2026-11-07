@@ -16,16 +16,13 @@ if (-not $node) {
 }
 Write-Host ('Node.js: ' + (& node -v))
 
-# 2. Ключ сборщика (INGEST_SECRET) — хранится только у тебя на компьютере.
+# 2. Ключ домашнего агента — выдаётся в приложении бота: Ещё → Для владельца → Домашний агент → «Получить ключ».
+#    Хранится только у тебя на компьютере; бот принимает с ним только цены Steam.
 $secretFile = Join-Path $dir 'secret.txt'
-$secret = Read-Host 'Вставь ключ сборщика INGEST_SECRET (или просто Enter — создам новый)'
+$secret = Read-Host 'Вставь ключ домашнего агента (в приложении: Ещё → Для владельца → Домашний агент)'
 if ([string]::IsNullOrWhiteSpace($secret)) {
-  $bytes = New-Object byte[] 24; [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $secret = -join ($bytes | ForEach-Object { $_.ToString('x2') })
-  Write-Host "`nНОВЫЙ КЛЮЧ: $secret" -ForegroundColor Cyan
-  Write-Host 'Его нужно вставить в ДВА места (иначе бот перестанет принимать цены):' -ForegroundColor Yellow
-  Write-Host '  1) Cloudflare → Workers & Pages → cs2-search → Settings → Variables and Secrets → INGEST_SECRET → Edit'
-  Write-Host '  2) GitHub → blauwi00/cs2_search → Settings → Secrets and variables → Actions → INGEST_SECRET → Update'
+  Write-Host 'Ключ не введён. Получи его в приложении бота и запусти установку ещё раз.' -ForegroundColor Red
+  return
 }
 Set-Content -Path $secretFile -Value $secret.Trim() -NoNewline -Encoding ascii
 

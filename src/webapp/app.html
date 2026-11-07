@@ -111,7 +111,7 @@ input:focus,select:focus{border-color:var(--accent)}
 .tab.on{color:var(--accent)}.tab.on .t{opacity:1}
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;opacity:0;pointer-events:none;transition:opacity .2s}
 .sheet-bg.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:calc(92vh - var(--safe-top));overflow-y:auto;background:var(--bg2);border-radius:20px 20px 0 0;padding:8px 14px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:calc(92vh - var(--safe-top));overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;background:var(--bg2);border-radius:20px 20px 0 0;padding:8px 14px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
 .sheet.on{transform:none}
 .grab{width:38px;height:5px;border-radius:3px;background:var(--sep);margin:4px auto 12px}
 .sheet h2{font-size:18px;margin:0 0 4px;line-height:1.25}
@@ -268,6 +268,8 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 'use strict';
 var tg = window.Telegram && window.Telegram.WebApp;
 if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('secondary_bg_color'); tg.setBackgroundColor('secondary_bg_color'); } catch (e) {} }
+// Свайп вниз внутри окон (ошибки, настройки) прокручивает окно, а не сворачивает приложение (Telegram 7.7+).
+if (tg && tg.disableVerticalSwipes) { try { tg.disableVerticalSwipes(); } catch (e) {} }
 // Полноэкранный режим Telegram: сверху часы и кнопки Telegram — сдвигаем шапку на их высоту.
 function applySafeTop() {
   if (!tg) return;
@@ -1968,6 +1970,25 @@ function bindRally(r) {
   });
 }
 // ---------- #18: панель владельца ----------
+// Домашний агент (Windows): цены Steam с компьютера владельца. Ключ — свой (не общий ключ сборщика), показывается один раз.
+function agentSheet() {
+  var cmd = 'irm https://raw.githubusercontent.com/blauwi00/cs2_search/main/home/install.ps1 | iex';
+  var copy = function (t) { try { navigator.clipboard.writeText(t).then(function () { haptic('ok'); toast('Скопировано'); }, function () { toast('Выдели и скопируй вручную'); }); } catch (e) { toast('Выдели и скопируй вручную'); } };
+  var h = '<h2>🏠 Домашний агент</h2><div class="sub">Компьютер с Windows сам берёт цены Steam каждые 10 минут, пока он включён. Пароль Steam не нужен, бот ничего не покупает.</div>';
+  h += '<div class="card" style="font-size:14px"><b>1.</b> Нажми «Получить ключ» и скопируй его.<br><b>2.</b> На компьютере: правый клик по «Пуск» → «Терминал» (или PowerShell).<br><b>3.</b> Вставь команду ниже и нажми Enter.<br><b>4.</b> Когда спросит ключ — вставь ключ из шага 1.</div>';
+  h += '<label class="f"><span>Команда для компьютера</span><input id="agc" readonly value="' + esc(cmd) + '"></label><button class="btn sec2" id="agcc">Скопировать команду</button>';
+  h += '<div id="agk"><button class="btn" id="agkb">Получить ключ</button><div class="note">Новый ключ отключает старый: если агент уже стоял, установи его заново с новым ключом.</div></div>';
+  h += '<div class="note">Работает ли агент — видно в «Панель владельца» и в /stats: «Домашний агент Steam: N мин назад». Выключить на компьютере: <code>schtasks /Delete /TN "Cenolov Steam" /F</code></div>';
+  sheet(h);
+  $('#agcc').onclick = function () { copy(cmd); };
+  $('#agkb').onclick = function () {
+    $('#agkb').disabled = true;
+    api('owner/agent-key', { method: 'POST' }).then(function (r) {
+      $('#agk').innerHTML = '<label class="f"><span>Ключ (показывается один раз)</span><input id="agkv" readonly value="' + esc(r.key) + '"></label><button class="btn" id="agkc">Скопировать ключ</button>';
+      $('#agkc').onclick = function () { copy(r.key); };
+    }).catch(function (e) { $('#agkb').disabled = false; toast(e.message); });
+  };
+}
 // «Пригласить друга»: ссылка на бота с меткой fr — в /stats видно, сколько пришло по приглашениям.
 function inviteFriend() {
   var go2 = function () {
@@ -2123,7 +2144,7 @@ function more() {
     sheet('<div class="list-s">' + items.map(function (x, i) { return '<div class="row" data-mm="' + i + '"><div class="ic">' + x[0] + '</div><div class="m"><div class="n">' + x[1] + '</div><div class="d">' + x[2] + '</div></div><div class="mut">›</div></div>'; }).join('') + '</div>');
     Array.prototype.forEach.call(document.querySelectorAll('[data-mm]'), function (el) { el.onclick = function () { haptic(); items[+el.getAttribute('data-mm')][3](); }; });
   };
-  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
+  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🏠', 'Домашний агент', 'Цены Steam с твоего компьютера, пока он включён', agentSheet], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
   $('#m-invite').onclick = function () { haptic(); inviteFriend(); };
   $('#m-sites').onclick = function () { haptic(); sitesSheet(); };

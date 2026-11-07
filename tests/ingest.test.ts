@@ -137,3 +137,27 @@ test('бережём записи D1: та же цена в течение 15 м
   await handleIngest(body(NOW + 700 + db.QUOTE_REFRESH_SEC, '11₴'), e, NOW + 700 + db.QUOTE_REFRESH_SEC);
   assert.equal(await fetched(), NOW + 700 + db.QUOTE_REFRESH_SEC, 'через 15 мин — обновляем, чтобы данные не считались устаревшими');
 });
+
+test('домашний агент: свой ключ из приложения владельца — только цены Steam; общий ключ сборщика не нужен', async () => {
+  const { signInitData } = await import('../src/webapp/auth.ts');
+  const { handleAppApi } = await import('../src/webapp/api.ts');
+  const d = migratedDb();
+  const e = env(d);
+  await seed(d, 'Revolution Case');
+  const init = (id: number) => signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id }) }, 'TEST_TOKEN');
+  const keyFor = async (id: number) => (await handleAppApi(new Request('https://w/app/api/owner/agent-key', { method: 'POST', headers: { 'X-Init-Data': await init(id) } }), e, NOW)).json() as Promise<Record<string, any>>;
+  assert.equal((await keyFor(999)).ok, false, 'ключ выдаётся только владельцу');
+  const { key } = await keyFor(ADMIN);
+  assert.match(key, /^ag_[0-9a-f]{48}$/);
+  assert.ok(!JSON.stringify(d.db.prepare(`SELECT value FROM meta WHERE key = 'agent_key_hash'`).get()).includes(key), 'в базе — только хэш');
+  const items = await handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': key } }), e, NOW);
+  assert.equal(items.status, 200, 'агент получает список предметов');
+  const r = await handleIngest(post({ kind: 'steam', fetchedAt: NOW, items: [{ name: 'Revolution Case', ok: true, body: { success: true, lowest_price: '10₴', median_price: '9,20₴', volume: '66' } }] }, key), e, NOW);
+  assert.equal(r.status, 200, 'цены Steam принимаются');
+  assert.equal((await handleIngest(post({ kind: 'scan', fetchedAt: NOW, items: [] }, key), e, NOW)).status, 403, 'остальное — только с общим ключом');
+  assert.equal((await handleIngest(new Request('https://w/ingest/backtest', { headers: { 'X-Ingest-Secret': key } }), e, NOW)).status, 403);
+  assert.equal((await handleIngest(post({ kind: 'steam', fetchedAt: NOW, items: [] }, 'ag_' + '0'.repeat(48)), e, NOW)).status, 403, 'чужой ключ');
+  const { key: key2 } = await keyFor(ADMIN);
+  assert.equal((await handleIngest(post({ kind: 'agent_ping', fetchedAt: NOW, requests: 1, limited: false }, key), e, NOW)).status, 403, 'новый ключ отключает старый');
+  assert.equal((await handleIngest(post({ kind: 'agent_ping', fetchedAt: NOW, requests: 1, limited: false }, key2), e, NOW)).status, 200);
+});

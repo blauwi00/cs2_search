@@ -10,6 +10,7 @@ import { toKop, type FxRate } from '../currency/nbu.ts';
 import { parseSteamPriceString } from '../utils/money.ts';
 import type { Currency } from '../types/market.ts';
 import { formatUah } from '../utils/money.ts';
+import { AVG_DOUBT_RATIO } from './evidence.ts';
 
 export type Market = 'steam' | 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins';
 
@@ -198,7 +199,10 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
     // Живой цены Steam нет — ориентир: средняя цена продаж в Steam за неделю (прайс CSGO Trader, USD → грн по НБУ).
     const list = kop(Math.min(e.sa.d7, e.sa.d1), 'USD');
     const net = list ? steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0 : 0;
-    if (list) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
+    // Средняя — история: у предмета могла резко упасть цена. Если на площадках он вдвое дешевле средней — ей не верим, идею не строим.
+    const siteMin = Math.min(...buys.filter((b) => b.m !== 'steam').map((b) => b.listKop));
+    const doubt = Number.isFinite(siteMin) && siteMin > 0 && list !== null && siteMin * AVG_DOUBT_RATIO < list;
+    if (list && !doubt) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
   }
   if (e.s7?.median && sales7 !== null && sales7 >= 7) {
     const list = kop(e.s7.median, 'EUR');

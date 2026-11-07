@@ -29,7 +29,7 @@ test('цена продажи в Steam: растёт — чуть выше ры�
   assert.ok(loss.breakEvenKop! > 10000);
 });
 
-test('приложение: /sellprice — по средним продажам Steam (в долларах → гривны), с учётом цены покупки', async () => {
+test('приложение: /sellprice — без живого объявления Steam совет не даём (средняя может отставать), даём ссылку на Steam', async () => {
   const { migratedDb, testEnv } = await import('./helpers.ts');
   const { handleAppApi } = await import('../src/webapp/api.ts');
   const { signInitData } = await import('../src/webapp/auth.ts');
@@ -42,9 +42,19 @@ test('приложение: /sellprice — по средним продажам 
   const item = await db.upsertItem(D, 'Kilowatt Case', NOW);
   d.db.prepare('INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(item.id, 106, 100, 98, 95, NOW);
   const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 6161, first_name: 'E', language_code: 'uk' }) }, 'TEST_TOKEN');
-  const r = await (await handleAppApi(new Request(`https://w/app/api/sellprice/${item.id}?cost=5000`, { headers: { 'X-Init-Data': init } }), env, NOW)).json() as { rec: { mode: string; priceKop: number; basis: string; belowCost: boolean } };
-  assert.equal(r.rec.mode, 'up');
-  assert.equal(r.rec.basis, 'avg');
-  assert.equal(r.rec.priceKop, Math.round(4240 * 1.03), '1,06 $ × 40 = 42,40 ₴, растёт на 6% → +3%');
-  assert.equal(r.rec.belowCost, true, 'купил за 50 ₴ — продажа за ~43,67 ₴ в убыток');
+  const r = await (await handleAppApi(new Request(`https://w/app/api/sellprice/${item.id}?cost=5000`, { headers: { 'X-Init-Data': init } }), env, NOW)).json() as { rec: unknown; status: string; url: string };
+  assert.equal(r.rec, null);
+  assert.equal(r.status, 'history');
+  assert.match(r.url, /steamcommunity\.com\/market\/listings\/730\/Kilowatt%20Case/);
+});
+
+test('оценка: средней Steam не верим, если на площадках вдвое дешевле (резкое падение цены)', async () => {
+  const { marketValue, siteMedianKop } = await import('../src/core/evidence.ts');
+  const ev = { listing: null, buyOrder: null, median24h: null, avg: { d1: 5393, d7: 5700, d30: 7200, d90: null, at: 0 }, status: 'history' as const, stale: [] };
+  assert.deepEqual(marketValue(ev), { kop: 5393, basis: 'avg' });
+  assert.deepEqual(marketValue(ev, 1200), { kop: 1200, basis: 'site' }, 'Sealed Dead Hand Terminal: средняя 53,93 ₴, на площадках ~12 ₴');
+  assert.deepEqual(marketValue(ev, 4000), { kop: 5393, basis: 'avg' }, 'обычная наценка Steam — средней верим');
+  assert.deepEqual(marketValue({ ...ev, listing: { kop: 1400, at: 0 } }, 1200), { kop: 1400, basis: 'listing' });
+  assert.equal(siteMedianKop([1200, 1100, 90000]), 1200, 'одна площадка с ошибкой не сбивает');
+  assert.equal(siteMedianKop([]), null);
 });

@@ -1217,7 +1217,8 @@ function targetBox(x) {
 }
 
 // Аудит, п.1 и п.5: рыночная стоимость, сумма после комиссии, себестоимость и потенциальная (не фактическая) прибыль — раздельно.
-var BASIS = { listing: 'самое дешёвое объявление Steam', median24h: 'медиана продаж Steam за 24 ч', avg: 'средняя цена продаж (история, не предложение)' };
+var BASIS = { listing: 'самое дешёвое объявление Steam', median24h: 'медиана продаж Steam за 24 ч', avg: 'средняя цена продаж (история, не предложение)', site: 'по ценам других площадок: средняя Steam сильно выше — цена быстро меняется, сверь в Steam' };
+function approx(b) { return b === 'avg' || b === 'site' ? '≈ ' : ''; }
 function tAgo(t) { return t ? ago(t) : '—'; }
 function steamPricesHtml(p) {
   if (!p) return '';
@@ -1231,7 +1232,7 @@ function steamPricesHtml(p) {
 }
 function valueCard(x) {
   if (!x.priceKop) return '<div class="card"><div style="font-weight:700">Нет актуальных данных</div><div class="mut" style="font-size:13px">Свежих цен Steam по этому предмету нет (объявления — не старше 6 ч, средние продаж — не старше 48 ч). Оценку и совет по продаже не показываю, чтобы не выдать старую цену за текущую.</div></div>' + steamPricesHtml(x.prices);
-  var h = '<div class="card">' + kv('Рыночная стоимость', (x.basis === 'avg' ? '≈ ' : '') + uah(x.priceKop) + '<div class="mut" style="font-size:12px;font-weight:400;white-space:normal">' + esc(BASIS[x.basis] || '') + '</div>') +
+  var h = '<div class="card">' + kv('Рыночная стоимость', approx(x.basis) + uah(x.priceKop) + '<div class="mut" style="font-size:12px;font-weight:400;white-space:normal">' + esc(BASIS[x.basis] || '') + '</div>') +
     kv('На баланс после комиссии Steam', x.netKop ? uah(x.netKop) + '<div class="mut" style="font-size:12px;font-weight:400">за 1 шт. · точный расчёт Steam</div>' : '—');
   if (x.qty > 1 && x.netKop) h += kv('Всего за ×' + x.qty, uah(x.netKop * x.qty));
   h += kv('Цена покупки', x.costKop ? uah(x.costKop) + ' за шт.' : '<a class="si-cost" style="color:var(--link);cursor:pointer">указать</a>');
@@ -1252,7 +1253,7 @@ function loadPrices(name) {
       return '<div class="kv" style="align-items:center;cursor:pointer" data-url="' + esc(x.url) + '"><span style="display:flex;align-items:center;gap:10px">' + icon + '<span>' + label + extra + '</span></span><span class="v" style="white-space:nowrap">' + price + '</span></div>';
     };
     var ico = function (x) { return '<span class="ic site sm' + (x.icon ? '' : ' noimg') + '"><b>' + esc(x.name.charAt(0)) + '</b>' + (x.icon ? '<img src="' + esc(x.icon) + '" alt="" onerror="this.parentNode.classList.add(\'noimg\');this.remove()">' : '') + '</span>'; };
-    if (r.steam) h += line(r.steam, '<span class="ic" style="width:26px;height:26px;border-radius:7px;font-size:15px;flex:none">🎮</span>', 'Steam Market', (r.steam.basis === 'avg' ? '≈ ' : '') + siteMoney(r.steam.kop, 'steam'), '<div class="mut" style="font-size:11px">' + esc(BASIS[r.steam.basis] || '') + ' · деньги остаются в Steam</div>');
+    if (r.steam) h += line(r.steam, '<span class="ic" style="width:26px;height:26px;border-radius:7px;font-size:15px;flex:none">🎮</span>', 'Steam Market', approx(r.steam.basis) + siteMoney(r.steam.kop, 'steam'), '<div class="mut" style="font-size:11px">' + esc(BASIS[r.steam.basis] || '') + ' · деньги остаются в Steam</div>');
     else if (r.steamStatus === 'no_data') h += '<div class="kv"><span>🎮 Steam Market</span><span class="mut">нет актуальных данных</span></div>';
     all.forEach(function (x) {
       var tags = (x.kind === 'reference' ? '<div class="mut" style="font-size:11px">ориентир площадки, не объявление</div>' : '') + (x.at ? '<div class="mut" style="font-size:11px">данные ' + ago(x.at) + (x.cur && x.cur !== 'USD' ? ' · из ' + esc(x.cur) : '') + '</div>' : '') + (x.kop === min && x.kind !== 'reference' ? '<span class="pos" style="font-size:11px;font-weight:700"> · дешевле всех</span>' : '') + (x.group === 'china' ? '<div class="mut" style="font-size:11px">Китай — нужен аккаунт на площадке</div>' : '') + (x.ref ? '<div style="font-size:11px;color:var(--amber)">партнёрская ссылка</div>' : '');
@@ -1270,7 +1271,7 @@ function sellBoxHtml() { return '<div id="sellbox"><div class="skel"></div></div
 function loadSellBox(itemId, costKop, onUse) {
   api('sellprice/' + itemId + (costKop ? '?cost=' + Math.round(costKop) : '')).then(function (r) {
     var el = $('#sellbox'); if (!el) return;
-    if (!r.rec) { el.innerHTML = r.pattern ? '' : '<div class="card" style="font-size:13px"><b>💰 Нет актуальных данных</b><div class="mut">' + (r.status === 'no_data' ? 'Свежих цен Steam нет — рекомендацию по продаже не даю, чтобы не опираться на устаревшие котировки.' : 'Недостаточно данных о продажах в Steam.') + '</div></div>'; return; }
+    if (!r.rec) { el.innerHTML = r.pattern ? '' : '<div class="card" style="font-size:13px"><b>💰 Сверь цену в Steam перед продажей</b><div class="mut">' + (r.status === 'no_data' ? 'Свежих цен Steam нет — рекомендацию по продаже не даю, чтобы не опираться на устаревшие котировки.' : 'Живой цены Steam сейчас нет, а средняя цена продаж может сильно отставать от рынка. Посмотри самое дешёвое объявление в Steam и поставь на копейку ниже.') + '</div>' + (r.url ? '<a class="sb-steam" style="display:inline-block;margin-top:6px;color:var(--link);cursor:pointer">🎮 Открыть в Steam</a>' : '') + '</div>'; if (r.url && el.querySelector('.sb-steam')) el.querySelector('.sb-steam').onclick = function () { haptic(); openLink(r.url); }; return; }
     var x = r.rec, col = x.mode === 'up' ? 'var(--green)' : x.mode === 'down' ? 'var(--amber)' : 'inherit';
     var h = '<div class="sec">💰 За сколько выставить в Steam</div><div class="card">';
     h += '<div style="font-weight:700;color:' + col + '">' + (x.mode === 'up' ? '📈 ' : x.mode === 'down' ? '📉 ' : '➖ ') + esc(x.title) + '</div>';

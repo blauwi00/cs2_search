@@ -48,14 +48,32 @@ export function steamEvidence(quotes: QuoteLike[], avg: AvgLike | null | undefin
   return { listing, buyOrder, median24h, avg: a, status: listing || median24h ? 'live' : a ? 'history' : 'no_data', stale };
 }
 
-/** Оценка «сколько стоит» для инвентаря: объявление → медиана продаж за сутки → средняя продаж (меньшая из 1 и 7 дней). */
-export function marketValue(e: SteamEvidence): { kop: number; basis: 'listing' | 'median24h' | 'avg' } | null {
+/**
+ * Оценка «сколько стоит» для инвентаря: объявление → медиана продаж за сутки → средняя продаж (меньшая из 1 и 7 дней).
+ * Средняя — история и может сильно отставать (у предмета резко упала цена: средняя 54 ₴, в Steam 14 ₴).
+ * Поэтому её сверяем с ценами других площадок (siteKop — типичная цена объявления там): если там вдвое дешевле,
+ * средней не верим и берём цену площадок (basis 'site') — оценка ниже, но честнее.
+ */
+export function marketValue(e: SteamEvidence, siteKop?: number | null): { kop: number; basis: 'listing' | 'median24h' | 'avg' | 'site' } | null {
   if (e.listing) return { kop: e.listing.kop, basis: 'listing' };
   if (e.median24h) return { kop: e.median24h.kop, basis: 'median24h' };
   const a = e.avg && (e.avg.d1 && e.avg.d7 ? Math.min(e.avg.d1, e.avg.d7) : e.avg.d1 ?? e.avg.d7);
-  return a ? { kop: a, basis: 'avg' } : null;
+  if (a && siteKop && siteKop > 0 && siteKop * AVG_DOUBT_RATIO < a) return { kop: siteKop, basis: 'site' };
+  if (a) return { kop: a, basis: 'avg' };
+  return null;
+}
+
+/** Средняя Steam больше цены других площадок во столько раз — средней не верим (обычная наценка Steam — до ~1,5×). */
+export const AVG_DOUBT_RATIO = 2;
+
+/** Типичная цена объявления на сторонних площадках: медиана по площадкам (одна площадка с ошибкой не сбивает оценку). */
+export function siteMedianKop(prices: number[]): number | null {
+  const v = prices.filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : Math.round((v[m - 1] + v[m]) / 2);
 }
 
 export const BASIS_RU: Record<string, string> = {
-  listing: 'самое дешёвое объявление Steam', median24h: 'медиана продаж Steam за 24 ч', avg: 'средняя цена продаж Steam (история, не предложение)',
+  listing: 'самое дешёвое объявление Steam', median24h: 'медиана продаж Steam за 24 ч', avg: 'средняя цена продаж Steam (история, не предложение)', site: 'по ценам других площадок — средняя Steam устарела',
 };

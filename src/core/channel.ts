@@ -149,13 +149,14 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
   const row = (r: CardRow) => ({ name: r.name, pct: pct(r.bp), upward: r.bp >= 0, price: r.kop ? formatUah(r.kop) : null });
   if (slot === 'ideas') {
     const today = await ensureTodayIdeas(d, fresh, fx, now);
-    const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 86400)).all<IdeaRow>()).results;
+    // Итог — по идеям недельной давности: раньше купленное не продать (блокировка 7 дней).
+    const yesterday = (await d.prepare('SELECT * FROM idea_log WHERE day = ?').bind(warsawDate(now - 7 * 86400)).all<IdeaRow>()).results;
     const checked = yesterday.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
     const bestY = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const card = today.length ? {
       title: 'Рекомендации дня',
       deals: today.slice(0, 4).map((r) => ({ name: r.name, buy: MARKETS[r.buy_at].name, buyPrice: formatUah(r.pay_kop), sell: MARKETS[r.sell_at].name, sellPrice: formatUah(r.sell_kop), profit: formatSignedUah(r.profit_kop), roi: pct(r.roi_bp) })),
-      note: checked.length ? `Вчера: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} рекомендаций в плюсе` : null,
+      note: checked.length ? `Неделю назад: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} рекомендаций в плюсе` : null,
     } : null;
     return finish(ideasPost(today, yesterday, now), today[0]?.name ?? bestY?.name ?? null, card);
   }
@@ -169,7 +170,8 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     const p = buildPostLead('cases', entries, fx, now);
     return finish(p?.text ?? null, p?.lead ?? null, p ? { title: 'Кейсы Steam', subtitle: 'сутки к месяцу', up: p.up?.map(row), down: p.down?.map(row) } : null);
   }
-  const week = (await d.prepare('SELECT * FROM idea_log WHERE created_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
+  // Итоги недели: идеи, которые проверены за эту неделю (им как раз исполнилось 7 дней).
+  const week = (await d.prepare('SELECT * FROM idea_log WHERE checked_at >= ?').bind(now - 7 * 86400).all<IdeaRow>()).results;
   const u = await d.prepare('SELECT COUNT(*) AS n, SUM(created_at >= ?) AS w FROM users').bind(now - 7 * 86400).first<{ n: number; w: number | null }>();
   const ch = cases.filter((c) => c.d7 && c.d30).map((c) => ({ name: c.name, bp: Math.trunc(((c.d7! - c.d30!) * 10000) / c.d30!), kop: null }));
   const leader = [...ch].sort((a, b) => b.bp - a.bp)[0];
@@ -179,7 +181,7 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
     big: pct(Math.round(ch.reduce((s, x) => s + x.bp, 0) / ch.length)), bigLabel: 'индекс кейсов Steam',
     up: [...ch].sort((a, b) => b.bp - a.bp).filter((x) => x.bp > 0).slice(0, 3).map(row),
     down: [...ch].sort((a, b) => a.bp - b.bp).filter((x) => x.bp < 0).slice(0, 3).map(row),
-    note: checked.length ? `Рекомендации бота: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе через сутки` : null,
+    note: checked.length ? `Рекомендации бота: ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе через 7 дней` : null,
   } : null;
   return finish(weeklyPost(cases, week, { total: u?.n ?? 0, week: u?.w ?? 0 }, now), leader?.name ?? null, card);
 }

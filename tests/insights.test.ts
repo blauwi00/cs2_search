@@ -10,6 +10,7 @@ import { cleanSnippet, weeklyPost, yesterdayLine, type IdeaRow } from '../src/co
 import * as db from '../src/storage/db.ts';
 
 const DAY1 = Date.parse('2026-11-04T09:30:00Z') / 1000; // ср 10:30 Варшава
+const DAY8 = Date.parse('2026-11-11T09:30:00Z') / 1000;
 const DAY2 = DAY1 + 86400;
 const SECRET = 'ingest_secret_test_123';
 const EUR = { base: 'EUR' as const, rateMicro: 45_000_000, rateDate: '2026-11-04', source: 'nbu' };
@@ -19,7 +20,7 @@ const ingest = (env: ReturnType<typeof testEnv>, body: object, now: number) =>
   handleIngest(new Request('https://w/ingest', { method: 'POST', headers: hdr, body: JSON.stringify({ fetchedAt: now, ...body }) }), env, now);
 const scanItem = (median: number) => ({ name: 'Revolution Case', offers: { skinport: { p: 10, q: 50 } }, s7: { median, volume: 300 }, s30: { median: 12.5, volume: 1200 } });
 
-test('история идей: записываются один раз за день, через сутки проверяются по свежим ценам, итог — в посте', async () => {
+test('история идей: записываются один раз за день, через 7 дней (когда можно продать) проверяются по свежим ценам, итог — в посте', async () => {
   const d = migratedDb();
   const D = d as unknown as D1Database;
   const env = testEnv(d, { INGEST_SECRET: SECRET });
@@ -28,20 +29,25 @@ test('история идей: записываются один раз за д�
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1);
   const p1 = (await composePost(D, 'ideas', DAY1))!;
   assert.match(p1, /Рекомендации дня<\/b> · 4 ноября/);
-  assert.match(p1, /Завтра — честный итог/);
-  assert.ok(!/Вчерашние рекомендации/.test(p1));
+  assert.match(p1, /через неделю, когда продажа станет возможной, покажем честный итог/);
+  assert.ok(!/недельной давности/.test(p1));
   await composePost(D, 'ideas', DAY1 + 600);
   assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM idea_log').get() as { n: number }).n, 1, 'одна запись на идею, без повторов');
   // Сборщик обязан включить идею в сканирование для проверки.
-  const items = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, DAY2 - 3600)).json() as { trackNames: string[] };
-  assert.deepEqual(items.trackNames, ['Revolution Case']);
-  // Через сутки цена продаж упала: 13 € → 10,5 € — продать с прибылью уже нельзя.
+  const early = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, DAY2 - 3600)).json() as { trackNames: string[] };
+  assert.deepEqual(early.trackNames, [], 'через сутки ещё рано: купленное не продать 7 дней');
   await ingest(env, { kind: 'scan', items: [scanItem(10.5)] }, DAY2);
+  assert.equal((d.db.prepare('SELECT checked_at FROM idea_log').get() as { checked_at: number | null }).checked_at, null, 'через сутки не проверяем');
+  const items = await (await handleIngest(new Request('https://w/ingest/items', { headers: hdr }), env, DAY8 - 3600)).json() as { trackNames: string[] };
+  assert.deepEqual(items.trackNames, ['Revolution Case']);
+  // Через 7 дней цена продаж упала: 13 € → 10,5 € — продать с прибылью уже нельзя.
+  await ingest(env, { kind: 'scan', items: [scanItem(10.5)] }, DAY8 - 600);
+  await ingest(env, { kind: 'scan', items: [scanItem(10.5)] }, DAY8);
   const r = d.db.prepare('SELECT outcome, profit_kop, profit_kop_24 FROM idea_log').get() as { outcome: string; profit_kop: number; profit_kop_24: number };
   assert.equal(r.outcome, 'minus');
   assert.equal(r.profit_kop_24, Math.floor(1050 * 0.92) * 45 - 45000);
-  const p2 = (await composePost(D, 'ideas', DAY2))!;
-  assert.match(p2, /Вчерашние рекомендации через сутки: 0 из 1 в плюсе/);
+  const p2 = (await composePost(D, 'ideas', DAY8))!;
+  assert.match(p2, /Рекомендации недельной давности — когда их уже можно продать: 0 из 1 в плюсе/);
 });
 
 test('итог недели: индекс кейсов, лидеры, идеи; без данных — пусто', () => {

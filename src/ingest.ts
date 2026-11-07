@@ -16,7 +16,7 @@ import { SourceError, type Quote } from './types/market.ts';
 import { catalogPartStmts, catalogInfo } from './catalog.ts';
 import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
-import { ideasToTrack, checkStmts, cleanSnippet, newsImage, type IdeaRow } from './core/insights.ts';
+import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
@@ -393,8 +393,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         `INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`,
       ).bind(JSON.stringify(merged), at).run();
       result.stored = merged.length;
-      // Проверка идей суточной давности по свежим ценам.
-      const pending = (await d.prepare('SELECT * FROM idea_log WHERE checked_at IS NULL AND created_at <= ? LIMIT 20').bind(now - 20 * 3600).all<IdeaRow>()).results;
+      // Проверка идей недельной давности (когда купленное уже можно продать) по свежим ценам.
+      const pending = (await d.prepare('SELECT * FROM idea_log WHERE checked_at IS NULL AND created_at <= ? ORDER BY created_at LIMIT 20').bind(now - CHECK_AFTER + 4 * 3600).all<IdeaRow>()).results;
       const checks = checkStmts(d, pending, merged, fx, now);
       if (checks.length) await d.batch(checks);
     } else if (body.kind === 'case_ev') {

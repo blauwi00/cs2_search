@@ -808,7 +808,7 @@ function deals() {
       if (hid.length) h += '<div id="r-hid"><div class="row" id="r-hid-b"><div class="ic">💳</div><div class="m"><div class="n">Ещё ' + hid.length + ' ' + (hid.length === 1 ? 'идея' : hid.length < 5 ? 'идеи' : 'идей') + ' дороже баланса</div><div class="d">Показать</div></div><div class="mut">›</div></div></div>';
       if (r.trends.length) h += '<div class="sec">Растут в цене</div>';
       h += r.trends.map(recCard).join('');
-      h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций остались в плюсе через сутки</div></div><div class="mut">›</div></div>';
+      h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций в плюсе через 7 дней, когда можно продать</div></div><div class="mut">›</div></div>';
     }
     view.innerHTML = h;
     if ($('#r-how')) $('#r-how').onclick = function () {
@@ -820,7 +820,7 @@ function deals() {
     bindRecSwitch();
     if ($('#r-stats')) {
       $('#r-stats').onclick = function () { haptic(); recStatsSheet(); };
-      api('recstats').then(function (s) { var n = s.plus + s.minus; if (n && $('#r-stats-d')) $('#r-stats-d').innerHTML = '<b class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + s.plus + ' из ' + n + '</b> в плюсе через сутки · за ' + s.days + ' дней'; }).catch(function () {});
+      api('recstats').then(function (s) { var n = s.plus + s.minus; if (n && $('#r-stats-d')) $('#r-stats-d').innerHTML = '<b class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + s.plus + ' из ' + n + '</b> в плюсе через 7 дней · за ' + s.days + ' дней'; }).catch(function () {});
     }
   }).catch(fail);
 }
@@ -828,11 +828,11 @@ function recStatsSheet() {
   sheet('<div class="skel"></div><div class="skel" style="height:200px"></div>');
   api('recstats').then(function (s) {
     var n = s.plus + s.minus;
-    var h = '<h2>📊 Честная статистика</h2><div class="sub">«Рекомендации дня» за ' + s.days + ' дней: что стало с каждой через сутки</div>';
-    if (!s.total) h += '<div class="card mut">Пока нечего считать: бот записывает рекомендации дня и проверяет их через сутки. Загляни через пару дней.</div>';
+    var h = '<h2>📊 Честная статистика</h2><div class="sub">«Рекомендации дня» за ' + s.days + ' дней: что стало с каждой через 7 дней</div>';
+    if (!s.total) h += '<div class="card mut">Пока нечего считать: бот записывает рекомендации дня и проверяет их через 7 дней. Загляни через пару дней.</div>';
     else {
-      h += '<div class="grid2">' + stat('В плюсе через сутки', n ? '<span class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + Math.round(s.plus * 100 / n) + '%</span>' : '—', n ? s.plus + ' из ' + n + ' проверенных' : 'ещё проверяется') +
-        stat('Средняя прибыль', s.avgActualKop != null ? '<span class="' + cls(s.avgActualKop) + '">' + uah(s.avgActualKop, true) + '</span>' : '—', s.avgPromisedKop != null ? 'обещали ' + uah(s.avgPromisedKop, true) : 'через сутки') + '</div>';
+      h += '<div class="grid2">' + stat('В плюсе через 7 дней', n ? '<span class="' + (s.plus * 2 >= n ? 'pos' : 'neg') + '">' + Math.round(s.plus * 100 / n) + '%</span>' : '—', n ? s.plus + ' из ' + n + ' проверенных' : 'ещё проверяется') +
+        stat('Средняя прибыль', s.avgActualKop != null ? '<span class="' + cls(s.avgActualKop) + '">' + uah(s.avgActualKop, true) + '</span>' : '—', s.avgPromisedKop != null ? 'обещали ' + uah(s.avgPromisedKop, true) : 'через 7 дней') + '</div>';
       if (s.gone || s.pending) h += '<div class="note">' + (s.pending ? 'Ещё проверяются: ' + s.pending + '. ' : '') + (s.gone ? 'Не удалось проверить (цены пропали): ' + s.gone + ' — в процент не входят.' : '') + '</div>';
       h += '<div class="sec">Последние</div>' + s.recent.map(function (x) {
         var o = x.outcome === 'plus' ? '<span class="pos">✅ ' + uah(x.profit24Kop, true) + '</span>' : x.outcome === 'minus' ? '<span class="neg">❌ ' + uah(x.profit24Kop, true) + '</span>' : x.outcome === 'gone' ? '<span class="mut">нет данных</span>' : '<span class="mut">⏳ проверяется</span>';

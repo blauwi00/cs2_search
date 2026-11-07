@@ -29,25 +29,33 @@ export async function ensureTodayIdeas(d: D1Database, entries: ScanEntry[] | nul
   return (await d.prepare('SELECT * FROM idea_log WHERE day = ? ORDER BY profit_kop DESC').bind(day).all<IdeaRow>()).results;
 }
 
-/** Названия идей, которые пора проверить (сборщик обязательно включит их в следующее сканирование). */
+/**
+ * Итог идеи — через 7 дней: купленное в Steam (и на большинстве сайтов) нельзя продать раньше, чем через неделю,
+ * так что «через сутки» был нечестный итог. CHECK_AFTER — когда проверять, CHECK_GIVE_UP — после этого «проверить не удалось».
+ */
+export const CHECK_AFTER = 7 * 86400;
+const CHECK_GIVE_UP = CHECK_AFTER + 36 * 3600;
+
+/** Названия идей, которые скоро пора проверить (сборщик обязательно включит их в сканирование): за сутки до срока и до отказа. */
 export async function ideasToTrack(d: D1Database, now: number): Promise<string[]> {
-  return (await d.prepare(`SELECT DISTINCT name FROM idea_log WHERE checked_at IS NULL AND created_at >= ? LIMIT 20`).bind(now - 40 * 3600)
-    .all<{ name: string }>()).results.map((r) => r.name);
+  return (await d.prepare(`SELECT DISTINCT name FROM idea_log WHERE checked_at IS NULL AND created_at BETWEEN ? AND ? LIMIT 20`)
+    .bind(now - CHECK_GIVE_UP, now - CHECK_AFTER + 86400).all<{ name: string }>()).results.map((r) => r.name);
 }
 
 /**
- * Проверка через сутки: если бы купил по цене идеи и продал там же, где советовал бот, по сегодняшней цене —
- * остался бы в плюсе? Данных о предмете нет больше 36 ч — «gone» (честно: проверить не удалось).
+ * Проверка через 7 дней (когда купленное можно продать): если бы купил по цене идеи и продал там же, где советовал бот,
+ * по цене на этот день — остался бы в плюсе? Данных нет ещё 36 ч после срока — «gone» (честно: проверить не удалось).
+ * Колонки *_24 исторические: в них итог на день проверки.
  */
 export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): D1PreparedStatement[] {
   const by = new Map(entries.map((e) => [e.name, e]));
   const out: D1PreparedStatement[] = [];
   for (const r of pending) {
-    if (now - r.created_at < 20 * 3600) continue;
+    if (now - r.created_at < CHECK_AFTER - 4 * 3600) continue;
     const e = by.get(r.name);
     const sell = e ? marketSides(e, fx, IDEA_SETTINGS).sells.find((s) => s.m === r.sell_at) : undefined;
     if (!sell) {
-      if (now - r.created_at > 36 * 3600) out.push(d.prepare(`UPDATE idea_log SET checked_at = ?, outcome = 'gone' WHERE id = ?`).bind(now, r.id));
+      if (now - r.created_at > CHECK_GIVE_UP) out.push(d.prepare(`UPDATE idea_log SET checked_at = ?, outcome = 'gone' WHERE id = ?`).bind(now, r.id));
       continue;
     }
     const p24 = sell.netKop - r.pay_kop;
@@ -57,7 +65,7 @@ export function checkStmts(d: D1Database, pending: IdeaRow[], entries: ScanEntry
   return out;
 }
 
-/** #6: честная статистика «Рекомендаций дня» — сколько через сутки остались в плюсе. */
+/** #6: честная статистика «Рекомендаций дня» — сколько через 7 дней (когда можно продать) остались в плюсе. */
 export interface RecStats { days: number; total: number; plus: number; minus: number; gone: number; pending: number; avgPromisedKop: number | null; avgActualKop: number | null;
   recent: { day: string; name: string; buyAt: string; sellAt: string; profitKop: number; profit24Kop: number | null; outcome: string | null }[] }
 export async function recStats(d: D1Database, now: number, days = 30): Promise<RecStats> {
@@ -82,7 +90,7 @@ export function yesterdayLine(rows: IdeaRow[]): string | null {
   if (!checked.length) return null;
   const plusN = checked.filter((r) => r.outcome === 'plus').length;
   const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
-  return `📊 <b>Вчерашние рекомендации через сутки: ${plusN} из ${checked.length} в плюсе</b>\nЛучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)})`;
+  return `📊 <b>Рекомендации недельной давности — когда их уже можно продать: ${plusN} из ${checked.length} в плюсе</b>\nЛучшая — ${esc(best.name)}: ${sign(best.profit_kop_24 ?? 0)} (обещали ${sign(best.profit_kop)})`;
 }
 
 /** Пост «Идеи дня» из записанных идей. */
@@ -97,7 +105,7 @@ export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): s
     lines.push(...dealBlock(i + 1, { name: r.name, buyName: MARKETS[r.buy_at].name, sellName: MARKETS[r.sell_at].name, payKop: r.pay_kop, sellKop: r.sell_kop, getKop: r.get_kop, profitKop: r.profit_kop, roiBp: r.roi_bp, cash: r.wallet === 'cash' }), '');
   });
   if (y) lines.push(`<blockquote>${y}</blockquote>`, '');
-  lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Завтра — честный итог: сработали эти рекомендации или нет.</i>' : '<i>Завтра — снова проверка рынка.</i>');
+  lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Купленное нельзя продать 7 дней — через неделю, когда продажа станет возможной, покажем честный итог этих рекомендаций.</i>' : '<i>Завтра — снова проверка рынка.</i>');
   return lines.join('\n');
 }
 

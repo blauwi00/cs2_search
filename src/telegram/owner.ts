@@ -10,7 +10,7 @@ import { say, type H } from './context.ts';
 import { nextAllowed } from '../core/audience.ts';
 import { composeChannelPost, botButton, botUsername, getMeta, setMetaStmt, channelUrlOf, SLOTS, ALL_SLOTS, type Slot } from '../core/channel.ts';
 
-const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог вчерашних (10:00)', rubric: 'Рубрика дня: «Окупается ли кейс» пн/чт, «Что отслеживают» сб, «Истории CS2» вт/ср/пт/вс (13:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
+const SLOT_RU: Record<Slot, string> = { ideas: 'Рекомендации дня + итог недельной давности (10:00)', rubric: 'Рубрика дня: «Окупается ли кейс» пн/чт, «Что отслеживают» сб, «Истории CS2» вт/ср/пт/вс (13:00)', trends: 'Растут в цене (15:00)', cases: 'Кейсы: дорожают/дешевеют (20:00)', weekly: 'Итог недели (вс 19:00)' };
 
 export async function channelCommand(h: H, arg: string): Promise<void> {
   if (!h.isAdmin) return;
@@ -50,7 +50,7 @@ export async function channelCommand(h: H, arg: string): Promise<void> {
       '📦 <b>20:00</b> — кейсы Steam: что дорожает и дешевеет',
       '📅 <b>Вс 19:00</b> — итоги недели',
       '🛠 Обновления CS2 — сразу, как выходят', '',
-      '<blockquote>Цены — в долларах, комиссии площадок учтены. Каждое утро — честный итог вчерашних рекомендаций: сработали или нет.</blockquote>', '',
+      '<blockquote>Цены — в долларах, комиссии площадок учтены. Каждое утро — честный итог рекомендаций недельной давности, когда купленное уже можно продать: сработали или нет.</blockquote>', '',
       'Личные подсказки, уведомления и твой инвентарь — в боте 👇',
     ].join('\n'), botButton(user, '🤖 Открыть бота'));
     const url = channelUrlOf(chat);
@@ -191,7 +191,7 @@ export async function channelLink(h: H): Promise<string | null> {
 
 const BROADCAST_DEFAULT = [
   '📣 <b>У бота появился канал</b>', '',
-  'Каждый день: рекомендации дня с честным итогом вчерашних, что растёт в цене, кейсы Steam, итоги недели и обновления CS2.', '',
+  'Каждый день: рекомендации дня с честным итогом через 7 дней, что растёт в цене, кейсы Steam, итоги недели и обновления CS2.', '',
   'Подписывайся 👇',
 ].join('\n');
 

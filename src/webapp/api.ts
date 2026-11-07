@@ -48,19 +48,51 @@ import { loadRallyScan, rallySettingsFor, rallyTrack, botStats, rallyProven, BOT
 import { safeImg } from '../core/recs.ts';
 import { submitFeedback, donateInvoiceLink, topDonors, DONATE_AMOUNTS } from '../core/support.ts';
 
+/**
+ * Память воркера между запросами (одна копия воркера обслуживает много людей): последний скан рынка и уже посчитанные идеи.
+ * Скан меняется раз в ~10 минут — без этого каждый человек при каждом открытии заново разбирал бы весь скан и пересчитывал идеи.
+ * Ключ — сама база (в тестах у каждой своя), поэтому данные разных баз не смешиваются.
+ */
+interface Memo { scan: { v: Awaited<ReturnType<typeof loadScan>>; checked: number } | null; recs: Map<string, ReturnType<typeof buildRecs>>; watched: { n: number; at: number } | null }
+const MEMO = new WeakMap<object, Memo>();
+function memoFor(k: object): Memo {
+  let m = MEMO.get(k);
+  if (!m) { m = { scan: null, recs: new Map(), watched: null }; MEMO.set(k, m); }
+  return m;
+}
+/** Скан рынка: раз в минуту лёгкой проверкой «не появился ли новый», сам скан (большой JSON) — только когда он новый. */
+async function scanCached(d: D1Database, m: Memo, now: number) {
+  if (m.scan && now - m.scan.checked < 60) return m.scan.v;
+  const r = await d.prepare('SELECT fetched_at FROM market_scan WHERE id = 1').first<{ fetched_at: number }>();
+  if (m.scan && m.scan.v && r?.fetched_at === m.scan.v.fetchedAt) { m.scan.checked = now; return m.scan.v; }
+  const v = await loadScan(d);
+  m.scan = { v, checked: now };
+  m.recs.clear();
+  return v;
+}
+/** Число предметов в наблюдении у всех — в сводке; пересчёт не чаще раза в 5 минут (и сразу после изменения списка). */
+async function watchedCountCached(d: D1Database, m: Memo, now: number): Promise<number> {
+  if (m.watched && now - m.watched.at < 300) return m.watched.n;
+  const n = await db.countActiveWatched(d);
+  m.watched = { n, at: now };
+  return n;
+}
+
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 /**
  * Идеи по всему рынку для человека. Галочка «Подбирать идеи под баланс Steam» (и вписанный баланс): только идеи,
  * на покупку которых хватает баланса (покупки в Steam — первыми), дороже — в hidden («Ещё N идей дороже твоего баланса — показать»). Как в уведомлениях.
  * bal — уже посчитанный баланс (сводка считает его сама, чтобы не делать запросы дважды).
  */
-async function recsFor(d: D1Database, tid: number, now: number, pre?: { st: db.Settings; bal: SteamBalance | null }) {
-  const [scan, fx, st] = await Promise.all([loadScan(d), db.loadLatestFx(d), pre ? pre.st : db.getSettings(d, tid)]);
+async function recsFor(d: D1Database, tid: number, now: number, m: Memo, pre?: { st: db.Settings; bal: SteamBalance | null }) {
+  const [scan, fx, st] = await Promise.all([scanCached(d, m, now), db.loadLatestFx(d), pre ? pre.st : db.getSettings(d, tid)]);
   const empty = { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[], hidden: [] as RecDto[], limitKop: null as number | null };
   if (!scan || now - scan.fetchedAt > 86400) return empty;
-  const r = buildRecs(scan.entries, fx, {
-    minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp),
-  });
+  const rs = { minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp) };
+  // Одинаковые пороги и комиссии у большинства — считаем идеи один раз на скан и курс.
+  const key = [scan.fetchedAt, rs.minProfitKop, rs.minRoiBp, rs.depositFeeBp, rs.withdrawFeeBp, fx.get('EUR')?.id ?? 0, fx.get('USD')?.id ?? 0].join('|');
+  let r = m.recs.get(key);
+  if (!r) { r = buildRecs(scan.entries, fx, rs); if (m.recs.size > 30) m.recs.clear(); m.recs.set(key, r); }
   const bal = pre ? pre.bal : st.recs_by_balance === '1' ? await steamBalanceFor(d, tid, st, now) : null;
   const limitKop = steamBuyLimit(bal, st);
   const split = splitByBalance(r.deals, limitKop), splitT = splitByBalance(r.trends, limitKop);
@@ -260,6 +292,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
   };
   const budget = newBudget();
   const d = budgetedDb(rawDb ?? env.DB, budget);
+  const memo = memoFor((rawDb ?? env.DB) as object);
   // Запас запросов к базе на одну строку продажи (несколько лотов, новая запись покупки) — чтобы не оборваться посередине.
   const ROW_D1 = 20;
   // Валюта кошелька Steam = валюта, выбранная в боте (минимальные комиссии Steam считаются в ней).
@@ -278,10 +311,20 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
   try {
     // «Разгон баланса» — только владельцу, пока симуляция бота не подтвердила схему.
     if (seg[0] === 'rally' && !isAdmin && !(await rallyProven(d))) return bad('«Разгон баланса» пока проверяется ботом — откроется, когда схема подтвердится');
+    // Бегущая строка (обновляется раз в 3 минуты, пока приложение открыто) — лёгкая версия сводки: идеи, состояние, топ поддержки.
+    if (path === 'ticker' && method === 'GET') {
+      const [sources, jobs, recs, donors] = await Promise.all([db.listSourceStatus(d), listJobs(d), recsFor(d, tid, now, memo), topDonors(d, 10)]);
+      const lastRun = Math.max(0, ...jobs.map((j) => j.last_run_at ?? 0));
+      return json({
+        ok: true, cronAlive: lastRun > 0 && now - lastRun < 300, donors,
+        sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: null })),
+        recs: { fetchedAt: recs.fetchedAt, deals: await (async () => { const top = recs.deals.slice(0, 6); const im = top.length ? await imagesFor(d, top.map((x) => x.name)) : new Map<string, string>(); return top.map((x) => ({ ...x, img: im.get(x.name) ?? null })); })(), trends: [], total: recs.deals.length + recs.trends.length, hidden: recs.hidden.length },
+      });
+    }
     // ---------- Сводка ----------
     if (path === 'summary' && method === 'GET') {
       const [sources, watched, deals, lots, jobs] = await Promise.all([
-        db.listSourceStatus(d), db.countActiveWatched(d), userDeals(5), T.openTrades(d, tid), listJobs(d),
+        db.listSourceStatus(d), watchedCountCached(d, memo, now), userDeals(5), T.openTrades(d, tid), listJobs(d),
       ]);
       const quotes = await quotesChunked(d, [...new Set(lots.map((l) => l.item_id))].slice(0, 360));
       let cost = 0, value = 0, unknown = 0;
@@ -304,7 +347,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         .sort((a, b) => ACTION_RANK[a.advice.action] - ACTION_RANK[b.advice.action]).slice(0, 8);
       const st = await db.getSettings(d, tid);
       const bal = await steamBalanceFor(d, tid, st, now);
-      const [recs, su] = await Promise.all([recsFor(d, tid, now, { st, bal }),
+      const [recs, su] = await Promise.all([recsFor(d, tid, now, memo, { st, bal }),
         d.prepare('SELECT steam_id, steam_vanity, inv_status FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null; inv_status: string | null }>()]);
       const myWatch = wl.length;
       return json({
@@ -476,7 +519,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
 
     // ---------- Рекомендации по всему рынку ----------
     if (path === 'recs' && method === 'GET') {
-      return json({ ok: true, ...(await recsFor(d, tid, now)) });
+      return json({ ok: true, ...(await recsFor(d, tid, now, memo)) });
     }
 
     // ---------- Сделки ----------
@@ -541,6 +584,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         }),
       });
     }
+    if ((path === 'watch' || path === 'watch/delete' || seg[0] === 'watch') && method !== 'GET') memo.watched = null; // список изменился — счётчик пересчитаем
     if (path === 'watch' && method === 'POST') {
       const names = (Array.isArray(body.names) ? body.names : [body.name]).filter((n): n is string => typeof n === 'string' && n.trim().length >= 3).map((n) => n.trim()).slice(0, 60);
       if (!names.length) return bad('name_required');

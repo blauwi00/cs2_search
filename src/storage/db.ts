@@ -248,6 +248,19 @@ export async function allWatchedNames(db: D1Database): Promise<ItemRow[]> {
   return r.results;
 }
 
+/** То же, что allWatchedNames, но только для этих названий (по 90 за запрос — лимит параметров D1). */
+export async function watchedByNames(db: D1Database, names: string[]): Promise<ItemRow[]> {
+  const uniq = [...new Set(names)].slice(0, 2000), out: ItemRow[] = [];
+  for (let i = 0; i < uniq.length; i += 90) {
+    const part = uniq.slice(i, i + 90);
+    out.push(...(await db.prepare(
+      `SELECT i.id, i.market_hash_name, i.category, i.is_unique_priced FROM items i
+       WHERE i.market_hash_name IN (${part.map(() => '?').join(',')}) AND EXISTS (SELECT 1 FROM watchlist w WHERE w.item_id = i.id AND w.active = 1)`,
+    ).bind(...part).all<ItemRow>()).results);
+  }
+  return out;
+}
+
 // ---------- Котировки и история ----------
 
 export interface QuoteRow {

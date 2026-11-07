@@ -138,7 +138,9 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
   if (fa > now + 120 || fa < now - 3600) return json({ ok: false, error: 'bad_time' }, 400);
   const at = Math.min(fa, now);
 
-  const watched = new Map((await db.allWatchedNames(d)).map((i) => [i.market_hash_name, i]));
+  // Список наблюдения читаем только когда он нужен и только нужную часть (на 1000 человек это ~10 тыс. строк на каждый приём).
+  const watchedAll = async () => new Map((await db.allWatchedNames(d)).map((i) => [i.market_hash_name, i]));
+  const watchedByNames = async (names: string[]) => new Map((await db.watchedByNames(d, names)).map((i) => [i.market_hash_name, i]));
   const fx = await db.loadLatestFx(d);
   const result: { ok: boolean; stored: number; unknown: number; errors: number; sellAlerts?: number } = { ok: true, stored: 0, unknown: 0, errors: 0 };
 
@@ -172,6 +174,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
   try {
     if (body.kind === 'steam') {
       const entries = Array.isArray(body.items) ? (body.items as SteamEntry[]).slice(0, 60) : [];
+      const watched = await watchedByNames(entries.map((e) => e.name).filter((n): n is string => typeof n === 'string'));
       const pairs: { itemId: number; q: Quote; eval: 0 | 1 | 2 }[] = [];
       let rateLimited = 0, okCount = 0;
       for (const e of entries) {
@@ -206,7 +209,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         if (q) found.set(q.marketHashName, q);
       }
       const pairs: { itemId: number; q: Quote; eval: 0 | 1 | 2 }[] = [];
-      for (const it of watched.values()) {
+      for (const it of (await watchedAll()).values()) {
         // Нет в каталоге Skinport → предложений нет (quantity 0), а не «цена 0».
         const q: Quote = found.get(it.market_hash_name) ?? {
           source: 'skinport', marketHashName: it.market_hash_name, priceType: 'lowest_listing', priceMinor: null, currency: 'EUR',
@@ -223,7 +226,9 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         return json(result);
       }
       const pairs: { itemId: number; q: Quote; eval: 0 | 1 | 2 }[] = [];
-      for (const q of parseSalesHistory(Array.isArray(body.items) ? body.items : [], at)) {
+      const sales = parseSalesHistory(Array.isArray(body.items) ? body.items : [], at);
+      const watched = await watchedByNames(sales.map((q) => q.marketHashName));
+      for (const q of sales) {
         const it = watched.get(q.marketHashName);
         if (it) pairs.push({ itemId: it.id, q, eval: 0 });
       }

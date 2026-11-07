@@ -547,7 +547,7 @@ function renderDonors(s) {
   var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(20, Math.round(w / 35)) + 's');
 }
 $('#ticker2').onclick = function () { haptic(); donateSheet(); };
-function refreshTicker() { api('summary').then(renderTicker).catch(function () {}); }
+function refreshTicker() { api('ticker').then(renderTicker).catch(function () {}); }
 setInterval(function () { if (!document.hidden && state.tickerData) refreshTicker(); }, 180000);
 // Нажатие на предложение — подробности сделки; на пустое место — все идеи.
 $('#ticker').onclick = function (e) {

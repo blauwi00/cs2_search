@@ -243,7 +243,10 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     const s = await db.getSettings(d, tid);
     return db.activeSignals(d, order, limit, now - 2 * 3600, { tid, minProfitKop: db.num(s.min_profit_kop), minRoiBp: db.num(s.min_roi_bp) });
   };
-  const d = budgetedDb(rawDb ?? env.DB, newBudget());
+  const budget = newBudget();
+  const d = budgetedDb(rawDb ?? env.DB, budget);
+  // Запас запросов к базе на одну строку продажи (несколько лотов, новая запись покупки) — чтобы не оборваться посередине.
+  const ROW_D1 = 20;
   // Валюта кошелька Steam = валюта, выбранная в боте (минимальные комиссии Steam считаются в ней).
   let walletP: Promise<{ per: number; code: string }> | null = null;
   const walletCur = () => (walletP ??= loadRates(d).then((r) => userCur(d, tid, r)));
@@ -665,7 +668,10 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       let sold = 0, skipped = 0, resultKop = 0;
       const errors: string[] = [];
       let lastSite: string | null = null;
-      for (const r of list) {
+      let left = 0;
+      for (const [i, r] of list.entries()) {
+        // Лимит запросов к базе за один вызов — останавливаемся заранее и честно говорим, сколько осталось (повтор не задвоит).
+        if (budget.d1 < ROW_D1) { left = list.length - i; break; }
         const g = await d.prepare(`SELECT g.id, g.item_id, g.qty, i.market_hash_name AS name FROM inv_gone g JOIN items i ON i.id = g.item_id WHERE g.id = ? AND g.telegram_id = ? AND g.status = 'new'`)
           .bind(Number(r.id), tid).first<{ id: number; item_id: number; qty: number; name: string }>();
         if (!g) continue;
@@ -679,14 +685,19 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (!res.recordedQty) continue;
         resultKop += res.resultKop;
         const platform = String(r.platform);
-        // Записано не всё — в «Пропало» остаётся только незаписанный остаток (повтор не задвоит продажу).
-        if (res.error && res.recordedQty < g.qty) await d.prepare(`UPDATE inv_gone SET qty = qty - ? WHERE id = ?`).bind(res.recordedQty, g.id).run();
-        else await d.prepare(`UPDATE inv_gone SET status = 'sold' WHERE id = ?`).bind(g.id).run();
+        // Записанное — отдельной строкой «sold» с временем записи (gone_at), остаток остаётся в «Пропало» (повтор не задвоит продажу).
+        // Время записи нужно сверке инвентаря: эти продажи уже объяснены пропажей и второй раз не вычитаются (steaminv.goneStmts).
+        if (res.recordedQty < g.qty) await d.batch([
+          d.prepare(`UPDATE inv_gone SET qty = qty - ? WHERE id = ?`).bind(res.recordedQty, g.id),
+          d.prepare(`INSERT INTO inv_gone (telegram_id, item_id, qty, gone_at, status) VALUES (?, ?, ?, ?, 'sold')`).bind(tid, g.item_id, res.recordedQty, now),
+        ]);
+        else await d.prepare(`UPDATE inv_gone SET status = 'sold', gone_at = ? WHERE id = ?`).bind(now, g.id).run();
         sold++;
         lastSite = platform;
       }
       if (lastSite) await d.prepare(`INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, 'last_sell_site', ?, ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).bind(tid, lastSite, now).run();
-      return json({ ok: true, sold, skipped, resultKop, errors });
+      if (left) errors.push(`Записано ${list.length - left} из ${list.length}. Остальные ${left} — открой «Пропало из инвентаря» и нажми «Сохранить» ещё раз (уже записанные не повторятся).`);
+      return json({ ok: true, sold, skipped, resultKop, errors, left });
     }
     if (seg[0] === 'inventory' && seg[2] === 'sell' && method === 'POST') {
       const id = Number(seg[1]);
@@ -739,9 +750,12 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       if (!list.length) return bad('Нечего записывать');
       const wallet = await walletCur();
       const date = warsawDate(now);
-      let sold = 0, resultKop = 0;
+      let sold = 0, resultKop = 0, done = 0;
       const errors: string[] = [];
       for (const r of list) {
+        // Лимит запросов к базе — остальные строки приложение пришлёт следующим запросом (done — сколько обработано по порядку).
+        if (budget.d1 < ROW_D1) break;
+        done++;
         const name = typeof r.name === 'string' ? r.name.trim().slice(0, 200) : '';
         if (name.length < 3) { errors.push('Не выбран предмет'); continue; }
         const item = await db.upsertItem(d, name, now);
@@ -749,7 +763,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (res.error) errors.push(res.error);
         if (res.recorded) { sold++; resultKop += res.resultKop; }
       }
-      return json({ ok: true, sold, resultKop, errors });
+      return json({ ok: true, sold, resultKop, errors, done });
     }
     if (seg[0] === 'sales' && seg[1] === 'pending' && seg[3] === 'confirm' && method === 'POST') {
       const rcv = body.receivedKop == null || body.receivedKop === '' ? null : Number(body.receivedKop);

@@ -171,3 +171,60 @@ test('продажа «ждёт оплаты»: не в прибыли и не �
   assert.equal(inv.realizedCashKop, 0);
   assert.equal(inv.lots[0].openQty, 2);
 });
+
+async function goneSetup(names: [string, number][]) {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, steam_verified, inv_synced_at) VALUES (?, ?, ?, 1, ?)').run(U, NOW - 3600, SID, NOW - 3600);
+  const it = (name: string, qty: number) => ({ name, qty, marketable: 1, tradable: 1, img: null });
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: names.map(([n, q]) => it(n, q)), partial: false }, NOW - 3000);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+  const call = async (path: string, method = 'GET', body?: unknown, at = NOW) => (await handleAppApi(new Request('https://w.dev/app/api/' + path, { method, headers: { 'X-Init-Data': init }, body: body ? JSON.stringify(body) : undefined }), env, at)).json() as Promise<Record<string, any>>;
+  return { d, D, call, it };
+}
+const salesN = (d: ReturnType<typeof migratedDb>) => (d.db.prepare('SELECT COALESCE(SUM(quantity), 0) AS n FROM trade_sales').get() as { n: number }).n;
+
+test('пропало: много строк за раз — не обрывается на лимите базы, честно «записано N из M», повтор без дублей', async () => {
+  const names: [string, number][] = Array.from({ length: 14 }, (_, i) => [`Case ${i}`, 1]);
+  const { d, D, call } = await goneSetup(names);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [], partial: false }, NOW);
+  const rows = () => call('inventory/gone').then((g) => g.items.map((x: any) => ({ id: x.id, action: 'sold', platform: 'csgomarket', receivedKop: 1000, buyKop: 500 })));
+  const r1 = await call('inventory/gone/save', 'POST', { rows: await rows() });
+  assert.equal(r1.ok, true, 'без ошибки сервера');
+  assert.ok(r1.left > 0 && r1.sold === 14 - r1.left, `записано ${r1.sold}, осталось ${r1.left}`);
+  assert.match(r1.errors.at(-1), /Записано \d+ из 14/);
+  assert.equal(salesN(d), r1.sold, 'ничего лишнего не записано');
+  for (let i = 0; i < 5 && (await call('inventory/gone')).items.length; i++) await call('inventory/gone/save', 'POST', { rows: await rows() });
+  assert.equal(salesN(d), 14, 'после повторов — ровно 14 продаж, без дублей');
+  assert.equal((await call('inventory/gone')).items.length, 0);
+});
+
+test('пропало: без цены покупки записана только часть — остаток остаётся в «Пропало»', async () => {
+  const { d, D, call } = await goneSetup([['AK-47 | Slate (Field-Tested)', 2]]);
+  await call('inventory', 'POST', { name: 'AK-47 | Slate (Field-Tested)', qty: 1, priceKop: 10000, platform: 'steam', date: '2026-11-01' });
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [], partial: false }, NOW);
+  const g = (await call('inventory/gone')).items[0];
+  assert.equal(g.qty, 2);
+  const r = await call('inventory/gone/save', 'POST', { rows: [{ id: g.id, action: 'sold', platform: 'csgomarket', receivedKop: 12000, qty: 2 }] });
+  assert.match(r.errors[0], /за сколько покупал/);
+  assert.equal(salesN(d), 1, 'одна штука — из записанной покупки');
+  const left = (await call('inventory/gone')).items;
+  assert.equal(left.length, 1);
+  assert.equal(left[0].qty, 1, 'в «Пропало» осталась незаписанная штука');
+  await call('inventory/gone/save', 'POST', { rows: [{ id: left[0].id, action: 'sold', platform: 'csgomarket', receivedKop: 12000, qty: 1, buyKop: 0 }] });
+  assert.equal(salesN(d), 2);
+});
+
+test('пачка продаж: сервер говорит, сколько строк обработал, — приложение продолжает с нужной, без дублей', async () => {
+  const { d, call } = await goneSetup([]);
+  const rows = Array.from({ length: 12 }, (_, i) => ({ name: `Batch Case ${i}`, qty: 1, receivedKop: 1000, platform: 'csgomarket', buyKop: 500 }));
+  let k = 0, guard = 0;
+  while (k < rows.length && guard++ < 20) {
+    const r = await call('sales/batch', 'POST', { rows: rows.slice(k, k + 5) });
+    assert.equal(r.ok, true);
+    assert.ok(r.done >= 1 && r.done <= 5);
+    k += r.done;
+  }
+  assert.equal(salesN(d), 12);
+});

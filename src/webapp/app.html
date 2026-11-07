@@ -1479,8 +1479,12 @@ function scanSheet(items, m, onDone) {
         $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; go('trades'); };
         return;
       }
-      api('sales/batch', { method: 'POST', body: { rows: rows.slice(k, k + 5) } }).then(function (r) { tot.sold += r.sold; tot.resultKop += r.resultKop; tot.errors = tot.errors.concat(r.errors); })
-        .catch(function (e) { tot.errors.push(e.message); }).then(function () { k += 5; next(); });
+      api('sales/batch', { method: 'POST', body: { rows: rows.slice(k, k + 5) } }).then(function (r) {
+        tot.sold += r.sold; tot.resultKop += r.resultKop; tot.errors = tot.errors.concat(r.errors);
+        // Сервер обработал не все строки (лимит запросов) — следующий запрос начнём с первой необработанной, без повторов.
+        if (r.done > 0) { k += r.done; next(); }
+        else { tot.errors.push('Записано ' + k + ' из ' + rows.length + '. Остальные не записаны — попробуй ещё раз через минуту.'); k = rows.length; next(); }
+      }).catch(function (e) { tot.errors.push(e.message + ' (до этой ошибки записано ' + k + ' из ' + rows.length + ' — проверь вкладку «Продажи», прежде чем повторять)'); k = rows.length; next(); });
     };
     next();
   };

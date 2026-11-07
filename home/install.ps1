@@ -28,21 +28,30 @@ Set-Content -Path $secretFile -Value $secret.Trim() -NoNewline -Encoding ascii
 
 # 3. Файлы агента
 Invoke-WebRequest 'https://raw.githubusercontent.com/blauwi00/cs2_search/main/home/update.mjs' -OutFile (Join-Path $dir 'update.mjs') -UseBasicParsing
+# Файлы запуска — без пути внутри: путь может быть с русскими буквами (C:\Users\Эльдар), а .cmd/.vbs пишутся в ASCII.
+# run.cmd переходит в свою папку (%~dp0), run.vbs находит run.cmd рядом с собой.
 @"
 @echo off
-cd /d "$dir"
+cd /d "%~dp0"
 set WORKER_URL=https://cs2-search.blauwi925.workers.dev
 set STEAM_ONLY=1
 set /p INGEST_SECRET=<secret.txt
 node update.mjs >> log.txt 2>&1
 "@ | Set-Content -Path (Join-Path $dir 'run.cmd') -Encoding ascii
 # Запуск без мигающего окна
-"CreateObject(""Wscript.Shell"").Run ""cmd /c """"$dir\run.cmd"""""", 0, False" | Set-Content -Path (Join-Path $dir 'run.vbs') -Encoding ascii
+@"
+Set fso = CreateObject("Scripting.FileSystemObject")
+d = fso.GetParentFolderName(WScript.ScriptFullName)
+CreateObject("Wscript.Shell").Run "cmd /c """ & d & "\run.cmd""", 0, False
+"@ | Set-Content -Path (Join-Path $dir 'run.vbs') -Encoding ascii
 
-# 4. Планировщик: каждые 10 минут, пока ты в системе
-schtasks /Create /F /SC MINUTE /MO 10 /TN 'Cenolov Steam' /TR "wscript.exe `"$dir\run.vbs`"" | Out-Null
+# 4. Планировщик: каждые 10 минут, пока ты в системе. %LOCALAPPDATA% раскрывает сам планировщик — без русских букв в команде.
+schtasks /Create /F /SC MINUTE /MO 10 /TN 'Cenolov Steam' /TR 'wscript.exe "%LOCALAPPDATA%\Cenolov\run.vbs"' | Out-Null
 Write-Host "`nПроверочный запуск (до 1–2 минут)..." -ForegroundColor Green
-& cmd /c "`"$dir\run.cmd`""
-Get-Content (Join-Path $dir 'log.txt') -Tail 15
+Push-Location $dir
+& cmd /c run.cmd
+Pop-Location
+$log = Join-Path $dir 'log.txt'
+if (Test-Path $log) { Get-Content $log -Tail 15 } else { Write-Host 'Лог не появился — пришли скриншот этого окна.' -ForegroundColor Red }
 Write-Host "`nГотово. Агент работает каждые 10 минут. Лог: $dir\log.txt" -ForegroundColor Green
 Write-Host "Выключить: schtasks /Delete /TN `"Cenolov Steam`" /F"

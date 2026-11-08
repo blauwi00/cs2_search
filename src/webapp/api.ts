@@ -27,6 +27,7 @@ import { guessCurrency, loadRates, userCur, availableCurrencies, isCurrency, par
 import { renderMoney } from '../utils/money.ts';
 import { PRIVACY_POINTS } from '../core/privacy.ts';
 import { steamSellPrice } from '../core/sellprice.ts';
+import { unlockAt, TRADE_LOCK_SEC } from '../core/tradelock.ts';
 import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '../core/terms.ts';
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
@@ -173,6 +174,16 @@ async function chunkedNames<T>(names: string[], q: (part: string[], ph: string) 
   const parts: Promise<T[]>[] = [];
   for (let i = 0; i < names.length; i += 90) { const p = names.slice(i, i + 90); parts.push(q(p, p.map(() => '?').join(','))); }
   return (await Promise.all(parts)).flat();
+}
+/** Записанные покупки под защитой обмена Steam (7 дней): в открытом инвентаре их не видно — показываем отдельно. */
+async function lockedLots(d: D1Database, tid: number, now: number): Promise<{ lotId: number; itemId: number; name: string; qty: number; unlockAt: number; img: string | null }[]> {
+  const rows = (await d.prepare(`SELECT t.id, t.item_id, t.buy_date, t.created_at, t.quantity - t.sold_quantity AS q, i.market_hash_name AS name FROM trades t JOIN items i ON i.id = t.item_id
+    WHERE t.telegram_id = ? AND t.status = 'open' AND t.quantity > t.sold_quantity AND t.created_at >= ? ORDER BY t.created_at DESC LIMIT 100`).bind(tid, now - TRADE_LOCK_SEC - 2 * 86400)
+    .all<{ id: number; item_id: number; buy_date: string; created_at: number; q: number; name: string }>()).results
+    .map((r) => ({ lotId: r.id, itemId: r.item_id, name: r.name, qty: r.q, unlockAt: unlockAt(r.buy_date, r.created_at) })).filter((r) => r.unlockAt > now);
+  if (!rows.length) return [];
+  const imgs = await imagesFor(d, rows.map((r) => r.name));
+  return rows.map((r) => ({ ...r, img: imgs.get(r.name) ?? null })).sort((a, b) => a.unlockAt - b.unlockAt);
 }
 /** Картинки предметов по названиям. */
 export async function imagesFor(d: D1Database, names: string[]): Promise<Map<string, string>> {
@@ -521,6 +532,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
         goneCount: linked ? ((await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0) : 0,
         totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
+        locked: linked ? await lockedLots(d, tid, now) : [],
       });
     }
     if (path === 'steam/login' && method === 'POST') {
@@ -755,6 +767,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
             platform: l.buy_platform, platformRu: PLATFORM_RU[l.buy_platform] ?? l.buy_platform, date: l.buy_date, targetKop: l.target_sell_kop,
             costKop: v.openCostKop, steamUnitKop: val.steamProceedsPerUnit, basis: val.steamBasis, marketUnitKop: mv?.kop ?? null, status: ev.status, externalUnitKop: val.externalPricePerUnit, valueKop: v.steamValueKop,
             unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity, advice: adv.get(l.item_id) ?? null,
+            unlockAt: (() => { const u = unlockAt(l.buy_date, l.created_at); return u > now ? u : null; })(),
           };
         }),
       });

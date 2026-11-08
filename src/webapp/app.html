@@ -1089,7 +1089,7 @@ function trades() {
       h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
       h += r.lots.length ? r.lots.map(function (l) {
         var nm = splitName(l.name);
-        return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + '×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + '</div></div>' +
+        return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + '×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + (l.unlockAt ? ' · 🔒 до ' + dateRu(l.unlockAt) : '') + '</div></div>' +
           '<div class="r"><div class="big ' + cls(l.roiBp) + '">' + (l.roiBp == null ? '<span class="mut">нет цены</span>' : pct(l.roiBp)) + '</div><div style="margin-top:3px">' + actPill(l.advice) + '</div></div></div>';
       }).join('') : '<div class="empty"><div class="e">🧾</div>Пока пусто.</div>';
     }
@@ -1135,9 +1135,22 @@ function steamBlock(st) {
     }).join('');
     if (st.items.length > 60) h += '<div class="note">Показаны 60 самых дорогих из ' + st.items.length + '.</div>';
     h += '<details class="more"><summary><span class="chev">›</span> Как считаются цены</summary><div class="note">«≈» — средняя цена продаж в Steam за последние дни (история, не текущее объявление).' + (st.noDataCount ? ' Без актуальных данных: ' + st.noDataCount + ' — в сумму не входят.' : '') + ' Нажми на предмет — цены подробно и за сколько выставить.</div></details>';
-  } else if (!st.pending && st.status === 'ok') h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
+  } else if (!st.pending && st.status === 'ok' && !(st.locked && st.locked.length)) h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
+  h += lockedHtml(st.locked || []);
   return h;
 }
+// Защита обмена Steam (7 дней): такие предметы Steam не показывает в открытом инвентаре — берём из записанных покупок.
+function lockedHtml(list) {
+  var h = '<div class="sec">🔒 Под защитой обмена Steam</div>';
+  if (!list.length) return h + '<div class="note">Купленное за последние 7 дней Steam прячет из открытого инвентаря — бот его не видит. <a id="lk-add" style="color:var(--link);cursor:pointer">Запиши покупку</a> — покажу здесь и напишу, когда можно продавать.</div>';
+  h += list.map(function (x) {
+    var nm = splitName(x.name);
+    return '<div class="row" data-lklot="' + x.lotId + '">' + pic(x.img, ICON[guessCat(x.name)] || '🎒') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + '×' + x.qty + '</div></div>' +
+      '<div class="r"><div class="mut" style="font-size:12px">продать можно</div><div style="font-weight:700">с ' + dateTimeRu(x.unlockAt) + '</div></div></div>';
+  }).join('');
+  return h + '<div class="note">Steam прячет их из открытого инвентаря на 7 дней — бот знает о них по записанным покупкам. Когда защита закончится, пришлю сообщение «🔓 Можно продавать».</div>';
+}
+function dateTimeRu(t) { var x = new Date(t * 1000); return x.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + x.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
 function bindSteamBlock(st) {
   if (state.tab === 'inv') setMenu(st && st.linked ? [
     ['💱 Валюта площадок', function () { siteCurSheet(function () { if (state.tab === 'inv') inventory(); }); }],
@@ -1162,6 +1175,10 @@ function bindSteamBlock(st) {
     return;
   }
 
+  if ($('#lk-add')) $('#lk-add').onclick = function () { haptic(); buyForm({}); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-lklot]'), function (el) {
+    el.onclick = function () { haptic(); var id = +el.getAttribute('data-lklot'); var x = (st.locked || []).filter(function (i) { return i.lotId === id; })[0]; if (x) itemSheet(x.itemId); };
+  });
   $('#st-ref').onclick = function () { api('steam/refresh', { method: 'POST' }).then(function (r) { haptic('ok'); toast(r.msg || 'Обновлю в течение ~10 минут'); again(); if (r.gone) setTimeout(goneSheet, 600); }).catch(function (e) { toast(e.message); }); };
   var offSteam = function () {
     var run = function () { api('steam/unlink', { method: 'POST' }).then(function () { toast('Steam отключён'); again(); }); };

@@ -21,6 +21,7 @@ import { setMetaStmt, getMeta } from './core/channel.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
+import { jobTradeUnlock } from './core/tradelock.ts';
 import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
 import { goneStmts } from './core/steaminv.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
@@ -205,6 +206,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       if (okCount > 0) await db.sourceOk(d, 'steam', now, entries.length);
       else if (entries.length > 0) await db.sourceFail(d, 'steam', rateLimited ? 'rate_limited' : 'degraded', rateLimited ? 'HTTP 429 у сборщика GitHub' : 'сборщик не получил данных', now, entries.length);
       result.sellAlerts = (await jobSellAlerts({ db: d, now })).sent;
+      // Закончилась защита обмена Steam у записанных покупок — «🔓 Можно продавать» (сборщик приходит примерно раз в час).
+      try { await jobTradeUnlock({ db: d, now }); } catch (e) { await db.log(d, 'warn', 'trade_unlock', 'failed', e instanceof Error ? e.message : String(e), now).catch(() => undefined); }
     } else if (body.kind === 'skinport_items') {
       if (body.error) {
         await db.sourceFail(d, 'skinport', 'degraded', `сборщик: ${String(body.error).slice(0, 200)}`, now, 1);

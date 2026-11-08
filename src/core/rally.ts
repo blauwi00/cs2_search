@@ -3,6 +3,7 @@
 // Все суммы — копейки валюты кошелька (по умолчанию гривна; котировки Steam сборщик берёт в UAH).
 import { steamNetKop } from './fees.ts';
 import { parseMarketHashName } from './normalization.ts';
+import { pumpCheck } from './pump.ts';
 
 // ---------- Настройки ----------
 export interface RallySettings {
@@ -92,6 +93,8 @@ export function evaluate(e: RallyEntry, s: RallySettings, now: number, track: Tr
   // Плановая цена продажи — консервативно: меньшая из медианы за сутки и средних за 7 и 30 дней, на 1 коп. ниже.
   const refs = [st.median, a?.d7, a?.d30].filter((x): x is number => typeof x === 'number' && x > 0);
   if (refs.length < 2 || !a?.d7 || !a.d30) return { c: null, reject: 'мало истории продаж' };
+  const pump = pumpCheck({ d1: a.d1, d30: a.d30, vol24: st.volume, listing: buy, buyOrder: e.orders?.buy ?? null, listings: e.orders?.sellCount ?? null });
+  if (pump) return { c: null, reject: 'похоже на разгон цены' };
   const target = Math.min(...refs) - 1;
   const net = steamNetKop(target);
   if (net == null) return { c: null, reject: 'ниже минимальной цены Steam' };

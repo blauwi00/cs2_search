@@ -11,6 +11,7 @@ import { parseSteamPriceString } from '../utils/money.ts';
 import type { Currency } from '../types/market.ts';
 import { formatUah } from '../utils/money.ts';
 import { AVG_DOUBT_RATIO } from './evidence.ts';
+import { pumpCheck, type Pump } from './pump.ts';
 
 export type Market = 'steam' | 'skinport' | 'csgomarket' | 'waxpeer' | 'lisskins';
 
@@ -225,11 +226,21 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
   return { sales7, refKop, buys, sells };
 }
 
+/** Признаки разгона цены по данным сканирования (Steam: средние продаж, площадки: продажи Skinport и объявления). */
+export function scanPump(e: ScanEntry): Pump | null {
+  const qty = e.offers.map((o) => o.qty).filter((q): q is number => typeof q === 'number');
+  return pumpCheck({
+    d1: e.sa?.d1, d30: e.sa?.d30, s7: e.s7?.median, s30: e.s30?.median, vol24: e.steam?.volume24h ?? null, sales7: e.s7?.volume ?? null,
+    listings: qty.length ? qty.reduce((a, b) => a + b, 0) : null,
+  });
+}
+
 export function buildRecs(entries: ScanEntry[], fx: Map<Currency, FxRate>, s: RecSettings): { deals: Rec[]; trends: Rec[] } {
   const deals: Rec[] = [];
   const trends: Rec[] = [];
   for (const e of entries) {
     if (parseMarketHashName(e.name).uniquePriced) continue; // цена зависит от паттерна — общая цена ненадёжна
+    if (scanPump(e)) continue; // похоже на разгон цены — не советуем покупать на пике
     const { sales7, refKop, buys, sells } = marketSides(e, fx, s);
     // ---- Лучшая пара «купить → продать».
     let best: Rec | null = null;

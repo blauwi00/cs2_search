@@ -22,6 +22,7 @@ import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
 import { jobTradeUnlock } from './core/tradelock.ts';
+import { jobPumpAlerts } from './core/pumpalert.ts';
 import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
 import { goneStmts } from './core/steaminv.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
@@ -280,6 +281,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       result.stored = stmts.length;
       // #8: новые цены Steam — проверяем цели продажи сразу (без отдельной задачи по расписанию).
       result.sellAlerts = (await jobSellAlerts({ db: d, now })).sent;
+      // Свежие средние — проверяем, не разгоняют ли цену предметов, которые у людей есть.
+      try { await jobPumpAlerts({ db: d, now }); } catch (e) { await db.log(d, 'warn', 'pump_alert', 'failed', e instanceof Error ? e.message : String(e), now).catch(() => undefined); }
     } else if (body.kind === 'steam_inventory') {
       const b = body as { tid?: unknown; steamId?: unknown; vanity?: unknown; status?: unknown };
       const tid = Number(b.tid);

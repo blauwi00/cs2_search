@@ -162,13 +162,14 @@ export function cleanSnippet(raw: unknown): string | null {
 
 /** Краткое содержание на русском (если сборщик уже перевёл): важное для рынка — первым, затем по разделам. */
 export function newsRuLines(n: NewsItem): string[] | null {
-  let s: { market?: string[]; sections?: { name: string | null; items: string[] }[]; more?: number } | null = null;
+  let s: { market?: string[]; sections?: { name: string | null; items: string[] }[]; more?: number; impact?: string[] } | null = null;
   try { s = n.summary_ru ? JSON.parse(n.summary_ru) : null; } catch { s = null; }
   if (!s || (!s.market?.length && !s.sections?.length)) return null;
   const out: string[] = [];
   if (s.market?.length) out.push('💰 <b>Важно для рынка</b>', ...s.market.map((x) => `• ${esc(x)}`), '');
   for (const sec of s.sections ?? []) out.push(...(sec.name ? [`<b>${esc(sec.name)}</b>`] : []), ...sec.items.map((x) => `• ${esc(x)}`), '');
   if (s.more) out.push(`<i>…и ещё ${s.more} изменений — полный список по кнопке ниже.</i>`);
+  if (s.impact?.length) out.push('', '📈 <b>Что это обычно значит для цен</b>', ...s.impact.map((x) => `• ${esc(x)}`));
   return out;
 }
 

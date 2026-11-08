@@ -11,6 +11,28 @@ const SECTION_RU = {
 const MARKET = /\b(case|cases|capsule|sticker|stickers|charm|keychain|armory|operation|collection|souvenir|trade|trading|market|inventory|drop|drops|skin|skins|graffiti|agent|patch|music kit)\b/i;
 
 /** BBCode/HTML патчноута → разделы с пунктами. */
+// Что изменение обычно значит для цен — правила из гайдов по трейдингу скинов (не прогноз, а типичная реакция рынка).
+const IMPACT = [
+  [/(removed|retired|moved)\b[^.]{0,60}\b(drop pool|active drop|rare drop)|no longer (drop|be dropped|available)/i,
+    'Кейсы или коллекции уходят из выпадения: их становится меньше — обычно со временем дорожают (не за один день).'],
+  [/\b(added|new|introduc\w+)\b[^.]{0,40}\b(case|collection|operation)\b/i,
+    'Новый кейс или коллекция: в первые дни цены самые высокие, потом падают — покупать сразу обычно невыгодно.'],
+  [/\barmory\b/i,
+    'Изменения в Арсенале: новые предметы оттуда сначала дорогие, потом дешевеют по мере выпадения.'],
+  [/sticker capsule|souvenir|\bmajor\b/i,
+    'Наклейки и сувениры мейджора: дешевле всего обычно во время турнира, дорожают после снятия капсул с продажи.'],
+  [/trade (hold|protection|lock)|trade.?ban|community market|market (fee|listing)|trading (rules|restriction)/i,
+    'Изменены правила обмена или Торговой площадки — цены могут резко дёрнуться; не спеши покупать или продавать в первые часы.'],
+  [/trade.?up|contract/i,
+    'Изменены контракты обмена — это может сдвинуть цены дешёвых скинов, из которых их собирают.'],
+  [/(skin|finish|pattern|texture|wear|float|model)s?\b[^.]{0,40}\b(updated|changed|adjusted|reworked|fixed)/i,
+    'Изменён внешний вид скинов — цены затронутых предметов могут сильно измениться в любую сторону.'],
+];
+export function marketImpact(raw) {
+  const t = String(raw ?? '').replace(/\[[^\]]{1,40}\]/g, ' ');
+  return IMPACT.filter(([re]) => re.test(t)).map(([, ru]) => ru).slice(0, 3);
+}
+
 export function parsePatch(raw) {
   const text = String(raw ?? '')
     .replace(/\{STEAM_CLAN_IMAGE\}[^\s\]]*/g, ' ')
@@ -77,5 +99,5 @@ export async function russianSummary(item, sleep) {
     const key = (s.name ?? '').toUpperCase();
     out.push({ name: s.name ? SECTION_RU[key] ?? (await tr(s.name)) : null, items });
   }
-  return { titleRu, summary: { market, sections: out, more: pick.more } };
+  return { titleRu, summary: { market, sections: out, more: pick.more, impact: marketImpact(item.contents) } };
 }

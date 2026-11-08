@@ -45,3 +45,14 @@ test('держателю: «Похоже на разгон» — один раз
   assert.match(m.text, /на 200% выше/);
   assert.match(m.text, /в 3 раза за месяц/);
 });
+
+test('обновления CS2: подсказка, что изменение обычно значит для цен', async () => {
+  const { marketImpact } = await import('../.github/scripts/patchnotes.mjs');
+  const { newsRuLines } = await import('../src/core/insights.ts');
+  const hints = marketImpact('[list][*]The Kilowatt Case has been removed from the active drop pool.[*]Fixed smoke bug[/list]') as string[];
+  assert.equal(hints.length, 1);
+  assert.match(hints[0], /уходят из выпадения/);
+  assert.deepEqual(marketImpact('Fixed a bug with smoke grenades'), []);
+  const lines = newsRuLines({ summary_ru: JSON.stringify({ market: ['Кейс убран'], sections: [], more: 0, impact: hints }) } as never)!;
+  assert.ok(lines.includes('📈 <b>Что это обычно значит для цен</b>'));
+});

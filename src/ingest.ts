@@ -359,6 +359,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         market: list(sm.market, 4),
         sections: (Array.isArray(sm.sections) ? sm.sections : []).slice(0, 8).map((x: any) => ({ name: str(x?.name, 40), items: list(x?.items, 4) })).filter((x) => x.items.length),
         more: Number.isSafeInteger(sm.more) && (sm.more as number) >= 0 ? sm.more : 0,
+        impact: list((sm as { impact?: unknown }).impact, 3),
       } : null;
       if (typeof b.gid !== 'string' || !/^\d{1,25}$/.test(b.gid) || !clean || (!clean.market.length && !clean.sections.length)) return json({ ok: false, error: 'bad_news_ru' }, 400);
       await d.prepare('UPDATE news SET title_ru = ?, summary_ru = ? WHERE gid = ?').bind(str(b.titleRu, 200), JSON.stringify(clean), b.gid).run();

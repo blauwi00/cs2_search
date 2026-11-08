@@ -9,7 +9,7 @@ import { searchCatalog, catalogInfo, catalogHas } from '../catalog.ts';
 import { parseMarketHashName, CATEGORY_RU } from '../core/normalization.ts';
 import { classifyLiquidity, LIQUIDITY_RU } from '../core/liquidity.ts';
 import { stats } from '../core/analyzer.ts';
-import { valuation, viewLot, realizedStats, PLATFORMS, PLATFORM_RU, walletFor, parseDateInput, openQty } from '../core/portfolio.ts';
+import { valuation, viewLot, realizedStats, PLATFORMS, PLATFORM_RU, BUY_ONLY, walletFor, parseDateInput, openQty } from '../core/portfolio.ts';
 import { steamListForNetKop } from '../core/fees.ts';
 import { settingsFor, parseSettingInput, displayValue } from '../telegram/settings.ts';
 import { listJobs, setJobEnabled } from '../core/scheduler.ts';
@@ -185,6 +185,23 @@ async function lockedLots(d: D1Database, tid: number, now: number): Promise<{ lo
   const imgs = await imagesFor(d, rows.map((r) => r.name));
   return rows.map((r) => ({ ...r, img: imgs.get(r.name) ?? null })).sort((a, b) => a.unlockAt - b.unlockAt);
 }
+/**
+ * Открытия кейсов на сайтах — отдельный итог: сколько потрачено на открытия и сколько стоит выпавшее
+ * (что ещё лежит — по оценке Steam после комиссии; что продано — по записанным продажам).
+ */
+function caseOpenStats(allT: T.TradeRow[], allS: { trade_id: number; received_kop: number }[], lots: { platform: string; valueKop: number | null; openQty: number }[]): { count: number; spentKop: number; valueKop: number; soldKop: number; noPrice: number } | null {
+  const mine = allT.filter((t) => t.buy_platform === 'caseopen');
+  if (!mine.length) return null;
+  const ids = new Set(mine.map((t) => t.id));
+  const open = lots.filter((l) => l.platform === 'caseopen' && l.openQty > 0);
+  return {
+    count: mine.reduce((n, t) => n + t.quantity, 0),
+    spentKop: mine.reduce((n, t) => n + t.buy_price_kop * t.quantity + t.buy_fee_kop, 0),
+    valueKop: open.reduce((n, l) => n + (l.valueKop ?? 0), 0),
+    soldKop: allS.filter((x) => ids.has(x.trade_id)).reduce((n, x) => n + x.received_kop, 0),
+    noPrice: open.filter((l) => l.valueKop == null).length,
+  };
+}
 /** Картинки предметов по названиям. */
 export async function imagesFor(d: D1Database, names: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -313,7 +330,7 @@ async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; na
   const qty = Math.trunc(Number(r.qty));
   const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
   const platform = String(r.platform ?? '');
-  if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: выбери, где продал` };
+  if (!(PLATFORMS as readonly string[]).includes(platform) || BUY_ONLY.includes(platform)) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: выбери, где продал` };
   if (!Number.isInteger(qty) || qty < 1 || qty > r.maxQty) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: количество от 1 до ${r.maxQty}` };
   if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: впиши, сколько получил` };
   const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
@@ -751,10 +768,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       // Steam Wallet и живые деньги не складываются (portfolio.ts).
       const [allT, allS] = await Promise.all([T.allTrades(d, tid), T.salesFor(d, tid)]);
       const rs = realizedStats(allT, T.salesWithCost(allT, allS));
-      return json({
-        ok: true, realizedSteamKop: rs.realizedSteamKop, realizedCashKop: rs.realizedCashKop, salesCount: rs.sales,
-        platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
-        lots: lots.map((l) => {
+      const lotsOut = lots.map((l) => {
           const q = quotes.get(l.item_id) ?? [];
           // Только свежие котировки (аудит): старые цены больше не выдаются за текущие.
           const ev = lotEv.get(l.item_id)!;
@@ -769,7 +783,11 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
             unrealizedKop: v.unrealizedSteamKop, roiBp: v.unrealizedRoiBp, sold: l.sold_quantity, advice: adv.get(l.item_id) ?? null,
             unlockAt: (() => { const u = unlockAt(l.buy_date, l.created_at); return u > now ? u : null; })(),
           };
-        }),
+        });
+      return json({
+        ok: true, realizedSteamKop: rs.realizedSteamKop, realizedCashKop: rs.realizedCashKop, salesCount: rs.sales,
+        platforms: PLATFORMS.map((p) => ({ v: p, t: PLATFORM_RU[p] })),
+        lots: lotsOut, caseOpen: caseOpenStats(allT, allS, lotsOut),
       });
     }
     if (path === 'inventory' && method === 'POST') {
@@ -830,7 +848,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       }
       return json({
         ok: true, lastSite: last?.value ?? null,
-        platforms: PLATFORMS.filter((p) => p !== 'gift').map((p) => ({ v: p, t: PLATFORM_RU[p] })),
+        platforms: PLATFORMS.filter((p) => !BUY_ONLY.includes(p)).map((p) => ({ v: p, t: PLATFORM_RU[p] })),
         items: rows.map((r) => {
           const lot = lots.find((l) => l.item_id === r.item_id && l.quantity > l.sold_quantity);
           return { id: r.id, itemId: r.item_id, name: r.name, qty: r.qty, goneAt: r.gone_at, img: imgs.get(r.name) ?? null,
@@ -883,7 +901,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const platform = String(body.platform ?? '');
       if (!Number.isInteger(qty) || qty < 1) return bad('Количество — целое число от 1');
       const date = parseDateInput(String(body.date ?? 'сегодня'), warsawDate(now));
-      if (!(PLATFORMS as readonly string[]).includes(platform) || platform === 'gift') return bad('Выбери площадку');
+      if (!(PLATFORMS as readonly string[]).includes(platform) || BUY_ONLY.includes(platform)) return bad('Выбери площадку');
       if (!Number.isSafeInteger(price) || price <= 0) return bad('Неверная цена');
       if (!date) return bad('Неверная дата');
       let received = Number(body.receivedKop);
@@ -919,7 +937,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         items: SKINPORT_LISTED.map((x) => ({ text: x.text, name: matchName(x.names, known), priceMinor: x.priceMinor, currency: 'PLN', float: x.float })),
         fees: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.sellFeeBp])),
         lots: Object.fromEntries((await T.openTrades(d, tid)).map((l) => [l.market_hash_name, 1])),
-        platforms: PLATFORMS.filter((x) => x !== 'gift').map((x) => ({ v: x, t: PLATFORM_RU[x] })),
+        platforms: PLATFORMS.filter((x) => !BUY_ONLY.includes(x)).map((x) => ({ v: x, t: PLATFORM_RU[x] })),
       });
     }
     // Пачка продаж по названиям (импорт). До 5 строк за запрос — лимит запросов к базе.
@@ -959,6 +977,12 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
     if (seg[0] === 'inventory' && seg[1] && method === 'DELETE') {
       return json({ ok: await T.deleteTrade(d, tid, Number(seg[1])) });
+    }
+    if (seg[0] === 'inventory' && seg[2] === 'platform' && method === 'POST') {
+      const platform = String(body.platform ?? '');
+      if (!(PLATFORMS as readonly string[]).includes(platform)) return bad('Выбери площадку');
+      const r = await d.prepare('UPDATE trades SET buy_platform = ?, updated_at = ? WHERE telegram_id = ? AND id = ?').bind(platform, now, tid, Number(seg[1])).run();
+      return json({ ok: (r.meta?.changes ?? 0) > 0 });
     }
     if (seg[0] === 'inventory' && seg[2] === 'target' && method === 'POST') {
       const kop = body.kop === null ? null : Number(body.kop);

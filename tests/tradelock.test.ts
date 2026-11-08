@@ -53,3 +53,23 @@ test('«Мои скины»: записанная покупка видна с �
   const r = await (await handleAppApi(new Request('https://w/app/api/steam', { headers: { 'X-Init-Data': init } }), testEnv(d), NOW)).json() as { locked: { name: string; qty: number; unlockAt: number }[] };
   assert.deepEqual(r.locked.map((x) => [x.name, x.qty, x.unlockAt]), [['Gallery Case', 3, BUY + TRADE_LOCK_SEC]]);
 });
+
+test('открытия кейсов на сайтах: отдельный итог, площадку можно поменять у записанной покупки', async () => {
+  const { testEnv } = await import('./helpers.ts');
+  const { handleAppApi } = await import('../src/webapp/api.ts');
+  const { signInitData } = await import('../src/webapp/auth.ts');
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const NOW = BUY + 86400;
+  const it = await db.upsertItem(D, 'M4A1-S | Electrum (Field-Tested)', BUY);
+  await db.ensureUser(D, 9, false, BUY);
+  const id = await T.addTrade(D, { tid: 9, itemId: it.id, signalId: null, quantity: 1, buyPriceKop: 28813, buyFeeKop: 0, platform: 'other', buyDate: '2026-11-01', note: null, now: BUY });
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 9, first_name: 'E', language_code: 'uk' }) }, 'TEST_TOKEN');
+  const call = async (path: string, body?: unknown) => (await handleAppApi(new Request('https://w/app/api/' + path, body ? { method: 'POST', body: JSON.stringify(body), headers: { 'X-Init-Data': init, 'Content-Type': 'application/json' } } : { headers: { 'X-Init-Data': init } }), testEnv(d), NOW)).json() as Promise<Record<string, unknown>>;
+  assert.equal((await call('inventory')).caseOpen, null);
+  assert.equal((await call(`inventory/${id}/platform`, { platform: 'caseopen' })).ok, true);
+  const r = await call('inventory') as { caseOpen: { count: number; spentKop: number; valueKop: number }; platforms: { v: string }[] };
+  assert.deepEqual([r.caseOpen.count, r.caseOpen.spentKop, r.caseOpen.valueKop], [1, 28813, 0]);
+  assert.ok(r.platforms.some((p) => p.v === 'caseopen'));
+  assert.equal((await call(`inventory/${id}/platform`, { platform: 'nope' })).ok, false);
+});

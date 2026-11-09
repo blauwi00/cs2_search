@@ -24,7 +24,7 @@ import { jobSellAlerts } from './core/sellalerts.ts';
 import { jobTradeUnlock } from './core/tradelock.ts';
 import { jobPumpAlerts } from './core/pumpalert.ts';
 import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
-import { goneStmts } from './core/steaminv.ts';
+import { goneStmts, invFailure, invSuccessStmts } from './core/steaminv.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -78,7 +78,10 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Инвентари Steam, которые попросили обновить (открытые данные Steam; доступа к аккаунту у бота нет).
       d.prepare(`SELECT telegram_id AS tid, steam_id AS steamId, steam_vanity AS vanity FROM users
         WHERE (steam_id IS NOT NULL OR steam_vanity IS NOT NULL) AND inv_requested_at IS NOT NULL
-          AND (inv_synced_at IS NULL OR inv_requested_at > inv_synced_at) ORDER BY inv_requested_at LIMIT 3`).all<{ tid: number; steamId: string | null; vanity: string | null }>(),
+          AND (inv_synced_at IS NULL OR inv_requested_at > inv_synced_at)
+          -- После отказа Steam — пауза перед повтором (15 мин → 1 ч → 6 ч), а не каждый запуск сборщика.
+          AND NOT EXISTS (SELECT 1 FROM user_settings r WHERE r.telegram_id = users.telegram_id AND r.key = 'inv_retry' AND json_extract(r.value, '$.at') > ?)
+        ORDER BY inv_requested_at LIMIT 3`).bind(now).all<{ tid: number; steamId: string | null; vanity: string | null }>(),
       ideasToTrack(d, now),
     ]);
     // Адрес Worker (для кнопок «Открыть приложение» в уведомлениях из Cron, где адреса запроса нет).
@@ -286,21 +289,24 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
     } else if (body.kind === 'steam_inventory') {
       const b = body as { tid?: unknown; steamId?: unknown; vanity?: unknown; status?: unknown };
       const tid = Number(b.tid);
-      const status = ['ok', 'private', 'not_found', 'rate_limited', 'error'].includes(String(b.status)) ? String(b.status) : 'error';
+      const status = ['ok', 'private', 'not_found', 'blocked', 'rate_limited', 'error'].includes(String(b.status)) ? String(b.status) : 'error';
       const steamId = typeof b.steamId === 'string' && /^7656119\d{10}$/.test(b.steamId) ? b.steamId : null;
       const u = await d.prepare('SELECT steam_id, steam_vanity FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null }>();
       // Принимаем только для того аккаунта, который сейчас привязан (защита от устаревших/чужих ответов).
       const matches = u && ((u.steam_id && u.steam_id === steamId) || (u.steam_vanity && u.steam_vanity === b.vanity));
       if (!matches) return json({ ok: false, error: 'not_linked' }, 409);
-      if (status === 'rate_limited') {
-        await d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind(status, tid).run();
+      // Отказ Steam — не стираем сохранённый инвентарь от одной попытки (steaminv.ts: invFailure).
+      if (status !== 'ok') {
+        if (steamId && !u.steam_id) await d.prepare('UPDATE users SET steam_id = ?, steam_vanity = NULL WHERE telegram_id = ?').bind(steamId, tid).run();
+        await invFailure(d, tid, status as 'private', now);
         return json(result);
       }
       const stmts: D1PreparedStatement[] = [
         d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ?, steam_id = COALESCE(?, steam_id), steam_vanity = CASE WHEN ? IS NOT NULL THEN NULL ELSE steam_vanity END WHERE telegram_id = ?')
           .bind(now, status, steamId, steamId, tid),
+        ...invSuccessStmts(d, tid),
       ];
-      if (status === 'ok') {
+      {
         const raw = (Array.isArray(body.items) ? body.items : []) as { name?: unknown; qty?: unknown; marketable?: unknown; tradable?: unknown; img?: unknown; assets?: unknown }[];
         const byName = new Map<string, { qty: number; marketable: number; tradable: number; img: string | null; assets: AssetDetail[] }>();
         for (const r of raw) {
@@ -331,8 +337,6 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
           if (v.img) stmts.push(d.prepare('INSERT OR IGNORE INTO item_images (name, url) VALUES (?, ?)').bind(n, v.img));
         }
         result.stored = byName.size;
-      } else {
-        stmts.push(d.prepare('DELETE FROM steam_inventory WHERE telegram_id = ?').bind(tid));
       }
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
     } else if (body.kind === 'images') {

@@ -93,10 +93,15 @@ test('инвентарь: сборщик забирает открытый ин�
   assert.equal((await api(env, U, 'steam/refresh', 'POST')).status, 400);
   // Закрытый инвентарь.
   d.db.prepare('UPDATE users SET inv_requested_at = ?, inv_synced_at = ? WHERE telegram_id = ?').run(NOW, NOW - 10, U);
+  // Закрыт: первая проверка только запоминается — инвентарь не стираем (Steam мог ошибиться).
   await send({ tid: U, steamId: SID, status: 'private' });
   const pr = await api(env, U, 'steam');
   assert.equal(pr.body.status, 'private');
-  assert.equal(pr.body.items.length, 0);
+  assert.ok(pr.body.items.length > 0, 'одна проверка — сохранённый инвентарь на месте');
+  // Подтверждено через 6+ ч — теперь удаляем.
+  d.db.prepare(`UPDATE user_settings SET value = ? WHERE telegram_id = ? AND key = 'inv_private_at'`).run(String(NOW - 7 * 3600), U);
+  await send({ tid: U, steamId: SID, status: 'private' });
+  assert.equal((await api(env, U, 'steam')).body.items.length, 0);
   // Отключение.
   await api(env, U, 'steam/unlink', 'POST');
   assert.equal((await api(env, U, 'steam')).body.linked, false);

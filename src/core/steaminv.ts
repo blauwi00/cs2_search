@@ -7,9 +7,31 @@ import { safeImg } from './recs.ts';
 
 export type InvFetch =
   | { status: 'ok'; steamId: string; items: { name: string; qty: number; marketable: number; tradable: number; img: string | null }[]; partial: boolean }
-  | { status: 'private' | 'not_found' | 'rate_limited' | 'error'; steamId: string | null };
+  | { status: 'private' | 'not_found' | 'blocked' | 'rate_limited' | 'error'; steamId: string | null };
 
 const UA = 'Mozilla/5.0 (compatible; CenolovBot/1.0; +https://t.me/cenolow_bot)';
+
+/**
+ * Публичная страница инвентаря: открыт ли он на самом деле. Steam часто отвечает 403 / success:false на JSON
+ * серверам дата-центров (Cloudflare, GitHub), хотя инвентарь открыт, — поэтому «закрыт» говорим только по странице.
+ * open — есть вкладка «Counter-Strike 2»; private — Steam пишет, что профиль или инвентарь закрыт; unknown — не понять.
+ */
+export function classifyInventoryPage(html: string): 'open' | 'private' | 'unknown' {
+  if (/inventory is currently private|profile_private_info|This profile is private|private_profile/i.test(html)) return 'private';
+  if (/games_list_tab_name">\s*Counter-Strike 2\s*</.test(html) || /Counter-Strike 2 \(\d+\)/.test(html)) return 'open';
+  return 'unknown';
+}
+
+/** JSON не отдали (403 / success:false) — смотрим публичную страницу: blocked (открыт, Steam не отдал) / private / error. */
+export async function recheckByPage(fetcher: typeof fetch, id: string): Promise<'blocked' | 'private' | 'rate_limited' | 'error'> {
+  try {
+    const r = await fetcher(`https://steamcommunity.com/profiles/${id}/inventory/`, { headers: { 'User-Agent': UA, Accept: 'text/html' } });
+    if (r.status === 429) return 'rate_limited';
+    if (!r.ok) return 'error';
+    const c = classifyInventoryPage(await r.text());
+    return c === 'open' ? 'blocked' : c === 'private' ? 'private' : 'error';
+  } catch { return 'error'; }
+}
 
 export async function fetchInventory(fetcher: typeof fetch, steamId: string | null, vanity: string | null): Promise<InvFetch> {
   let id = steamId;
@@ -21,12 +43,14 @@ export async function fetchInventory(fetcher: typeof fetch, steamId: string | nu
     id = m[1];
   }
   if (!id) return { status: 'not_found', steamId: null };
-  const r = await fetcher(`https://steamcommunity.com/inventory/${id}/730/2?l=english&count=1000`, { headers: { 'User-Agent': UA } });
+  const r = await fetcher(`https://steamcommunity.com/inventory/${id}/730/2?l=english&count=500`, {
+    headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `https://steamcommunity.com/profiles/${id}/inventory/` },
+  });
   if (r.status === 429) return { status: 'rate_limited', steamId: id };
-  if (r.status === 401 || r.status === 403) return { status: 'private', steamId: id };
+  if (r.status === 401 || r.status === 403) return { status: await recheckByPage(fetcher, id), steamId: id };
   if (!r.ok) return { status: r.status === 404 ? 'not_found' : 'error', steamId: id };
   const j = await r.json().catch(() => null) as { success?: unknown; assets?: { classid: string; instanceid: string; amount?: string }[]; descriptions?: { classid: string; instanceid: string; market_hash_name?: string; marketable?: number; tradable?: number; icon_url?: string }[]; more_items?: unknown } | null;
-  if (!j || j.success === false) return { status: 'private', steamId: id };
+  if (!j || j.success === false) return { status: await recheckByPage(fetcher, id), steamId: id };
   const desc = new Map((j.descriptions ?? []).map((x) => [`${x.classid}_${x.instanceid}`, x]));
   const by = new Map<string, { name: string; qty: number; marketable: number; tradable: number; img: string | null }>();
   for (const a of j.assets ?? []) {
@@ -48,16 +72,9 @@ export async function fetchInventory(fetcher: typeof fetch, steamId: string | nu
  * Если инвентарь отдался не целиком — ничего не удаляем.
  */
 export async function storeInventory(d: D1Database, tid: number, res: InvFetch, now: number): Promise<void> {
-  if (res.status !== 'ok') {
-    // 429 и сбои — не наша новость о пользователе: пусть дальше пробует сборщик, статус не трогаем.
-    if (res.status === 'private' || res.status === 'not_found') {
-      await d.batch([
-        d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ? WHERE telegram_id = ?').bind(now, res.status, tid),
-        d.prepare('DELETE FROM steam_inventory WHERE telegram_id = ?').bind(tid),
-      ]);
-    }
-    return;
-  }
+  // 429 — не новость о пользователе: статус не трогаем, повторит сборщик.
+  if (res.status === 'rate_limited') return;
+  if (res.status !== 'ok') return invFailure(d, tid, res.status, now);
   const names = res.items.map((x) => x.name);
   const up: D1PreparedStatement[] = [];
   for (const n of names) up.push(...db.upsertItemStmts(d, n, now));
@@ -69,6 +86,7 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
   }
   const stmts: D1PreparedStatement[] = [
     d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ?, steam_id = ?, steam_vanity = NULL WHERE telegram_id = ?').bind(now, 'ok', res.steamId, tid),
+    ...invSuccessStmts(d, tid),
   ];
   const keep = [...ids.values()];
   const fresh = new Map(res.items.filter((x) => ids.has(x.name)).map((x) => [ids.get(x.name)!, x.qty]));
@@ -89,6 +107,55 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
     if (x.img) stmts.push(d.prepare('INSERT OR IGNORE INTO item_images (name, url) VALUES (?, ?)').bind(x.name, x.img));
   }
   for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
+}
+
+// ---------- Неудачи: не стираем инвентарь от одного отказа Steam ----------
+/** Повторы после отказа: 15 мин → 1 ч → 6 ч (дальше — раз в 6 ч). */
+export const INV_RETRY_SEC = [15 * 60, 3600, 6 * 3600];
+/** «Закрыт» подтверждаем двумя проверками с разницей не меньше 6 часов — только тогда удаляем сохранённый инвентарь. */
+export const INV_CONFIRM_SEC = 6 * 3600;
+
+const setKey = (d: D1Database, tid: number, key: string, value: string, now: number) =>
+  d.prepare('INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(tid, key, value, now);
+
+/** Удачное обновление — сбрасываем счётчик повторов и неподтверждённое «закрыт». */
+export function invSuccessStmts(d: D1Database, tid: number): D1PreparedStatement[] {
+  return [d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key IN ('inv_retry', 'inv_private_at')`).bind(tid)];
+}
+
+/**
+ * Отказ Steam. Сохранённый инвентарь и время последнего удачного обновления не трогаем (покажем «обновлён N назад»).
+ * blocked — открыт, но Steam не отдал серверу: статус для честного текста + повтор с паузой.
+ * private / not_found — первая проверка только запоминается; удаляем, если через ≥ 6 ч снова так же.
+ * error — ничего не меняем, только пауза перед повтором. rate_limited — как раньше: статус, повторит сборщик.
+ */
+export async function invFailure(d: D1Database, tid: number, status: Exclude<InvFetch['status'], 'ok'>, now: number): Promise<void> {
+  if (status === 'rate_limited') { await d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind(status, tid).run(); return; }
+  const rows = (await d.prepare(`SELECT key, value FROM user_settings WHERE telegram_id = ? AND key IN ('inv_retry', 'inv_private_at')`).bind(tid).all<{ key: string; value: string }>()).results;
+  const kv = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  let retry = { n: 0, at: 0 };
+  try { retry = { ...retry, ...JSON.parse(kv.inv_retry ?? '{}') }; } catch { /* битое значение — начнём сначала */ }
+  const n = retry.n + 1;
+  const next = setKey(d, tid, 'inv_retry', JSON.stringify({ n, at: now + INV_RETRY_SEC[Math.min(n, INV_RETRY_SEC.length) - 1] }), now);
+  if (status === 'private' || status === 'not_found') {
+    const first = Number(kv.inv_private_at) || 0;
+    if (first && now - first >= INV_CONFIRM_SEC) {
+      // Подтверждено дважды — теперь и правда закрыт: убираем сохранённый состав, из очереди выходим.
+      await d.batch([
+        d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ? WHERE telegram_id = ?').bind(now, status, tid),
+        d.prepare('DELETE FROM steam_inventory WHERE telegram_id = ?').bind(tid),
+        ...invSuccessStmts(d, tid),
+      ]);
+      return;
+    }
+    await d.batch([
+      d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind(status, tid),
+      ...(first ? [] : [setKey(d, tid, 'inv_private_at', String(now), now)]),
+      next,
+    ]);
+    return;
+  }
+  await d.batch([...(status === 'blocked' ? [d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind('blocked', tid)] : []), next]);
 }
 
 /** Что пропало из инвентаря по сравнению с прошлым разом (только если прошлый раз был). Неполный ответ — только уменьшения. */

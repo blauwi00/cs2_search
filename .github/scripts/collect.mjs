@@ -213,6 +213,20 @@ try {
 // 2б-3. Открытые инвентари Steam тех, кто привязал Steam в приложении (только чтение публичных данных, без входа в аккаунт).
 // До 3 инвентарей за запуск, с паузами. Закрытый инвентарь → просим пользователя открыть его в настройках приватности Steam.
 let dopplerPrices = null;
+/** Публичная страница инвентаря: вкладка «Counter-Strike 2» есть → открыт, Steam просто не отдал JSON (blocked); текст о приватности → private. */
+async function recheckInventoryPage(id) {
+  try {
+    await sleep(STEAM_GAP_MS);
+    const r = await fetch(`https://steamcommunity.com/profiles/${id}/inventory/`, { headers: { 'User-Agent': UA, Accept: 'text/html' } });
+    steamReq++;
+    if (r.status === 429) { steamLimited = true; return 'rate_limited'; }
+    if (!r.ok) return 'error';
+    const html = await r.text();
+    if (/inventory is currently private|profile_private_info|This profile is private|private_profile/i.test(html)) return 'private';
+    if (/games_list_tab_name">\s*Counter-Strike 2\s*</.test(html) || /Counter-Strike 2 \(\d+\)/.test(html)) return 'blocked';
+    return 'error';
+  } catch { return 'error'; }
+}
 for (const s of inventorySync) {
   if (Date.now() - started > 2 * 60_000 || !steamCan(14)) break;
   const base = { kind: 'steam_inventory', fetchedAt: now(), tid: s.tid, steamId: s.steamId, vanity: s.vanity };
@@ -230,15 +244,16 @@ for (const s of inventorySync) {
     const counts = new Map();
     let start = '', pages = 0, status = 'ok';
     do {
-      const q = new URLSearchParams({ l: 'english', count: '2000' });
+      const q = new URLSearchParams({ l: 'english', count: '500' });
       if (start) q.set('start_assetid', start);
-      const r = await fetch(`https://steamcommunity.com/inventory/${id}/730/2?${q}`, { headers: { 'User-Agent': UA } });
+      const r = await fetch(`https://steamcommunity.com/inventory/${id}/730/2?${q}`, { headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `https://steamcommunity.com/profiles/${id}/inventory/` } });
       steamReq++;
       if (r.status === 429) { status = 'rate_limited'; steamLimited = true; break; }
-      if (r.status === 403 || r.status === 401) { status = 'private'; break; }
+      // 403 / success:false серверам дата-центров бывает и у открытых инвентарей — «закрыт» решаем по публичной странице.
+      if (r.status === 403 || r.status === 401) { status = await recheckInventoryPage(id); break; }
       if (!r.ok) { status = r.status === 404 ? 'not_found' : 'error'; break; }
       const j = await r.json().catch(() => null);
-      if (!j || j.success === false) { status = 'private'; break; }
+      if (!j || j.success === false) { status = await recheckInventoryPage(id); break; }
       const desc = new Map((j.descriptions ?? []).map((d) => [`${d.classid}_${d.instanceid}`, d]));
       // Float, паттерн и сертификат каждого предмета (Steam отдаёт их в asset_properties).
       const props = new Map((j.asset_properties ?? []).map((p) => [String(p.assetid), p.asset_properties ?? []]));
@@ -267,7 +282,7 @@ for (const s of inventorySync) {
       start = j.more_items ? String(j.last_assetid || '') : '';
       pages++;
       if (start) await sleep(STEAM_GAP_MS);
-    } while (start && pages < 3);
+    } while (start && pages < 8);
     const list = [...counts.values()].slice(0, 500);
     // Цены Doppler по фазам (Ruby, Sapphire, Phase 2…) — открытый прайс CSFloat от CSGO Trader, только если есть фазы.
     if (list.some((x) => x.assets?.some((y) => y.phase))) {

@@ -546,7 +546,8 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       return json({
         ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
         status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
-        pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at)),
+        // Steam отказал (не отдаёт / «закрыт» ещё не подтверждён) — не «загружаю», а честный текст статуса.
+        pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at) && !['blocked', 'private', 'not_found'].includes(u.inv_status ?? '')),
         goneCount: linked ? ((await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0) : 0,
         totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
         locked: linked ? await lockedLots(d, tid, now) : [],
@@ -578,7 +579,10 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         if (res.status !== 'rate_limited' && res.status !== 'error') {
           await storeInventory(d, tid, res, now);
           const gone = (await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0;
-          return json({ ok: true, updated: true, gone, msg: res.status === 'ok' ? `✅ Инвентарь обновлён: ${res.items.length} предм.` : res.status === 'private' ? '🔒 Инвентарь закрыт в настройках приватности Steam' : 'Профиль Steam не найден' });
+          return json({ ok: true, updated: res.status === 'ok', gone, msg: res.status === 'ok' ? `✅ Инвентарь обновлён: ${res.items.length} предм.`
+            : res.status === 'blocked' ? '⏳ Steam временно не отдаёт инвентарь серверу бота — твои настройки в порядке. Попробую сам, пока покажу последний сохранённый.'
+            : res.status === 'private' ? '🔒 Steam пишет, что инвентарь закрыт. Проверь приватность: «Мой профиль» и «Инвентарь» — «Открытый»; Steam применяет изменения до нескольких минут.'
+            : 'Профиль Steam не найден — проверь ссылку.' });
         }
       }
       // Steam ограничил запросы сервера — честно говорим, когда примерно обновится.

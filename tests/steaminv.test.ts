@@ -29,7 +29,20 @@ test('разбор инвентаря: количество по названи�
   assert.equal(ok.steamId, SID);
   assert.deepEqual(ok.items.map((x) => [x.name, x.qty, x.marketable]), [['Kilowatt Case', 2, 1], ['Sticker | X', 5, 0]]);
   assert.match(ok.items[0].img!, /^https:\/\/community\.akamai\.steamstatic\.com\/economy\/image\/abc$/);
-  assert.equal((await fetchInventory(f(403, null), SID, null)).status, 'private');
+  // 403 / success:false — «закрыт» только по публичной странице; вкладка CS2 есть → Steam просто не отдал (blocked).
+  const pg = (json403: number | 'false', page: string | number) => (async (u: string) => {
+    if (u.includes('/inventory/' + SID + '/730/2')) return json403 === 'false' ? json({ success: false }) : new Response('', { status: json403 });
+    if (u.includes('/profiles/' + SID + '/inventory/')) return typeof page === 'number' ? new Response('', { status: page }) : new Response(page);
+    return new Response('', { status: 404 });
+  }) as unknown as typeof fetch;
+  const OPEN = '<span class="games_list_tab_name">Counter-Strike 2</span> <span>Counter-Strike 2 (21)</span>';
+  const PRIV = '<div class="profile_private_info">This user\'s inventory is currently private.</div>';
+  assert.equal((await fetchInventory(pg(403, OPEN), SID, null)).status, 'blocked');
+  assert.equal((await fetchInventory(pg('false', OPEN), SID, null)).status, 'blocked');
+  assert.equal((await fetchInventory(pg(403, PRIV), SID, null)).status, 'private');
+  assert.equal((await fetchInventory(pg('false', PRIV), SID, null)).status, 'private');
+  assert.equal((await fetchInventory(pg(403, 500), SID, null)).status, 'error', 'страница не открылась — не понять');
+  assert.equal((await fetchInventory(pg(403, '<html>что-то другое</html>'), SID, null)).status, 'error');
   assert.equal((await fetchInventory(f(429, null), SID, null)).status, 'rate_limited');
   assert.equal((await fetchInventory(f(200, null, '<nope/>'), null, 'x')).status, 'not_found');
 });
@@ -48,6 +61,48 @@ test('сохранение: обновляет состав, не трогает
   assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM steam_inventory').get() as { n: number }).n, 2, 'неполный ответ — без удаления');
   await storeInventory(D, U, { status: 'rate_limited', steamId: SID }, NOW + 180);
   assert.equal((d.db.prepare('SELECT inv_status FROM users').get() as { inv_status: string }).inv_status, 'ok', '429 — статус не портим');
+});
+
+test('#33: отказ Steam не стирает инвентарь; «закрыт» — только после двух проверок через 6 ч; повторы с паузой', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, inv_requested_at) VALUES (?, ?, ?, ?)').run(U, NOW, SID, NOW);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'A', qty: 1, marketable: 1, tradable: 1, img: null }], partial: false }, NOW);
+  const cnt = () => (d.db.prepare('SELECT COUNT(*) AS n FROM steam_inventory').get() as { n: number }).n;
+  const user = () => d.db.prepare('SELECT inv_status AS s, inv_synced_at AS at FROM users').get() as { s: string; at: number };
+  const retry = () => JSON.parse((d.db.prepare(`SELECT value FROM user_settings WHERE key = 'inv_retry'`).get() as { value: string } | undefined)?.value ?? 'null');
+  // Steam не отдал JSON, а страница открыта.
+  await storeInventory(D, U, { status: 'blocked', steamId: SID }, NOW + 3600);
+  assert.equal(cnt(), 1, 'blocked — инвентарь на месте');
+  assert.deepEqual([user().s, user().at], ['blocked', NOW], 'время последнего удачного обновления не трогаем');
+  assert.deepEqual(retry(), { n: 1, at: NOW + 3600 + 15 * 60 }, 'повтор через 15 мин');
+  await storeInventory(D, U, { status: 'blocked', steamId: SID }, NOW + 7200);
+  assert.equal(retry().at, NOW + 7200 + 3600, 'дальше — через час');
+  // Сбой страницы — ничего не меняем, кроме паузы.
+  await storeInventory(D, U, { status: 'error', steamId: SID }, NOW + 9000);
+  assert.equal(user().s, 'blocked');
+  assert.equal(retry().at, NOW + 9000 + 6 * 3600);
+  // «Закрыт»: первая проверка — без удаления; вторая через 2 ч — тоже; через 6+ ч — удаление.
+  await storeInventory(D, U, { status: 'private', steamId: SID }, NOW + 10000);
+  assert.deepEqual([cnt(), user().s], [1, 'private']);
+  await storeInventory(D, U, { status: 'private', steamId: SID }, NOW + 10000 + 2 * 3600);
+  assert.equal(cnt(), 1, 'меньше 6 ч — ещё не подтверждено');
+  await storeInventory(D, U, { status: 'private', steamId: SID }, NOW + 10000 + 6 * 3600);
+  assert.equal(cnt(), 0, 'подтверждено — удалено');
+  // Снова открыт — счётчики сброшены.
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'A', qty: 1, marketable: 1, tradable: 1, img: null }], partial: false }, NOW + 50000);
+  assert.equal(retry(), null);
+  assert.equal(d.db.prepare(`SELECT 1 FROM user_settings WHERE key = 'inv_private_at'`).get(), undefined);
+});
+
+test('#33: тексты — «Steam не отдаёт» не просит открыть настройки; «закрыт» — с обоими пунктами приватности', async () => {
+  const html = (await import('node:fs')).readFileSync(new URL('../src/webapp/app.html', import.meta.url), 'utf8');
+  const blocked = html.match(/blocked: '([^']+)'/)![1];
+  assert.doesNotMatch(blocked, /Открой|Приватность/);
+  assert.match(blocked, /настройки в порядке/);
+  const priv = html.match(/var INV_ST = \{ private: '([^']+)'/)![1];
+  assert.match(priv, /Мой профиль: Открытый/);
+  assert.match(priv, /Инвентарь: Открытый/);
 });
 
 test('кнопка «Обновить»: Worker загрузил сам — сразу «обновлён»; Steam ответил 429 — честно про очередь', async () => {

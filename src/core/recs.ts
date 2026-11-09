@@ -60,6 +60,8 @@ export async function loadSkinportPages(d: D1Database, names: string[]): Promise
 }
 export const SKINPORT_SELL_FEE_HIGH_BP = 600;      // Skinport: 6% для продаж дороже 1000 €
 export const SKINPORT_HIGH_EUR_CENTS = 100_000;
+/** Минимальная комиссия Skinport с продажи — 1 евроцент (видно по продажам: 0,13 PLN → комиссия 0,04 PLN). */
+export const SKINPORT_MIN_FEE_EUR_CENTS = 1;
 
 /** since — с какого сканирования это объявление держится примерно по той же цене (±3%); нужно для проверки «не мимолётное ли». */
 export interface ScanOffer { m: Exclude<Market, 'steam'>; cur: Currency; minor: number; qty: number | null; since?: number }
@@ -208,8 +210,10 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
   if (e.s7?.median && sales7 !== null && sales7 >= 7) {
     const list = kop(e.s7.median, 'EUR');
     const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;
-    if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - feeBp)) / 10000)),
-      basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}`, ...wFee] });
+    // Комиссия Skinport не меньше 1 евроцента: на копеечных продажах это не 8%, а до 30% (продажа за 0,13 PLN — комиссия 0,04).
+    const minFee = kop(SKINPORT_MIN_FEE_EUR_CENTS, 'EUR') ?? 0;
+    if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(list - Math.max(Math.ceil((list * feeBp) / 10000), minFee)),
+      basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}${minFee && (list * feeBp) / 10000 < minFee ? ' (минимум 1 евроцент)' : ''}`, ...wFee] });
   }
   // Остальные сайты: истории продаж нет — ориентир «на 1% дешевле самого дешёвого», только если объявлений много.
   const offerKops = buys.filter((b) => b.m !== 'steam').map((b) => b.listKop).sort((a, b) => a - b);

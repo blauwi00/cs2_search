@@ -4,7 +4,7 @@ import { steamSellerProceeds, steamBuyerPriceForReceived } from './fees.ts';
 import { siteIcon, SITES } from './sites.ts';
 
 export const CALC_SITES: { key: string; name: string; feeBp: number; note?: string }[] = [
-  { key: 'skinport', name: 'Skinport', feeBp: 800, note: '6% для продаж дороже 1000 €' },
+  { key: 'skinport', name: 'Skinport', feeBp: 800, note: 'не меньше 1 евроцента; 6% для продаж дороже 1000 €' },
   { key: 'csfloat', name: 'CSFloat', feeBp: 200 },
   { key: 'csdeals', name: 'CS.Deals', feeBp: 200, note: 'деньги приходят через 7 дней' },
   { key: 'dmarket', name: 'DMarket', feeBp: 200, note: 'у редко продаваемых предметов до 10%' },
@@ -21,7 +21,8 @@ export interface CalcRow { key: string; name: string; icon: string; feeText: str
 const iconOf = (key: string, fallback: string) => siteIcon(SITES.find((s) => s.key === key)?.url ?? fallback);
 
 /** mode 'sell': выставляю за kop — сколько получу; mode 'get': хочу получить kop — за сколько выставить. withdrawBp — комиссия вывода с сайтов. */
-export function calcFees(kop: number, mode: 'sell' | 'get', withdrawBp: number): CalcRow[] {
+/** minFeeKop — минимальная комиссия площадки в копейках (Skinport: 1 евроцент по курсу). */
+export function calcFees(kop: number, mode: 'sell' | 'get', withdrawBp: number, minFeeKop: Record<string, number> = {}): CalcRow[] {
   const rows: CalcRow[] = [];
   const w = Math.max(0, Math.min(3000, withdrawBp));
   // Steam: точная формула (5% Steam + 10% CS2, минимум по 1 коп.), деньги остаются на балансе Steam.
@@ -34,8 +35,12 @@ export function calcFees(kop: number, mode: 'sell' | 'get', withdrawBp: number):
   }
   for (const s of CALC_SITES) {
     const keep = (10000 - s.feeBp) * (10000 - w) / 1e8;
-    const listKop = mode === 'sell' ? kop : Math.ceil(kop / keep);
-    const getKop = mode === 'sell' ? Math.floor(kop * keep) : kop;
+    const min = minFeeKop[s.key] ?? 0;
+    const fee = (list: number) => Math.max((list * s.feeBp) / 10000, min);
+    let listKop = mode === 'sell' ? kop : Math.ceil(kop / keep);
+    // Процент меньше минимальной комиссии — считаем от минимума.
+    if (mode === 'get' && fee(listKop) > (listKop * s.feeBp) / 10000) listKop = Math.ceil(kop / ((10000 - w) / 10000) + min);
+    const getKop = mode === 'sell' ? Math.max(0, Math.floor((kop - fee(kop)) * (10000 - w) / 10000)) : kop;
     rows.push({ key: s.key, name: s.name, icon: iconOf(s.key, `https://${s.key}.com/`), feeText: `${(s.feeBp / 100).toString().replace('.', ',')}%${w ? ` + вывод ${(w / 100).toString().replace('.', ',')}%` : ''}`,
       note: s.note ?? null, wallet: 'cash', listKop, getKop });
   }

@@ -78,3 +78,13 @@ test('#14: калькулятор комиссий — продажа и обр�
   const back = calcFees(steam.getKop, 'get', 0).find((x) => x.key === 'steam')!;
   assert.ok(back.listKop <= 10000 && back.listKop >= 9999);
 });
+
+test('Skinport: комиссия не меньше 1 евроцента — копеечная продажа не «8%»', async () => {
+  const { calcFees } = await import('../src/core/calc.ts');
+  // 1 евроцент ≈ 48 коп. Продажа за 1,40 ₴ (≈ 0,13 PLN со скриншота): 8% = 11 коп., но берут минимум 48 коп.
+  const sp = (k: number, mode: 'sell' | 'get') => calcFees(k, mode, 0, { skinport: 48 }).find((x) => x.key === 'skinport')!;
+  assert.equal(sp(140, 'sell').getKop, 92, '140 − 48');
+  assert.equal(sp(100000, 'sell').getKop, 92000, 'дорогая продажа — обычные 8%');
+  assert.equal(sp(92, 'get').listKop, 140, 'обратный расчёт с минимумом');
+  assert.equal(calcFees(140, 'sell', 0).find((x) => x.key === 'skinport')!.getKop, 128, 'без курса евро — как раньше');
+});

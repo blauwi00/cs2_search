@@ -17,7 +17,7 @@ import { warsawDate } from '../utils/time.ts';
 import { steamListingUrl, safeLink } from '../utils/http.ts';
 import { backtest } from '../core/quality.ts';
 import { advise, ACTION_RANK, type Advice } from '../core/advice.ts';
-import { buildRecs, MARKETS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from '../core/recs.ts';
+import { buildRecs, MARKETS, SKINPORT_MIN_FEE_EUR_CENTS, itemUrl, loadSkinportPages, type Rec, type ItemPages } from '../core/recs.ts';
 import { loadScan } from '../storage/scan.ts';
 import { WATCH_LIMIT, LOTS_LIMIT } from '../core/audience.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
@@ -1148,7 +1148,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       if (!Number.isSafeInteger(kop) || kop < 3 || kop > 1e11) return bad('Введи цену, например 120');
       const mode = url.searchParams.get('mode') === 'get' ? 'get' : 'sell';
       const s = await db.getSettings(d, tid);
-      return json({ ok: true, mode, withdrawBp: db.num(s.withdraw_fee_bp), rows: calcFees(kop, mode, db.num(s.withdraw_fee_bp)) });
+      const eur = (await db.loadLatestFx(d)).get('EUR') ?? null;
+      const spMin = toKop(SKINPORT_MIN_FEE_EUR_CENTS, 'EUR', eur);
+      return json({ ok: true, mode, withdrawBp: db.num(s.withdraw_fee_bp), rows: calcFees(kop, mode, db.num(s.withdraw_fee_bp), spMin ? { skinport: spMin } : {}) });
     }
     // ---------- «Разгон баланса» ----------
     if (path === 'rally' && method === 'GET') {

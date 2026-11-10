@@ -256,60 +256,6 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 .row.hit{position:relative}.row.hit:after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 2px var(--accent);opacity:0;animation:hitFl .9s ease-out 1 .3s;pointer-events:none}
 @keyframes hitFl{30%{opacity:1}}
 @media (prefers-reduced-motion:reduce){#view.enter>*,.sheet.on #sc>*,.hero:after,.sweep,.ring,.dot,.gold,.tab.on .t,.balbtn .bn,.tbar i,.row.hit:after{animation:none!important}.seg-ink{transition:none}}
-
-/* ===== Тема «Ценник»: бумага, тёмно-зелёный и оранжевый. Идея — чек сделки (перфорация, штрихкод), прибыль — штамп. ===== */
-html.paper{--amber:#b5651d;--sep:rgba(20,41,36,.14);--ink:#142924;--orange:#f15a34;--paper:#f3f0e6;--card2:#e7e1d1}
-html.paper body{background-color:var(--bg2);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .08 0 0 0 0 .16 0 0 0 0 .14 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");font-feature-settings:"tnum" 1}
-html.paper .top{background:color-mix(in srgb,var(--bg2) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--sep)}
-html.paper .logo{display:none}
-html.paper .top h1{font:900 22px/1.1 "Playfair Display",Georgia,serif;letter-spacing:0;text-transform:uppercase;display:flex;align-items:center;gap:9px}
-html.paper .top h1:before{content:"";flex:none;width:26px;height:20px;background:linear-gradient(115deg,transparent 0 22%,var(--orange) 22% 46%,transparent 46% 58%,var(--orange) 58% 82%,transparent 82%)}
-html.paper .balbtn{background:var(--ink);color:var(--paper);border:0;border-radius:10px;font:600 13.5px/1 "IBM Plex Mono",ui-monospace,monospace}
-html.paper .menubtn{background:transparent;border:1px solid var(--sep);color:var(--ink)}
-html.paper .ticker{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:color-mix(in srgb,var(--ink) 70%,transparent)}
-html.paper .sec{font:900 17px/1.2 "Playfair Display",Georgia,serif;color:var(--ink);text-transform:uppercase;letter-spacing:.3px;margin:20px 4px 10px;padding-bottom:8px;border-bottom:1.5px solid var(--ink)}
-html.paper .sec a,html.paper .sec-a a{font:500 12px/1 "IBM Plex Mono",ui-monospace,monospace;color:var(--orange);text-transform:none}
-html.paper .card,html.paper .row,html.paper .rc,html.paper .stat,html.paper .grp,html.paper details.more,html.paper .ob .pts{background:var(--card);border:1px solid var(--sep);border-radius:12px;box-shadow:0 1px 0 rgba(20,41,36,.05),0 10px 24px -18px rgba(20,41,36,.35);backdrop-filter:none;-webkit-backdrop-filter:none}
-html.paper .grp .row{border:0;border-bottom:1px solid var(--sep);box-shadow:none}
-html.paper .row .n,html.paper .rc .hd .n{font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:16px}
-html.paper .stat .l,html.paper label.f span,html.paper .flow .l,html.paper .hl{font-family:"IBM Plex Mono",ui-monospace,monospace;letter-spacing:-.2px;font-size:11.5px;text-transform:uppercase}
-html.paper .stat .v,html.paper .big-num,html.paper .hn{font-family:"Playfair Display",Georgia,serif;font-weight:900}
-html.paper *{font-variant-numeric:lining-nums tabular-nums}
-html.paper .ic{background:var(--card2);border-radius:10px}
-html.paper .ic.pic{background:radial-gradient(circle at 50% 40%,#fff,var(--card2))}
-html.paper .btn:not(.sec2):not(.danger):not(.link-danger){background:var(--ink);color:var(--paper);box-shadow:none;border-radius:11px;display:flex;align-items:center;justify-content:center;gap:10px}
-html.paper .btn:not(.sec2):not(.danger):not(.link-danger):before{content:"";flex:none;width:18px;height:13px;background:linear-gradient(115deg,transparent 0 22%,var(--orange) 22% 46%,transparent 46% 58%,var(--orange) 58% 82%,transparent 82%)}
-html.paper .btn.sec2{background:transparent;border:1px solid color-mix(in srgb,var(--ink) 35%,transparent);color:var(--ink)}
-html.paper input,html.paper select{background:var(--card);border-color:color-mix(in srgb,var(--ink) 22%,transparent)}
-html.paper .seg,html.paper .chips .chip{background:transparent;border:1px solid var(--sep)}
-html.paper .seg button.on,html.paper .chip.on{background:var(--ink);color:var(--paper)}
-html.paper .tabs{background:var(--ink);border-top:0}
-html.paper .tab{color:rgba(243,240,230,.55);position:relative}
-html.paper .tab.on{color:var(--orange)}html.paper .tab.on .t{text-shadow:none}
-html.paper .tab.on:after{content:"";position:absolute;left:30%;right:30%;bottom:-3px;height:3px;border-radius:2px;background:var(--orange)}
-html.paper .sheet{background:var(--bg2)}
-html.paper .toast{background:var(--ink);color:var(--paper);border:0}
-html.paper .act.a-buy{background:#166b53;color:#fff;border-radius:7px;font-family:"IBM Plex Mono",ui-monospace,monospace}
-html.paper .hero{background:var(--card);border:1px solid var(--sep);border-radius:14px}
-html.paper .hero:before{content:"";position:absolute;top:0;right:0;width:120px;height:72px;background:repeating-linear-gradient(115deg,transparent 0 14px,var(--orange) 14px 26px);-webkit-mask-image:linear-gradient(225deg,#000 30%,transparent 75%);mask-image:linear-gradient(225deg,#000 30%,transparent 75%);opacity:.9;pointer-events:none}
-html.paper .hero:after{display:none}
-/* Идея = чек: перфорация с вырубками по бокам, тёмный «итог», штрихкод */
-html.paper .rc{position:relative;padding-bottom:34px;overflow:hidden}
-html.paper .rc .flow{position:relative;border-top:1.5px dashed color-mix(in srgb,var(--ink) 30%,transparent);padding-top:12px}
-html.paper .rc .flow:before,html.paper .rc .flow:after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--bg2);border:1px solid var(--sep)}
-html.paper .rc .flow:before{left:-24px}html.paper .rc .flow:after{right:-24px}
-html.paper .flow .st{background:transparent;border:1px solid color-mix(in srgb,var(--ink) 22%,transparent);border-radius:9px}
-html.paper .flow .st.get{background:var(--ink);border-color:var(--ink);color:var(--paper)}
-html.paper .flow .st.get .l{color:rgba(243,240,230,.7)}
-html.paper .rc:after{content:"";position:absolute;right:14px;bottom:11px;width:92px;height:13px;opacity:.6;background:repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 3px,var(--ink) 3px 5px,transparent 5px 6px,var(--ink) 6px 7px,transparent 7px 10px,var(--ink) 10px 13px,transparent 13px 15px)}
-html.paper .rc:before{content:"ЦЕНОЛОВ // ЧЕК ИДЕИ";position:absolute;left:14px;bottom:11px;font:600 10px/13px "IBM Plex Mono",ui-monospace,monospace;letter-spacing:1px;color:color-mix(in srgb,var(--ink) 45%,transparent)}
-/* Прибыль — штамп: падает с поворотом и «впечатывается» */
-html.paper .rc .hd .act{animation:stamp .46s .3s cubic-bezier(.3,1.5,.55,1) both;transform-origin:50% 60%}
-@keyframes stamp{0%{opacity:0;transform:scale(2.3) rotate(-16deg)}55%{opacity:1;transform:scale(.9) rotate(-5deg)}100%{opacity:1;transform:scale(1) rotate(-4deg)}}
-html.paper #splash{background:var(--ink);color:var(--paper);--accent:var(--orange)}
-html.paper .sheet h2{font:900 21px/1.2 "Playfair Display",Georgia,serif}
-html.paper #splash .nm{font-family:"Playfair Display",Georgia,serif;text-transform:uppercase}
-@media (prefers-reduced-motion:reduce){html.paper .rc .hd .act{animation:none;transform:rotate(-4deg)}}
 </style>
 </head>
 <body>
@@ -359,7 +305,6 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без
 
 // ---------- Темы оформления: своя палитра вместо цветов Telegram. «tg» — как в Telegram. ----------
 var THEMES = {
-  paper: { name: 'Ценник', bg2: '#f3f0e6', bg: '#ece7d8', card: '#fbf9f2', text: '#142924', hint: '#66756d', link: '#e8542e', accent: '#142924', at: '#f3f0e6', green: '#166b53', red: '#c8432a', grad: '#142924', glow: '#f15a34' },
   radar: { name: 'Радар', bg2: '#060a12', bg: '#0b111c', card: '#0e1522', text: '#eef2fa', hint: '#8b98b3', link: '#5fe6cc', accent: '#38e1c0', at: '#04110e', green: '#3be59a', red: '#ff5d73', grad: 'linear-gradient(135deg,#38e1c0,#2f7bff)', glow: '#1c4fd6' },
   orange: { name: 'CS2 оранж', bg2: '#0b0907', bg: '#120e0a', card: '#16120d', text: '#f6efe6', hint: '#a39684', link: '#ffb03a', accent: '#ff9124', at: '#1a0d02', green: '#55d38f', red: '#ff5b4d', grad: 'linear-gradient(135deg,#ffb03a,#ff6a1f)', glow: '#b8480e' },
   neon: { name: 'Неон', bg2: '#08061a', bg: '#0e0b24', card: '#120e28', text: '#f1eeff', hint: '#9a92bf', link: '#c49bff', accent: '#b07bff', at: '#ffffff', green: '#45e6a8', red: '#ff5c82', grad: 'linear-gradient(135deg,#ff5fd2,#7c5cff)', glow: '#5b2dd6' },
@@ -368,17 +313,15 @@ var THEMES = {
 };
 var THEME_VARS = { bg2: '--bg2', bg: '--bg', card: '--card', text: '--text', hint: '--hint', link: '--link', accent: '--accent', at: '--accent-t', green: '--green', red: '--red', grad: '--grad', glow: '--glow' };
 function applyTheme(key) {
-  var t = THEMES[key] ? key : 'paper', th = THEMES[t], r = document.documentElement;
+  var t = THEMES[key] ? key : 'radar', th = THEMES[t], r = document.documentElement;
   Object.keys(THEME_VARS).forEach(function (k) { if (th[k]) r.style.setProperty(THEME_VARS[k], th[k]); else r.style.removeProperty(THEME_VARS[k]); });
   r.classList.toggle('th', t !== 'tg');
-  r.classList.toggle('paper', t === 'paper');
-  if (t === 'paper' && !document.getElementById('pfonts')) { var l = document.createElement('link'); l.id = 'pfonts'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Playfair+Display:wght@700;900&display=swap&subset=cyrillic'; document.head.appendChild(l); }
   try {
     if (tg && tg.setHeaderColor) { if (t === 'tg') { tg.setHeaderColor('secondary_bg_color'); tg.setBackgroundColor('secondary_bg_color'); } else { tg.setHeaderColor(th.bg2); tg.setBackgroundColor(th.bg2); if (tg.setBottomBarColor) tg.setBottomBarColor(th.bg2); } }
   } catch (e) { /* старый Telegram — цвета шапки не меняются */ }
   return t;
 }
-var THEME = applyTheme(lsGet('theme') || 'paper');
+var THEME = applyTheme(lsGet('theme') || 'radar');
 function themeSheet() {
   var h = '<h2>🎨 Тема оформления</h2><div class="sub">Запоминается на этом устройстве.</div><div class="thg">' + Object.keys(THEMES).map(function (k) {
     var t = THEMES[k];
@@ -813,8 +756,6 @@ function flowHtml(r) {
     '<div class="ft"><span class="mut">' + (r.fees && r.fees.length ? 'Комиссии: ' + esc(r.fees.join(', ')) : '') + '</span><span class="pos" style="font-weight:700">' + pct(r.roiBp) + '</span></div>';
 }
 function bindRecs(list) {
-  // «Ценник»: штамп прибыли впечатывается (~0,6 с) — короткий толчок, как удар печати.
-  if (THEME === 'paper' && list && list.length) setTimeout(function () { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('rigid'); } catch (e) {} }, 620);
   Array.prototype.forEach.call(document.querySelectorAll('[data-rec]'), function (el) {
     el.onclick = function () { haptic(); var k = el.getAttribute('data-rec'); recSheet(list.filter(function (x) { return x.kind + '|' + x.name === k; })[0]); };
   });

@@ -174,7 +174,15 @@ label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hin
 
 /* ===== Новый визуал: свои темы (по умолчанию «Радар»), свечение, анимации ===== */
 html.th{background:var(--bg2)}
-html.th body{background:radial-gradient(520px 420px at -10% -8%,color-mix(in srgb,var(--glow) 42%,transparent),transparent 70%),radial-gradient(420px 380px at 115% 18%,color-mix(in srgb,var(--glow) 22%,transparent),transparent 70%),var(--bg2);background-repeat:no-repeat;min-height:100vh}
+html.th body{background:var(--bg2);min-height:100vh}
+/* Фон: «Сотворение Адама» с перчаткой CS2. Чёрный фон картинки растворяется в цвете темы (screen), сверху — лёгкое затемнение к краям. */
+#art{display:none}
+html.th body{display:flex;flex-direction:column}
+html.th #art{display:block;order:3;margin-top:auto;flex:none;width:100%;max-width:640px;align-self:center;aspect-ratio:1104/450;pointer-events:none;background:url(/app/bg.webp?v=2) no-repeat 50% 100%/100% auto;mix-blend-mode:screen;opacity:.92;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 40%);mask-image:linear-gradient(180deg,transparent 0,#000 40%)}
+html.th .top{order:1}html.th #view{order:2;width:100%;box-sizing:border-box}
+html.th #view,html.th .top{position:relative;z-index:1}
+html.th .top{position:sticky}
+html.th .card,html.th .row,html.th .rc,html.th .stat,html.th .grp,html.th details.more{background:color-mix(in srgb,var(--card) 74%,transparent);backdrop-filter:blur(12px) saturate(1.1);-webkit-backdrop-filter:blur(12px) saturate(1.1)}
 html.th .top{background:color-mix(in srgb,var(--bg2) 30%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 html.th .card,html.th .row,html.th .rc,html.th .stat{border:1px solid color-mix(in srgb,var(--accent) 9%,transparent)}
 html.th .btn:not(.sec2):not(.danger){background:var(--grad,var(--accent));box-shadow:0 6px 22px -8px color-mix(in srgb,var(--accent) 70%,transparent)}
@@ -250,6 +258,7 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 </style>
 </head>
 <body>
+<div id="art" aria-hidden="true"></div>
 <div class="top"><div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-t)" stroke-width="2.2"><circle cx="12" cy="12" r="8.5" stroke-opacity=".55"></circle><circle cx="12" cy="12" r="4" stroke-opacity=".35"></circle><g class="sweep"><path d="M12 12 L12 3.5" stroke-linecap="round"></path></g><circle cx="12" cy="12" r="1.6" fill="var(--accent-t)" stroke="none"></circle></svg></div><h1 id="title">Ценолов</h1><button id="balbtn" class="balbtn" aria-label="Баланс Steam" style="display:none">💳 …</button><button id="menu" class="menubtn" style="display:none" aria-label="Ещё действия">⋯</button><div class="ticker chips2" id="ticker"></div><div class="ticker t2" id="ticker2"></div></div>
 <div id="splash" style="display:none" aria-hidden="true"><div class="sp"><svg width="120" height="120" viewBox="0 0 120 120"><circle cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-opacity=".25"></circle><circle cx="60" cy="60" r="36" fill="none" stroke="var(--accent)" stroke-opacity=".18"></circle><circle class="ring" cx="60" cy="60" r="56" fill="none" stroke="var(--accent)" stroke-width="2"></circle><g class="sweep" style="transform-origin:60px 60px"><path d="M60 60 L60 4 A56 56 0 0 1 108 32 Z" fill="var(--accent)" fill-opacity=".35"></path></g><circle cx="60" cy="60" r="4" fill="var(--accent)"></circle></svg><div class="nm">Ценолов</div><div class="sb">ищу выгодные цены…</div></div></div>
 <div class="wrap" id="view"></div>

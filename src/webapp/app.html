@@ -1095,6 +1095,8 @@ function trades() {
     var h = skinSeg(state.invTab === 'sales' ? 'sales' : 'mine');
     if (state.invTab === 'sales') {
       if (st && st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
+      // Выставленное на Skinport (со скриншотов) — прямо в «Продажах», а не в меню ⋯.
+      if (state.isAdmin && !lsGet('import_skinport_done')) h += '<div class="row" id="st-sp" style="border:1px solid var(--accent)"><div class="ic">📥</div><div class="m"><div class="n">Выставлено на Skinport: 21 шт.</div><div class="d">Со скриншотов — проверь и запиши в «Ждут оплаты»</div></div><div class="mut">›</div></div>';
       h += '<div id="salesbox"><div class="skel"></div><div class="skel"></div></div>';
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
@@ -1121,11 +1123,10 @@ function trades() {
     }
     view.innerHTML = h;
     if (state.tab === 'trades') setMenu([
-      state.isAdmin && !lsGet('import_skinport_done') ? ['📥 Выставленное на Skinport (21 шт. со скриншотов)', importSkinport] : null,
       st && st.goneCount ? ['📦 Пропало из инвентаря: ' + st.goneCount, goneSheet] : null,
       ['🧮 Калькулятор комиссий', function () { calcSheet(); }],
     ]);
-    if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
+    if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; if ($('#st-sp')) $('#st-sp').onclick = function () { haptic(); importSkinport(); }; }
     bindSkinSeg();
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {

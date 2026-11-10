@@ -330,7 +330,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
 }
 
 /**
- * Записать продажу (или «ждёт оплаты») одного предмета: сначала из записанных покупок по порядку,
+ * Записать продажу (или «выставлено») одного предмета: сначала из записанных покупок по порядку,
  * остальное — новой записью с ценой покупки (0 — выпал). Суммы — за 1 шт., в копейках бота.
  */
 async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; name: string; maxQty: number; qty: unknown; receivedKop: unknown; platform: unknown; buyKop: unknown; pending: boolean; note: string },
@@ -772,7 +772,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
 
     // ---------- Инвентарь и сделки ----------
     if (path === 'inventory' && method === 'GET') {
-      // Что «ждёт оплаты» — уже не в покупках, а во вкладке «Продажи».
+      // Что «выставлено» (ещё не продано) — уже не в покупках, а во вкладке «Продажи».
       const pend = await T.pendingByTrade(d, tid);
       const lots = (await T.openTrades(d, tid)).map((l) => ({ ...l, sold_quantity: l.sold_quantity + (pend.get(l.id) ?? 0) })).filter((l) => l.quantity > l.sold_quantity);
       const lotIds = [...new Set(lots.map((l) => l.item_id))].slice(0, 360);

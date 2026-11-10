@@ -144,7 +144,7 @@ export async function addPending(db: D1Database, tid: number, s: Omit<NewSale, '
   const t = await getTrade(db, tid, s.tradeId);
   if (!t) throw new Error('Лот не найден');
   const left = t.quantity - t.sold_quantity - ((await pendingByTrade(db, tid)).get(t.id) ?? 0);
-  if (!Number.isInteger(s.quantity) || s.quantity < 1 || s.quantity > left) throw new Error(left ? `Можно отметить от 1 до ${left} шт.` : 'Всё уже отмечено как проданное или ждёт оплаты');
+  if (!Number.isInteger(s.quantity) || s.quantity < 1 || s.quantity > left) throw new Error(left ? `Можно отметить от 1 до ${left} шт.` : 'Всё уже отмечено как проданное или выставленное');
   // Вставка с той же проверкой в SQL — два одновременных нажатия не отметят больше, чем есть.
   const r = await db.prepare(`INSERT INTO pending_sales (telegram_id, trade_id, quantity, sell_price_kop, received_kop, platform, created_at)
     SELECT ?, ?, ?, ?, ?, ?, ? FROM trades WHERE id = ? AND telegram_id = ?

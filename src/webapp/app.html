@@ -1095,8 +1095,6 @@ function trades() {
     var h = skinSeg(state.invTab === 'sales' ? 'sales' : 'mine');
     if (state.invTab === 'sales') {
       if (st && st.goneCount) h += '<div class="row" id="st-gone" style="border:1px solid var(--accent)"><div class="ic">📦</div><div class="m"><div class="n">Пропало из инвентаря: ' + st.goneCount + '</div><div class="d">Продал? Запиши — бот посчитает прибыль</div></div><div class="mut">›</div></div>';
-      // Выставленное на Skinport (со скриншотов) — прямо в «Продажах», а не в меню ⋯.
-      if (state.isAdmin && !lsGet('import_skinport_done')) h += '<div class="row" id="st-sp" style="border:1px solid var(--accent)"><div class="ic">📥</div><div class="m"><div class="n">Выставлено на Skinport: 21 шт.</div><div class="d">Со скриншотов — проверь и запиши в «Ждут оплаты»</div></div><div class="mut">›</div></div>';
       h += '<div id="salesbox"><div class="skel"></div><div class="skel"></div></div>';
     } else {
       h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Записывай, за сколько купил — бот посчитает прибыль и подскажет, когда продавать.</div>';
@@ -1126,7 +1124,7 @@ function trades() {
       st && st.goneCount ? ['📦 Пропало из инвентаря: ' + st.goneCount, goneSheet] : null,
       ['🧮 Калькулятор комиссий', function () { calcSheet(); }],
     ]);
-    if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; if ($('#st-sp')) $('#st-sp').onclick = function () { haptic(); importSkinport(); }; }
+    if (state.invTab === 'sales') { salesTab(); if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); goneSheet(); }; }
     bindSkinSeg();
     if ($('#add')) $('#add').onclick = function () { buyForm({}); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (el) {
@@ -1452,7 +1450,7 @@ function goneSheet() {
     var h = '<h2>📦 Пропало из инвентаря</h2><div class="sub">Бот сравнил инвентарь с прошлым обновлением. Отметь, что продал, — остальное «не продавал».</div>';
     h += '<div class="grid2"><label class="f" style="margin:0"><span>Где продал</span><select id="gsite">' + r.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
       '<label class="f" style="margin:0"><span>Валюта на сайте</span>' + curSelect('gcur', site) + '</label></div>';
-    h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="gpend" style="width:auto"' + (lsGet('gone_pend') === '1' ? ' checked' : '') + '><span style="margin:0">⏳ Деньги ещё не пришли — записать как «ждут оплаты»</span></label>';
+    h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="gpend" style="width:auto"' + (lsGet('gone_pend') === '1' ? ' checked' : '') + '><span style="margin:0">🏷 Только выставлено (ещё не продано)</span></label>';
     h += '<div class="note">«Получил за 1 шт.» — сколько пришло на баланс сайта (или кошелька Steam) после комиссии. Бот подставил текущую цену на выбранном сайте — поправь на свою.</div>';
     h += r.items.map(function (x) {
       var needBuy = x.lotQty < x.qty;
@@ -1502,7 +1500,7 @@ function goneSheet() {
       $('#gsave').disabled = true;
       api('inventory/gone/save', { method: 'POST', body: { rows: rows } }).then(function (res) {
         haptic('ok');
-        var h2 = '<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (res.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>' + ($('#gpend') && $('#gpend').checked ? '⏳ Ждут оплаты: ' : 'Записано продаж: ') + res.sold + '</h2>' +
+        var h2 = '<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (res.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>' + ($('#gpend') && $('#gpend').checked ? '🏷 Выставлено: ' : 'Записано продаж: ') + res.sold + '</h2>' +
           (res.sold ? '<div class="big-num ' + cls(res.resultKop) + '">' + uah(res.resultKop, true) + '</div><div class="sub">' + ($('#gpend') && $('#gpend').checked ? 'ожидаемый результат — в прибыль попадёт, когда отметишь «деньги пришли»' : 'результат по этим продажам') + '</div>' : '') +
           (res.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + res.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>';
         sheet(h2);
@@ -1544,7 +1542,7 @@ function sellForm(l) {
   h += '<label class="f"><span>Валюта сумм (как на сайте или в кошельке Steam)</span>' + curSelect('scur', 'steam') + '</label>';
   h += '<label class="f"><span>Получено всего после комиссий</span><input id="srcv" inputmode="decimal" placeholder="для Steam можно оставить пустым — посчитаю"></label>';
   h += '<label class="f"><span>Дата</span><input id="sd" type="date" value="' + today() + '" max="' + today() + '"></label>';
-  h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend" style="width:auto"><span style="margin:0">⏳ Деньги ещё не пришли (выставил на сайте / жду оплату)</span></label>';
+  h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend" style="width:auto"><span style="margin:0">🏷 Только выставлено (ещё не продано)</span></label>';
   h += '<div class="note" id="shint"></div><button class="btn" id="ssave">Записать продажу</button>';
   sheet(h);
   var hint = function () {
@@ -1560,7 +1558,7 @@ function sellForm(l) {
     api('inventory/' + l.id + '/sell', { method: 'POST', body: { qty: +$('#sq').value, priceKop: p, receivedKop: rcv == null ? null : rcv, platform: $('#spl').value, date: $('#sd').value, pending: $('#spend').checked } })
       .then(function (r) {
         haptic('ok');
-        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (r.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>' + (r.pending ? '⏳ Ждёт оплаты' : 'Продажа записана') + '</h2><div class="sub">' + (r.wallet === 'steam_wallet' ? 'Steam Wallet — вывести нельзя' : 'Реальные деньги (External Cash)') + '</div>' +
+        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (r.resultKop >= 0 ? '🎉' : '📉') + '</div><h2>' + (r.pending ? '🏷 Выставлено' : 'Продажа записана') + '</h2><div class="sub">' + (r.wallet === 'steam_wallet' ? 'Steam Wallet — вывести нельзя' : 'Реальные деньги (External Cash)') + '</div>' +
           '<div class="big-num ' + cls(r.resultKop) + '">' + uah(r.resultKop, true) + '</div><div class="card" style="text-align:left;margin-top:12px">' + kv('Получено', uah(r.receivedKop)) + kv('Себестоимость', uah(r.costKop)) + '</div><button class="btn" id="okb">Готово</button></div>');
         $('#okb').onclick = function () { state.invTab = 'sales'; go('trades'); };
       }).catch(function (e) { toast(e.message); });
@@ -1569,16 +1567,24 @@ function sellForm(l) {
 // Вкладка «Продажи»: ждут оплаты (выставлено, денег ещё нет) и проданное; итог — только по пришедшим деньгам.
 function saleRow(x, attr) {
   return '<div class="row" ' + attr + '>' + pic(x.img, ICON[guessCat(x.name)] || '🎒') + '<div class="m"><div class="n">' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</div><div class="d">' +
-    (x.date ? esc(x.date) + ' · ' : '') + esc(x.platform || '') + ' · ' + (x.since ? 'жду ' : 'получено ') + uahShort(x.receivedKop) + (x.costKop ? ', куплено за ' + uahShort(x.costKop) : ', выпал') + '</div></div>' +
+    (x.date ? esc(x.date) + ' · ' : '') + esc(x.platform || '') + ' · ' + (x.since ? 'выставлено, получу ' : 'получено ') + uahShort(x.receivedKop) + (x.costKop ? ', куплено за ' + uahShort(x.costKop) : ', выпал') + '</div></div>' +
     '<div class="r big ' + cls(x.resultKop) + '">' + (x.since ? '≈ ' : '') + uah(x.resultKop, true) + '</div></div>';
 }
+function spSaved() { try { return JSON.parse(lsGet('sp_saved') || '[]'); } catch (e) { return []; } }
 function salesTab() {
+  // Владельцу: выставленное на Skinport со скриншотов — подгружаем один раз, показываем в «Выставлено».
+  if (state.isAdmin && !state.spMeta && !lsGet('import_skinport_done')) api('import/skinport').then(function (m) { state.spMeta = m; state.spList = m.items; if (state.invTab === 'sales' && $('#salesbox')) salesTab(); }).catch(function () { state.spMeta = { items: [] }; });
   api('trades').then(function (r) {
     var s = r.stats, h = '';
-    if (r.pending.length) {
+    // Выставлено (на Skinport, в Steam и т. п., ещё не продано) и записанное со скриншотов — одним списком.
+    var sp = (state.spList || []).filter(function (x) { return spSaved().indexOf(x.text) < 0; });
+    if (r.pending.length || sp.length) {
       var exp = r.pending.reduce(function (a, x) { return a + x.receivedKop; }, 0);
-      h += '<div class="sec">⏳ Ждут оплаты · ' + r.pending.length + '</div><div class="mut" style="font-size:13px;margin:0 2px 8px">Выставлено или отправлено на сайт, деньги ещё не пришли — ожидается ≈ ' + uahShort(exp) + '. Нажми, когда придут.</div>';
+      h += '<div class="sec">🏷 Выставлено · ' + (r.pending.length + sp.length) + '</div><div class="mut" style="font-size:13px;margin:0 2px 8px">Ещё не продано — в прибыль не входит' + (r.pending.length ? ', ожидается ≈ ' + uahShort(exp) : '') + '. Продалось — нажми на предмет.</div>';
       h += r.pending.map(function (x) { return saleRow(x, 'data-pend="' + x.id + '"'); }).join('');
+      h += sp.map(function (x, i) {
+        return '<div class="row" data-sp="' + i + '"><div class="ic">🏷</div><div class="m"><div class="n">' + esc(x.name || x.text) + '</div><div class="d">Skinport · выставлено за ' + esc(String(x.priceMinor / 100).replace('.', ',')) + ' ' + esc(x.currency) + ' · со скриншота, проверь</div></div><div class="mut">›</div></div>';
+      }).join('');
     }
     h += '<div class="sec">✅ Продано</div>';
     h += '<div class="grid2">' + stat('В кошелёк Steam', '<span class="' + cls(s.realizedSteamKop) + '">' + uah(s.realizedSteamKop, true) + '</span>', 'получено ' + uahShort(s.receivedSteamKop)) +
@@ -1587,10 +1593,13 @@ function salesTab() {
       kv('Средняя доходность', pct(s.avgRoiBp)) + kv('Среднее удержание', s.avgHoldDays == null ? '—' : s.avgHoldDays.toFixed(1).replace('.', ',') + ' дн') + '</div>';
     h += r.sales.length ? r.sales.map(function (x) { return saleRow(x, 'data-sale="' + x.id + '"'); }).join('') :
       '<div class="empty"><div class="e">💸</div>Проданного пока нет.<br><span class="mut" style="font-size:13px">Отметь продажу кнопкой «💸 Я продал» у предмета или через меню ⋯ вверху (пропавшие из инвентаря предметы).</span></div>';
-    h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести. «Ждут оплаты» в прибыль не входят.</div>';
+    h += '<div class="note">Кошелёк Steam и реальные деньги не складываются: деньги Steam нельзя вывести. «Выставлено» в прибыль не входит, пока не продано.</div>';
     if (!$('#salesbox')) return;
     $('#salesbox').innerHTML = h;
     Array.prototype.forEach.call(document.querySelectorAll('[data-pend]'), function (el) { el.onclick = function () { haptic(); pendingSheet(r.pending.filter(function (x) { return x.id === +el.getAttribute('data-pend'); })[0]); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sp]'), function (el) {
+      el.onclick = function () { haptic(); var x = sp[+el.getAttribute('data-sp')]; lsSet('cur_scan', 'PLN'); lsSet('scan_site', 'skinport'); scanSheet([x], state.spMeta, function () { var l = spSaved(); l.push(x.text); lsSet('sp_saved', JSON.stringify(l)); }); };
+    });
     Array.prototype.forEach.call(document.querySelectorAll('[data-sale]'), function (el) { el.onclick = function () { haptic(); soldSheet(r.sales.filter(function (x) { return x.id === +el.getAttribute('data-sale'); })[0]); }; });
   }).catch(function (e) { if ($('#salesbox')) $('#salesbox').innerHTML = '<div class="empty">⚠️ ' + esc(errText(e)) + '</div>'; });
 }
@@ -1609,7 +1618,7 @@ function scanSheet(items, m, onDone) {
   var h = '<h2>📥 Выставлено на сайте: ' + items.length + '</h2><div class="sub">Переписано со скриншотов. Сопоставлено с твоим инвентарём — ' + items.filter(function (x) { return x.name; }).length + ' из ' + items.length + '. Где не нашлось — выбери предмет из списка или сними галочку.</div>';
   h += '<div class="grid2"><label class="f" style="margin:0"><span>Сайт</span><select id="ssite">' + m.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
     '<label class="f" style="margin:0"><span>Валюта цен</span>' + curSelect('scur2', 'scan') + '</label></div>';
-  h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend2" style="width:auto"' + (lsGet('scan_pend') === '0' ? '' : ' checked') + '><span style="margin:0">⏳ Деньги ещё не пришли (выставлено / ждёт оплаты)</span></label>';
+  h += '<label class="f" style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="spend2" style="width:auto"' + (lsGet('scan_pend') === '0' ? '' : ' checked') + '><span style="margin:0">🏷 Только выставлено (ещё не продано)</span></label>';
   h += '<div class="note">«Получу за 1 шт.» = цена на сайте минус комиссия сайта при продаже. Поправь, если у тебя другая.</div>';
   h += items.map(function (x, i) {
     return '<div class="card" data-s="' + i + '"><label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" class="s-on" style="width:auto"' + (x.name ? ' checked' : '') + '> ' + esc(x.text) + (x.float ? ' <span class="mut" style="font-weight:400">· ' + esc(x.float) + '</span>' : '') + '</label>' +
@@ -1658,7 +1667,7 @@ function scanSheet(items, m, onDone) {
       if (k >= rows.length) {
         haptic('ok');
         if (tot.sold && onDone) onDone();
-        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (pend ? '⏳' : '🎉') + '</div><h2>' + (pend ? 'Ждут оплаты: ' : 'Записано продаж: ') + tot.sold + '</h2>' +
+        sheet('<div style="text-align:center;padding:10px 0"><div style="font-size:44px">' + (pend ? '🏷' : '🎉') + '</div><h2>' + (pend ? 'Выставлено: ' : 'Записано продаж: ') + tot.sold + '</h2>' +
           (tot.sold ? '<div class="big-num ' + cls(tot.resultKop) + '">' + uah(tot.resultKop, true) + '</div><div class="sub">' + (pend ? 'ожидаемый результат' : 'результат') + '</div>' : '') +
           (tot.errors.length ? '<div class="card" style="text-align:left;color:var(--amber);font-size:14px">' + tot.errors.map(esc).join('<br>') + '</div>' : '') + '<button class="btn" id="okb">Готово</button></div>');
         $('#okb').onclick = function () { closeSheet(); state.invTab = 'sales'; go('trades'); };
@@ -1675,10 +1684,10 @@ function scanSheet(items, m, onDone) {
   };
 }
 function pendingSheet(x) {
-  var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</h2><div class="sub">⏳ Ждёт оплаты · ' + esc(x.platform) + ' · отмечено ' + ago(x.since) + '</div>';
+  var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</h2><div class="sub">🏷 Выставлено · ' + esc(x.platform) + ' · ' + ago(x.since) + '</div>';
   h += '<div class="card">' + kv('Ожидается получить', uah(x.receivedKop)) + kv('Себестоимость', x.costKop ? uah(x.costKop) : 'выпал (0)') + kv('Ожидаемый результат', '<span class="' + cls(x.resultKop) + '">' + uah(x.resultKop, true) + '</span>') + '</div>';
   h += '<div class="grid2"><label class="f" style="margin:0"><span>Пришло всего (если отличается)</span><input id="pcv" inputmode="decimal" placeholder="' + esc(unitsIn(x.receivedKop, CUR.code)) + '"></label><label class="f" style="margin:0"><span>Валюта</span>' + curSelect('pcur', 'last_site_cur') + '</label></div>';
-  h += '<button class="btn" id="pok">✅ Деньги пришли</button><button class="btn sec2" id="pno">↩️ Не продалось — вернуть в покупки</button>';
+  h += '<button class="btn" id="pok">✅ Продано</button><button class="btn sec2" id="pno">↩️ Снял с продажи — вернуть в покупки</button>';
   sheet(h);
   $('#pok').onclick = function () {
     var v = $('#pcv').value.trim(), k = v ? toKopIn(v, $('#pcur').value) : null;

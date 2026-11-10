@@ -308,3 +308,22 @@ test('#33: страница с вкладкой CS2 — «открыт», даж
   const c = JSON.parse((d.db.prepare(`SELECT value FROM user_settings WHERE key = 'inv_check'`).get() as { value: string }).value);
   assert.deepEqual([c.src, c.status, c.diag], ['сервер бота', 'blocked', 'JSON: HTTP 403 · страница: открыт']);
 });
+
+test('#33: висит «закрыт» — открыл «Мои скины», бот сам перепроверил и вернул инвентарь (не чаще раза в 10 мин)', async () => {
+  const d = migratedDb();
+  const env = testEnv(d);
+  d.db.prepare(`INSERT INTO users (telegram_id, created_at, steam_id, steam_verified, inv_status, inv_synced_at, inv_requested_at) VALUES (?, ?, ?, 1, 'private', ?, ?)`).run(U, NOW, SID, NOW - 60, NOW - 60);
+  const g = globalThis as any; const orig = g.fetch;
+  g.fetch = async (u: string) => (String(u).startsWith('https://steamcommunity.com/inventory/') ? json(inv([['1', '0', 1]], [['1', '0', 'Kilowatt Case', 1]])) : json({ ok: true }));
+  const auto = async (now: number) => {
+    const init = await signInitData({ auth_date: String(now), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+    const r = await handleAppApi(new Request('https://w.dev/app/api/steam/refresh', { method: 'POST', headers: { 'X-Init-Data': init, 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: true }) }), env, now);
+    return await r.json() as Record<string, any>;
+  };
+  try {
+    const r = await auto(NOW);
+    assert.equal(r.updated, true, 'обычные 15 минут не мешают сам-перепроверке');
+    assert.equal((await api(env, 'steam')).body.status, 'ok');
+    assert.equal((await auto(NOW + 60)).updated, false, 'статус в порядке — повторно не дёргаем Steam');
+  } finally { g.fetch = orig; }
+});

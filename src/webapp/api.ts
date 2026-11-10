@@ -575,9 +575,17 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       return json({ ok: true });
     }
     if (path === 'steam/refresh' && method === 'POST') {
-      const u = await d.prepare('SELECT inv_requested_at, inv_synced_at FROM users WHERE telegram_id = ?').bind(tid).first<{ inv_requested_at: number | null; inv_synced_at: number | null }>();
-      const last = Math.max(u?.inv_requested_at ?? 0, u?.inv_synced_at ?? 0);
-      if (now - last < 15 * 60) return bad(`Обновлять можно раз в 15 минут — попробуй через ${Math.ceil((15 * 60 - (now - last)) / 60)} мин.`);
+      const u = await d.prepare('SELECT inv_requested_at, inv_synced_at, inv_status FROM users WHERE telegram_id = ?').bind(tid).first<{ inv_requested_at: number | null; inv_synced_at: number | null; inv_status: string | null }>();
+      if (body.auto === true) {
+        // Сама перепроверка при открытии «Моих скинов», если висит отказ Steam (закрыт / не отдаёт): не чаще раза в 10 минут.
+        if (!['private', 'blocked', 'not_found', 'rate_limited'].includes(u?.inv_status ?? '')) return json({ ok: true, updated: false });
+        const chk = await d.prepare(`SELECT value FROM user_settings WHERE telegram_id = ? AND key = 'inv_check'`).bind(tid).first<{ value: string }>();
+        let at = 0; try { at = Number(JSON.parse(chk?.value ?? '{}').at) || 0; } catch { at = 0; }
+        if (now - at < 10 * 60) return json({ ok: true, updated: false });
+      } else {
+        const last = Math.max(u?.inv_requested_at ?? 0, u?.inv_synced_at ?? 0);
+        if (now - last < 15 * 60) return bad(`Обновлять можно раз в 15 минут — попробуй через ${Math.ceil((15 * 60 - (now - last)) / 60)} мин.`);
+      }
       await d.prepare('UPDATE users SET inv_requested_at = ? WHERE telegram_id = ?').bind(now, tid).run();
       // Сначала — сами, из Worker (сборщику на GitHub Steam часто отвечает 429). Не вышло — очередь сборщика.
       const su = await d.prepare('SELECT steam_id, steam_vanity FROM users WHERE telegram_id = ?').bind(tid).first<{ steam_id: string | null; steam_vanity: string | null }>();

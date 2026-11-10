@@ -1076,6 +1076,11 @@ function inventory() {
     view.innerHTML = skinSeg('steam') + steamBlock(st);
     bindSkinSeg();
     bindSteamBlock(st);
+    // Висит отказ Steam («закрыт», «не отдаёт») — бот сам перепроверяет при открытии вкладки (сервер — не чаще раза в 10 мин).
+    if (st && st.linked && /^(private|blocked|not_found|rate_limited)$/.test(st.status || '') && !state.invAuto) {
+      state.invAuto = true;
+      api('steam/refresh', { method: 'POST', body: { auto: true } }).then(function (r) { if (state.tab === 'inv' && (r.updated || r.msg)) { if (r.updated) toast(r.msg || 'Инвентарь обновлён'); inventory(); } }).catch(function () {});
+    }
   }).catch(fail);
 }
 // ---------- Сделки: покупки и продажи ----------

@@ -8,8 +8,6 @@ import { handleChart } from './chart.ts';
 import { handleIngest } from './ingest.ts';
 import { handleAppApi } from './webapp/api.ts';
 import APP_HTML from './webapp/app.html';
-import { BG_WEBP_B64 } from './webapp/bg.ts';
-let bgBytes: ArrayBuffer | null = null;
 import { handleCard } from './card.ts';
 import { handleImgProxy } from './imgproxy.ts';
 import { FINGERPRINT, OFFICIAL_HOST, recordCopy, rememberSelfHost } from './core/origin.ts';
@@ -34,10 +32,6 @@ export default {
     if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest') return handleIngest(req, env, nowSec());
     if (url.pathname === '/app' && req.method === 'GET') {
       return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
-    }
-    if (url.pathname === '/app/bg.webp' && req.method === 'GET') {
-      bgBytes ??= Uint8Array.from(atob(BG_WEBP_B64), (c) => c.charCodeAt(0)).buffer as ArrayBuffer;
-      return new Response(bgBytes, { headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=31536000, immutable' } });
     }
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
     if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());

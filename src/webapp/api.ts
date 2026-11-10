@@ -451,7 +451,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         sources: sources.map((s) => ({ source: s.source, status: s.status, lastOk: s.last_ok_at, error: s.status !== 'ok' ? s.last_error ?? s.disabled_reason : null })),
         deals: deals.map(dealDto),
         inventory: { lots: lots.length, costKop: cost, valueKop: value, unknown },
-        ...balanceDto(bal, st),
+        ...balanceDto(bal, st), steamLinked: !!(su?.steam_id || su?.steam_vanity),
         today: {
           steamKop: todays.filter((s) => s.wallet === 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
           cashKop: todays.filter((s) => s.wallet !== 'steam_wallet').reduce((x, s) => x + s.received_kop - s.costKop, 0),
@@ -544,7 +544,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         };
       }).sort((a, b) => (b.priceKop ?? 0) * b.qty - (a.priceKop ?? 0) * a.qty);
       return json({
-        ok: true, linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
+        ok: true, linked, steamLinked: linked, steamId: u?.steam_id ?? null, vanity: u?.steam_vanity ?? null, verified: !!u?.steam_verified,
         status: u?.inv_status ?? null, syncedAt: u?.inv_synced_at ?? null, requestedAt: u?.inv_requested_at ?? null,
         // Steam отказал (не отдаёт / «закрыт» ещё не подтверждён) — не «загружаю», а честный текст статуса.
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at) && !['blocked', 'private', 'not_found'].includes(u.inv_status ?? '')),

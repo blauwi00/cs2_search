@@ -40,7 +40,7 @@ test('бот: без согласия — только условия; «При�
   assert.match(last(), /Условия использования/);
   await cb('terms:ok');
   assert.equal((await db.getSettings(D, U)).terms_ok, TERMS_VERSION);
-  assert.match(last(), /Всё — в приложении/);
+  assert.match(last(), /Ценолов<\/b> — показывает, где скин CS2 дешевле/);
   await db.setSetting(D, U, 'min_profit_kop', '5000', NOW);
   await msg('/deletemydata');
   await cb('delme:yes');
@@ -208,4 +208,21 @@ test('кнопка «📣 Канал»: в /start и в сводке прило�
   const init = await signInitData({ auth_date: String(NOW), query_id: 'A', user: JSON.stringify({ id: 601 }) }, 'TEST_TOKEN');
   const sum = await (await handleAppApi(new Request('https://w/app/api/summary', { headers: { 'X-Init-Data': init } }), env, NOW)).json() as Record<string, any>;
   assert.equal(sum.channelUrl, 'https://t.me/cenolov_cs2');
+});
+
+test('приветствие: живой пример — лучшая идея прямо сейчас (нет свежего скана — без строки)', async () => {
+  const { migratedDb } = await import('./helpers.ts');
+  const { bestIdeaLine } = await import('../src/telegram/webhook.ts');
+  const db = await import('../src/storage/db.ts');
+  const d = migratedDb(); const D = d as unknown as D1Database;
+  const NOW = Date.parse('2026-11-10T12:00:00Z') / 1000;
+  const h = { d: D, uid: 77, now: NOW } as never;
+  assert.equal(await bestIdeaLine(h), '');
+  await db.storeFx(D, [{ base: 'USD', rateMicro: 41_400_000, rateDate: '2026-11-10', source: 'nbu' }, { base: 'EUR', rateMicro: 48_200_000, rateDate: '2026-11-10', source: 'nbu' }], NOW);
+  const e = { name: 'AK-47 | Slate (Field-Tested)', at: NOW - 600, offers: [{ m: 'csgomarket', cur: 'USD', minor: 409, qty: 40, since: NOW - 7200 }],
+    s7: { median: 450, volume: 180 }, s30: { median: 440, volume: 700 }, steam: null };
+  d.db.prepare('INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?)').run(JSON.stringify([e]), NOW - 600);
+  const line = await bestIdeaLine(h);
+  assert.match(line, /Лучшая идея сейчас:<\/b> AK-47 \| Slate/);
+  assert.match(line, /купи на Market\.CSGO за .* → продай на Skinport → получишь/);
 });

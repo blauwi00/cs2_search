@@ -121,7 +121,7 @@ test('20: бот отвечает всем в личном чате; групп�
   await handleWebhook(mk(ADMIN, ADMIN), env, NOW, fetcher);
   const msgs = sent.filter((x) => x.method === 'sendMessage');
   assert.equal(msgs.length, 1);
-  assert.ok(String(msgs[0].body.text).includes('CS2 Market'));
+  assert.ok(String(msgs[0].body.text).includes('Ценолов'));
   const kb = (msgs[0].body.reply_markup as { inline_keyboard: { web_app?: { url: string } }[][] }).inline_keyboard;
   assert.equal(kb[0][0].web_app?.url, 'https://x/app', '/start сразу даёт кнопку приложения');
   assert.equal(msgs[0].body.chat_id, ADMIN);

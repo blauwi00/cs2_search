@@ -421,6 +421,7 @@ function api(path, opt) {
       if (j.rallyOk !== undefined) state.rallyOk = !!j.rallyOk;
       if (j.channelUrl !== undefined) state.channelUrl = j.channelUrl || '';
       if (j.botUser) state.botUser = j.botUser;
+      if (j.steamLinked !== undefined) state.steamLinked = !!j.steamLinked;
       if (j.steamBalance !== undefined) { state.bal = j.steamBalance; state.byBalance = !!j.byBalance; renderBal(); }
       // Записали продажу или покупку — баланс Steam мог измениться: обновим шапку.
       if (opt.method === 'POST' && /^(inventory|sales)/.test(path)) refreshBal();
@@ -576,6 +577,8 @@ function balText(b) {
 }
 function renderBal() {
   var el = $('#balbtn'); if (!el || !INIT) return;
+  // Новичку без Steam и без баланса кнопка «Steam: вписать» непонятна — показываем, когда она нужна (вписать можно в «Ещё»).
+  if (!state.bal && !state.steamLinked) { el.style.display = 'none'; return; }
   el.style.display = '';
   var key = state.bal ? state.bal.kop : null, changed = el._k !== undefined && el._k !== key; el._k = key;
   el.innerHTML = balText(state.bal);
@@ -617,12 +620,14 @@ function setupCard(su) {
     return '<div class="kv" style="align-items:center;gap:10px"><span>' + (ok ? '✅' : icon) + ' <b>' + title + '</b>' + (note ? '<div class="mut" style="font-size:12px;font-weight:400">' + note + '</div>' : '') + '</span>' + (btn || '') + '</div>';
   };
   var b = function (id, t) { return '<button class="btn sec2" id="' + id + '" style="width:auto;margin:0;padding:7px 12px;font-size:13px">' + t + '</button>'; };
-  var h = '<div class="card" style="padding:10px 14px"><div style="font-weight:700;margin:4px 0 6px">⚙️ Настрой бота — 1 минута</div>';
+  var done = [su.currencyOk, su.notify, su.watched > 0, steamOk].filter(Boolean).length;
+  // Свёрнуто: одна строка «Настроить бота (N из 4)», по нажатию — пункты (идеи на главной остаются наверху).
+  var h = '<details class="card su" style="padding:10px 14px"><summary style="font-weight:700;margin:4px 0;cursor:pointer;list-style:none;display:flex;justify-content:space-between"><span>⚙️ Настроить бота (' + done + ' из 4)</span><span class="mut">›</span></summary>';
   h += row(su.currencyOk, '💱', 'Валюта: ' + esc(CUR.code + ' ' + CUR.sign), su.currencyOk ? '' : 'Поставлена по языку Telegram. Верно?', su.currencyOk ? '' : b('su-cok', 'Да') + ' ' + b('su-cch', 'Сменить'));
   h += row(su.notify, '🔔', 'Уведомления', su.notify ? 'Не блокируй бота — иначе Telegram не даст ему писать' : 'Выключены (возможно, бот был заблокирован)', su.notify ? '' : b('su-non', 'Включить'));
   h += row(su.watched > 0, '📋', 'Предметы в списке', su.watched > 0 ? '' : 'Добавь до 20 предметов — по ним придут уведомления', su.watched > 0 ? '' : b('su-add', 'Добавить'));
   h += row(steamOk, '🎮', 'Steam (по желанию)', su.steam === 'private' ? 'Инвентарь закрыт — открой его в настройках приватности Steam' : steamOk ? '' : 'Только чтобы бот сам увидел инвентарь. Пароль не нужен', steamOk ? '' : b('su-st', su.steam === 'private' ? 'Как?' : 'Подключить'));
-  h += '<div style="display:flex;justify-content:space-between;margin:8px 0 4px;font-size:13px"><a id="su-priv">🛡 Что знает бот</a><a id="su-hide" class="mut">Скрыть</a></div></div>';
+  h += '<div style="display:flex;justify-content:space-between;margin:8px 0 4px;font-size:13px"><a id="su-priv">🛡 Что знает бот</a><a id="su-hide" class="mut">Скрыть</a></div></details>';
   return h;
 }
 function bindSetup() {
@@ -666,7 +671,6 @@ function home() {
   api('summary').then(function (s) {
     renderTicker(s);
     var h = heroCard(s);
-    h += setupCard(s.setup);
     state.sites = s.sites || [];
     // Цены давно не обновлялись — спокойная плашка под сводкой, а не тревога над главной цифрой.
     if ((state.health || {}).cls === 'bad') h += '<div class="plq">⚠️ Цены давно не обновлялись — владелец бота уже получил уведомление.</div>';
@@ -678,6 +682,7 @@ function home() {
         return '<div class="row" data-hr="' + i + '">' + pic(r.img, '💸') + '<div class="m"><div class="n">' + esc(r.name) + '</div><div class="d">' + esc(r.buyName) + ' ' + uahShort(r.payKop) + ' → ' + esc(r.sellName) + '</div></div><div class="r"><div class="big pos">+' + uahShort(r.profitKop) + '</div></div></div>';
       }).join('');
     }
+    h += setupCard(s.setup);
     h += '<div class="note">Бот не связан с площадками и ничего не покупает сам. Сделки — на свой риск: <a id="h-terms">условия</a>. Площадки и их рейтинг — в «Ещё».</div>';
     view.innerHTML = h;
     bindSetup();
@@ -1710,14 +1715,10 @@ function termsGate(t, first) {
     api('terms', { method: 'POST' }).then(function () { haptic('ok'); if (!t.onboarded) return onboarding(first); document.querySelector('.tabs') && (document.querySelector('.tabs').style.display = ''); go(first); if (first !== 'home') refreshTicker(); }).catch(function (e) { toast(e.message); });
   };
 }
-// ---------- Знакомство: 3 экрана при первом открытии (#1) ----------
+// ---------- Знакомство: один экран при первом открытии — польза сразу, Steam потом (сам предложит в «Моих скинах») ----------
 var OB = [
-  { art: '🔍', t: 'Где скин дешевле — за секунду', p: 'Бот сравнивает цены на 12 площадках и в Steam и сразу считает все комиссии.',
-    pts: [['💰', 'Цена предмета на каждом сайте — в твоей валюте'], ['📉', 'Подсказка: сейчас дёшево, обычная цена или дорого'], ['⭐', 'Рейтинг площадок, чтобы не нарваться на скам']] },
-  { art: '🔥', t: 'Рекомендации и уведомления', p: 'Бот каждые 10 минут ищет «купи тут → продай там» с прибылью после всех комиссий.',
-    pts: [['🔔', 'Пришлёт выгодную сделку или нужную цену в чат'], ['👁', 'Следит за предметами из твоего списка'], ['🤖', 'Ничего не покупает сам — решаешь ты']] },
-  { art: '🎒', t: 'Сколько стоит твой инвентарь', p: 'Подключи Steam — бот покажет цену каждого предмета, float и наклейки, а по воскресеньям пришлёт, как изменилась стоимость.',
-    pts: [['🔐', 'Вход на официальной странице Steam'], ['🙅', 'Пароль и Steam Guard бот не видит и не просит'], ['👀', 'Инвентарь в Steam должен быть открытым']] },
+  { art: '🔍', t: 'Где скин дешевле — и где продать дороже', p: 'Ценолов сравнивает цены на 12 площадках и в Steam и сразу считает все комиссии.',
+    pts: [['💰', 'Цена скина на каждом сайте — в твоей валюте'], ['🔥', 'Идеи «купи тут → продай там» с прибылью после комиссий'], ['🔔', 'Напишет в чат, когда цена дойдёт до нужной'], ['🛡', 'Не спрашивает пароль Steam и ничего не покупает сам']] },
 ];
 function onboarding(first) {
   var i = 0, tabs = document.querySelector('.tabs');
@@ -1732,13 +1733,13 @@ function onboarding(first) {
     $('#title').textContent = 'Ценолов';
     view.innerHTML = '<div class="ob"><div class="art">' + o.art + '</div><h2>' + o.t + '</h2><p>' + o.p + '</p><div class="pts">' +
       o.pts.map(function (x) { return '<div><span>' + x[0] + '</span><span>' + esc(x[1]) + '</span></div>'; }).join('') + '</div>' +
-      '<div class="dots">' + OB.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('') + '</div>' +
-      (last ? '<button class="btn" id="ob-steam">🎮 Подключить Steam</button><div class="skip" id="ob-skip">Позже — сначала посмотрю</div>'
+      (OB.length > 1 ? '<div class="dots">' + OB.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('') + '</div>' : '') +
+      (last ? '<button class="btn" id="ob-go">🔥 Смотреть идеи</button>'
         : '<button class="btn" id="ob-next">Дальше</button><div class="skip" id="ob-skip">Пропустить</div>') + '</div>';
     haptic();
     if ($('#ob-next')) $('#ob-next').onclick = function () { i++; show(); };
-    if ($('#ob-steam')) $('#ob-steam').onclick = function () { done('inv'); };
-    $('#ob-skip').onclick = function () { done(first); };
+    if ($('#ob-go')) $('#ob-go').onclick = function () { done(first); };
+    if ($('#ob-skip')) $('#ob-skip').onclick = function () { done(first); };
   };
   // Свайп влево/вправо — как в обычных приложениях.
   var x0 = null;
@@ -2169,6 +2170,7 @@ function more() {
   var row = function (id, ic, n, d) { return '<div class="row" id="' + id + '"><div class="ic">' + ic + '</div><div class="m"><div class="n">' + n + '</div><div class="d">' + d + '</div></div><div class="mut">›</div></div>'; };
   view.innerHTML = '<div class="grp">' + row('m-invite', '🎁', 'Пригласить друга', 'Отправь ссылку на бота — откроется у друга в Telegram') + '</div><div class="grp">' +
     row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
+    row('m-bal', '💳', 'Баланс Steam', state.bal ? 'Сейчас ' + uahShort(state.bal.kop) + ' — бот подбирает идеи под него' : 'Впиши — бот покажет идеи, на которые хватит') +
     row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
     row('m-theme', '🎨', 'Тема оформления', 'Сейчас: ' + esc(THEMES[THEME].name)) +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
@@ -2183,6 +2185,7 @@ function more() {
   $('#m-set').onclick = function () { haptic(); settings(); };
   $('#m-invite').onclick = function () { haptic(); inviteFriend(); };
   $('#m-sites').onclick = function () { haptic(); sitesSheet(); };
+  $('#m-bal').onclick = function () { haptic(); balanceSheet(); };
   $('#m-theme').onclick = function () { haptic(); themeSheet(); };
   $('#m-help').onclick = function () {
     haptic();

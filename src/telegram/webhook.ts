@@ -1,4 +1,6 @@
 import { getMeta, channelButton } from '../core/channel.ts';
+import { loadScan } from '../storage/scan.ts';
+import { buildRecs, MARKETS } from '../core/recs.ts';
 import { steamBalanceFor } from '../core/steambalance.ts';
 import { suggestStart, suggestReceive, suggestDecide } from './suggest.ts';
 import type { Env } from '../env.ts';
@@ -137,7 +139,8 @@ async function onText(text: string, h: H): Promise<void> {
       // Баланс Steam (если вписан) — виден и в чате с ботом.
       const bal = await steamBalanceFor(h.d, h.uid, await db.getSettings(h.d, h.uid), h.now);
       const balLine = bal ? `💳 Баланс Steam: <b>${formatUah(bal.kop)}</b>${bal.mismatch ? ' — расходится со Steam, обнови в приложении' : bal.stale ? ' — давно не обновлялся' : ''}\n` : '';
-      return say(h, `<b>CS2 Market</b>\n\nВсё — в приложении: что купить, что продать, цены и инвентарь.\n\n${balLine}💱 Валюта: <b>${cur.code}</b> — если не твоя, смени: /currency\n🛡 Бот не спрашивает пароль Steam и ничего не покупает сам. Что он знает и что нужно для работы: /privacy\n\nЖми кнопку 👇`, [
+      const best = await bestIdeaLine(h).catch(() => '');
+      return say(h, `<b>Ценолов</b> — показывает, где скин CS2 дешевле и где продать дороже. Все комиссии уже посчитаны.\n\n${best}${balLine}🛡 Пароль Steam не нужен, бот ничего не покупает сам: /privacy\n💱 Валюта: <b>${cur.code}</b> — сменить: /currency\n\nЖми кнопку 👇`, [
         [{ text: '📱 Открыть приложение', web_app: { url: `${h.origin}/app` } }],
         ...(await channelButton(h.d)),
         [{ text: '☰ Текстовое меню', callback_data: 'm' }],
@@ -452,4 +455,13 @@ async function onPaid(p: NonNullable<TgMessage['successful_payment']>, first: st
 
 function donorTopButton(shown: boolean) {
   return shown ? { text: '🙈 Скрыть меня в топе', callback_data: 'dt:off' } : { text: '👀 Показывать меня в топе', callback_data: 'dt:on' };
+}
+
+/** Лучшая идея прямо сейчас — живой пример в приветствии (по порогам и комиссиям человека). Скан старше суток — без примера. */
+export async function bestIdeaLine(h: H): Promise<string> {
+  const [scan, fx, st] = await Promise.all([loadScan(h.d), db.loadLatestFx(h.d), db.getSettings(h.d, h.uid)]);
+  if (!scan || h.now - scan.fetchedAt > 86400) return '';
+  const r = buildRecs(scan.entries, fx, { minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp) }).deals[0];
+  if (!r || r.profitKop === null || r.getKop === null) return '';
+  return `🔥 <b>Лучшая идея сейчас:</b> ${esc(r.name)}\nкупи на ${MARKETS[r.buyAt].name} за ${formatUah(r.payKop)} → продай на ${MARKETS[r.sellAt].name} → получишь ${formatUah(r.getKop)} (<b>+${formatUah(r.profitKop)}</b>)\n\n`;
 }

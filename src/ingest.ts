@@ -24,7 +24,7 @@ import { jobSellAlerts } from './core/sellalerts.ts';
 import { jobTradeUnlock } from './core/tradelock.ts';
 import { jobPumpAlerts } from './core/pumpalert.ts';
 import { backtestItem, RALLY_DEFAULTS, type DayPrice } from './core/rally.ts';
-import { goneStmts, invFailure, invSuccessStmts } from './core/steaminv.ts';
+import { goneStmts, invFailure, invSuccessStmts, invCheckStmt } from './core/steaminv.ts';
 import { rallyInfo, parseRallyItems, mergeRally, loadRallyScan, afterRallyScan } from './core/rallyjob.ts';
 
 export const MAX_INGEST_BYTES = 1024 * 1024;
@@ -287,7 +287,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Свежие средние — проверяем, не разгоняют ли цену предметов, которые у людей есть.
       try { await jobPumpAlerts({ db: d, now }); } catch (e) { await db.log(d, 'warn', 'pump_alert', 'failed', e instanceof Error ? e.message : String(e), now).catch(() => undefined); }
     } else if (body.kind === 'steam_inventory') {
-      const b = body as { tid?: unknown; steamId?: unknown; vanity?: unknown; status?: unknown };
+      const b = body as { tid?: unknown; steamId?: unknown; vanity?: unknown; status?: unknown; src?: unknown; diag?: unknown };
+      const checkOf = (x: typeof b) => ({ src: typeof x.src === 'string' && /^[а-яА-ЯёЁ a-zA-Z]{2,30}$/.test(x.src) ? x.src : 'сборщик', diag: typeof x.diag === 'string' ? x.diag.slice(0, 160) : undefined });
       const tid = Number(b.tid);
       const status = ['ok', 'private', 'not_found', 'blocked', 'rate_limited', 'error'].includes(String(b.status)) ? String(b.status) : 'error';
       const steamId = typeof b.steamId === 'string' && /^7656119\d{10}$/.test(b.steamId) ? b.steamId : null;
@@ -298,13 +299,14 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Отказ Steam — не стираем сохранённый инвентарь от одной попытки (steaminv.ts: invFailure).
       if (status !== 'ok') {
         if (steamId && !u.steam_id) await d.prepare('UPDATE users SET steam_id = ?, steam_vanity = NULL WHERE telegram_id = ?').bind(steamId, tid).run();
-        await invFailure(d, tid, status as 'private', now);
+        await invFailure(d, tid, status as 'private', now, checkOf(b));
         return json(result);
       }
       const stmts: D1PreparedStatement[] = [
         d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ?, steam_id = COALESCE(?, steam_id), steam_vanity = CASE WHEN ? IS NOT NULL THEN NULL ELSE steam_vanity END WHERE telegram_id = ?')
           .bind(now, status, steamId, steamId, tid),
         ...invSuccessStmts(d, tid),
+        invCheckStmt(d, tid, { ...checkOf(b), status: 'ok' }, now),
       ];
       {
         const raw = (Array.isArray(body.items) ? body.items : []) as { name?: unknown; qty?: unknown; marketable?: unknown; tradable?: unknown; img?: unknown; assets?: unknown }[];

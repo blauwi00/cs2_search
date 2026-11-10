@@ -297,3 +297,14 @@ test('пачка продаж: сервер говорит, сколько ст�
   }
   assert.equal(salesN(d), 12);
 });
+
+test('#33: страница с вкладкой CS2 — «открыт», даже если на ней есть слова о приватности; проверка записывается', async () => {
+  const { classifyInventoryPage } = await import('../src/core/steaminv.ts');
+  assert.equal(classifyInventoryPage('<span class="games_list_tab_name">Counter-Strike 2</span> <div class="private_profile">x</div>'), 'open');
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, inv_requested_at) VALUES (?, ?, ?, ?)').run(U, NOW, SID, NOW);
+  await storeInventory(D, U, { status: 'blocked', steamId: SID, diag: 'JSON: HTTP 403 · страница: открыт' }, NOW);
+  const c = JSON.parse((d.db.prepare(`SELECT value FROM user_settings WHERE key = 'inv_check'`).get() as { value: string }).value);
+  assert.deepEqual([c.src, c.status, c.diag], ['сервер бота', 'blocked', 'JSON: HTTP 403 · страница: открыт']);
+});

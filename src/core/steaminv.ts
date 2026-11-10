@@ -7,7 +7,7 @@ import { safeImg } from './recs.ts';
 
 export type InvFetch =
   | { status: 'ok'; steamId: string; items: { name: string; qty: number; marketable: number; tradable: number; img: string | null }[]; partial: boolean }
-  | { status: 'private' | 'not_found' | 'blocked' | 'rate_limited' | 'error'; steamId: string | null };
+  | { status: 'private' | 'not_found' | 'blocked' | 'rate_limited' | 'error'; steamId: string | null; diag?: string };
 
 const UA = 'Mozilla/5.0 (compatible; CenolovBot/1.0; +https://t.me/cenolow_bot)';
 
@@ -17,21 +17,26 @@ const UA = 'Mozilla/5.0 (compatible; CenolovBot/1.0; +https://t.me/cenolow_bot)'
  * open — есть вкладка «Counter-Strike 2»; private — Steam пишет, что профиль или инвентарь закрыт; unknown — не понять.
  */
 export function classifyInventoryPage(html: string): 'open' | 'private' | 'unknown' {
-  if (/inventory is currently private|profile_private_info|This profile is private|private_profile/i.test(html)) return 'private';
+  // Вкладка CS2 видна — инвентарь открыт, что бы ещё ни было на странице (сначала её, потом слова о приватности).
   if (/games_list_tab_name">\s*Counter-Strike 2\s*</.test(html) || /Counter-Strike 2 \(\d+\)/.test(html)) return 'open';
+  if (/inventory is currently private|profile_private_info|This profile is private|private_profile/i.test(html)) return 'private';
   return 'unknown';
 }
 
 /** JSON не отдали (403 / success:false) — смотрим публичную страницу: blocked (открыт, Steam не отдал) / private / error. */
-export async function recheckByPage(fetcher: typeof fetch, id: string): Promise<'blocked' | 'private' | 'rate_limited' | 'error'> {
+export async function recheckByPage(fetcher: typeof fetch, id: string): Promise<{ status: 'blocked' | 'private' | 'rate_limited' | 'error'; page: string }> {
   try {
     const r = await fetcher(`https://steamcommunity.com/profiles/${id}/inventory/`, { headers: { 'User-Agent': UA, Accept: 'text/html' } });
-    if (r.status === 429) return 'rate_limited';
-    if (!r.ok) return 'error';
+    if (r.status === 429) return { status: 'rate_limited', page: 'HTTP 429' };
+    if (!r.ok) return { status: 'error', page: `HTTP ${r.status}` };
     const c = classifyInventoryPage(await r.text());
-    return c === 'open' ? 'blocked' : c === 'private' ? 'private' : 'error';
-  } catch { return 'error'; }
+    return { status: c === 'open' ? 'blocked' : c === 'private' ? 'private' : 'error', page: c === 'open' ? 'открыт' : c === 'private' ? 'закрыт' : 'не понять' };
+  } catch (e) { return { status: 'error', page: 'сбой: ' + String(e instanceof Error ? e.message : e).slice(0, 60) }; }
 }
+const viaPage = async (fetcher: typeof fetch, id: string, json: string): Promise<InvFetch> => {
+  const p = await recheckByPage(fetcher, id);
+  return { status: p.status, steamId: id, diag: `JSON: ${json} · страница: ${p.page}` };
+};
 
 export async function fetchInventory(fetcher: typeof fetch, steamId: string | null, vanity: string | null): Promise<InvFetch> {
   let id = steamId;
@@ -47,10 +52,10 @@ export async function fetchInventory(fetcher: typeof fetch, steamId: string | nu
     headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `https://steamcommunity.com/profiles/${id}/inventory/` },
   });
   if (r.status === 429) return { status: 'rate_limited', steamId: id };
-  if (r.status === 401 || r.status === 403) return { status: await recheckByPage(fetcher, id), steamId: id };
-  if (!r.ok) return { status: r.status === 404 ? 'not_found' : 'error', steamId: id };
+  if (r.status === 401 || r.status === 403) return viaPage(fetcher, id, `HTTP ${r.status}`);
+  if (!r.ok) return { status: r.status === 404 ? 'not_found' : 'error', steamId: id, diag: `JSON: HTTP ${r.status}` };
   const j = await r.json().catch(() => null) as { success?: unknown; assets?: { classid: string; instanceid: string; amount?: string }[]; descriptions?: { classid: string; instanceid: string; market_hash_name?: string; marketable?: number; tradable?: number; icon_url?: string }[]; more_items?: unknown } | null;
-  if (!j || j.success === false) return { status: await recheckByPage(fetcher, id), steamId: id };
+  if (!j || j.success === false) return viaPage(fetcher, id, j ? 'success:false' : 'пустой ответ');
   const desc = new Map((j.descriptions ?? []).map((x) => [`${x.classid}_${x.instanceid}`, x]));
   const by = new Map<string, { name: string; qty: number; marketable: number; tradable: number; img: string | null }>();
   for (const a of j.assets ?? []) {
@@ -74,7 +79,7 @@ export async function fetchInventory(fetcher: typeof fetch, steamId: string | nu
 export async function storeInventory(d: D1Database, tid: number, res: InvFetch, now: number): Promise<void> {
   // 429 — не новость о пользователе: статус не трогаем, повторит сборщик.
   if (res.status === 'rate_limited') return;
-  if (res.status !== 'ok') return invFailure(d, tid, res.status, now);
+  if (res.status !== 'ok') return invFailure(d, tid, res.status, now, { src: 'сервер бота', diag: res.diag });
   const names = res.items.map((x) => x.name);
   const up: D1PreparedStatement[] = [];
   for (const n of names) up.push(...db.upsertItemStmts(d, n, now));
@@ -87,6 +92,7 @@ export async function storeInventory(d: D1Database, tid: number, res: InvFetch, 
   const stmts: D1PreparedStatement[] = [
     d.prepare('UPDATE users SET inv_synced_at = ?, inv_status = ?, steam_id = ?, steam_vanity = NULL WHERE telegram_id = ?').bind(now, 'ok', res.steamId, tid),
     ...invSuccessStmts(d, tid),
+    invCheckStmt(d, tid, { src: 'сервер бота', status: 'ok', diag: `получено ${res.items.length} предм.` }, now),
   ];
   const keep = [...ids.values()];
   const fresh = new Map(res.items.filter((x) => ids.has(x.name)).map((x) => [ids.get(x.name)!, x.qty]));
@@ -118,6 +124,11 @@ export const INV_CONFIRM_SEC = 6 * 3600;
 const setKey = (d: D1Database, tid: number, key: string, value: string, now: number) =>
   d.prepare('INSERT INTO user_settings (telegram_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(telegram_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(tid, key, value, now);
 
+/** Последняя проверка инвентаря (кто проверял, что ответил Steam) — владелец видит её под статусом, чтобы разбираться с отказами Steam. */
+export function invCheckStmt(d: D1Database, tid: number, c: { src: string; status: string; diag?: string }, now: number): D1PreparedStatement {
+  return setKey(d, tid, 'inv_check', JSON.stringify({ at: now, src: c.src, status: c.status, diag: (c.diag ?? '').slice(0, 160) }), now);
+}
+
 /** Удачное обновление — сбрасываем счётчик повторов и неподтверждённое «закрыт». */
 export function invSuccessStmts(d: D1Database, tid: number): D1PreparedStatement[] {
   return [d.prepare(`DELETE FROM user_settings WHERE telegram_id = ? AND key IN ('inv_retry', 'inv_private_at')`).bind(tid)];
@@ -129,8 +140,9 @@ export function invSuccessStmts(d: D1Database, tid: number): D1PreparedStatement
  * private / not_found — первая проверка только запоминается; удаляем, если через ≥ 6 ч снова так же.
  * error — ничего не меняем, только пауза перед повтором. rate_limited — как раньше: статус, повторит сборщик.
  */
-export async function invFailure(d: D1Database, tid: number, status: Exclude<InvFetch['status'], 'ok'>, now: number): Promise<void> {
-  if (status === 'rate_limited') { await d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind(status, tid).run(); return; }
+export async function invFailure(d: D1Database, tid: number, status: Exclude<InvFetch['status'], 'ok'>, now: number, check: { src: string; diag?: string } = { src: 'сборщик' }): Promise<void> {
+  if (status === 'rate_limited') { await d.batch([d.prepare('UPDATE users SET inv_status = ? WHERE telegram_id = ?').bind(status, tid), invCheckStmt(d, tid, { ...check, status }, now)]); return; }
+  await invCheckStmt(d, tid, { ...check, status }, now).run();
   const rows = (await d.prepare(`SELECT key, value FROM user_settings WHERE telegram_id = ? AND key IN ('inv_retry', 'inv_private_at')`).bind(tid).all<{ key: string; value: string }>()).results;
   const kv = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   let retry = { n: 0, at: 0 };

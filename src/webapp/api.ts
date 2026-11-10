@@ -202,6 +202,14 @@ function caseOpenStats(allT: T.TradeRow[], allS: { trade_id: number; received_ko
     noPrice: open.filter((l) => l.valueKop == null).length,
   };
 }
+/** Последняя проверка инвентаря: владельцу — подробности (кто проверял, что ответил Steam); всем — подтверждён ли «закрыт». */
+async function invCheckInfo(d: D1Database, tid: number, isAdmin: boolean): Promise<{ privatePending: boolean; check?: unknown }> {
+  const rows = (await d.prepare(`SELECT key, value FROM user_settings WHERE telegram_id = ? AND key IN ('inv_check', 'inv_private_at')`).bind(tid).all<{ key: string; value: string }>()).results;
+  const kv = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  let check: unknown = null;
+  try { check = kv.inv_check ? JSON.parse(kv.inv_check) : null; } catch { check = null; }
+  return { privatePending: !!kv.inv_private_at, ...(isAdmin ? { check } : {}) };
+}
 /** Картинки предметов по названиям. */
 export async function imagesFor(d: D1Database, names: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -551,6 +559,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         goneCount: linked ? ((await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0) : 0,
         totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
         locked: linked ? await lockedLots(d, tid, now) : [],
+        ...(await invCheckInfo(d, tid, isAdmin)),
       });
     }
     if (path === 'steam/login' && method === 'POST') {

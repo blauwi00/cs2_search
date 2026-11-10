@@ -1120,7 +1120,7 @@ function trades() {
   }).catch(fail);
 }
 // ---------- Инвентарь Steam (вход через Steam — только номер аккаунта) ----------
-var INV_ST = { private: '🔒 Steam пишет, что инвентарь закрыт. Открой: Steam → Профиль → Изменить профиль → Приватность → «Мой профиль: Открытый» и «Инвентарь: Открытый». Steam применяет изменения до нескольких минут — потом нажми «Обновить».', blocked: '⏳ Steam временно не отдаёт инвентарь серверу бота — твои настройки в порядке. Попробую сам, пока показываю последний сохранённый.', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Обновление инвентаря займёт чуть больше времени — бот сделает это сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
+var INV_ST = { private: '🔒 Steam пишет, что инвентарь закрыт. Открой: Steam → Профиль → Изменить профиль → Приватность → «Мой профиль: Открытый» и «Инвентарь: Открытый». Steam применяет изменения до нескольких минут — потом нажми «Обновить».', blocked: '⏳ Steam временно не отдаёт инвентарь серверу бота — твои настройки в порядке. Попробую сам, пока показываю последний сохранённый.', privatePending: '🔎 Steam ответил боту, что инвентарь закрыт. Если у тебя он открыт — ничего делать не нужно: бот перепроверит сам через несколько часов и сохранённые предметы не удалит.', not_found: 'Профиль не найден. Проверь ссылку.', rate_limited: '⏳ Обновление инвентаря займёт чуть больше времени — бот сделает это сам.', error: 'Не получилось загрузить инвентарь — попробуй «Обновить» позже.' };
 function steamBlock(st) {
   var h = '';
   if (!st) return h + '<div class="card mut">Не удалось загрузить.</div>';
@@ -1136,7 +1136,10 @@ function steamBlock(st) {
   h += '<div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-weight:700">' + (st.verified ? '✅ ' : '') + who + '</div><div class="mut" style="font-size:13px">' +
     (st.pending ? '⏳ Загружаю инвентарь — до ~10 минут' : st.syncedAt ? 'Обновлено ' + ago(st.syncedAt) : '') + '</div></div>' +
     '<button class="btn sec2" id="st-ref" style="width:auto;margin:0;padding:8px 12px">Обновить</button></div>';
-  if (st.status && INV_ST[st.status]) h += '<div class="card" style="color:var(--amber);font-size:14px">' + INV_ST[st.status] + '</div>';
+  var stTxt = st.status === 'private' && st.privatePending ? INV_ST.privatePending : INV_ST[st.status];
+  if (st.status && stTxt) h += '<div class="card" style="color:var(--amber);font-size:14px">' + stTxt + (st.status === 'private' || st.status === 'blocked' ? ' <a id="st-mine" style="color:var(--link);cursor:pointer">Открыть мой инвентарь в Steam ›</a>' : '') + '</div>';
+  // Владельцу — что именно ответил Steam при последней проверке (разбираться с ложным «закрыт»).
+  if (st.check) h += '<div class="note">Последняя проверка: ' + esc(ago(st.check.at)) + ' · ' + esc(st.check.src) + ' · ' + esc(st.check.status) + (st.check.diag ? ' · ' + esc(st.check.diag) : '') + '</div>';
   if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Продажи» (вкладка выше) ›</div>';
   if (st.items.length) {
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
@@ -1172,6 +1175,7 @@ function bindSteamBlock(st) {
   if ($('#st-gone')) $('#st-gone').onclick = function () { haptic(); state.invTab = 'sales'; go('trades'); };
   if (!st) return;
   if ($('#st-pv')) $('#st-pv').onclick = privacy;
+  if ($('#st-mine')) $('#st-mine').onclick = function () { haptic(); openLink('https://steamcommunity.com/' + (st.steamId ? 'profiles/' + st.steamId : 'id/' + encodeURIComponent(st.vanity || '')) + '/inventory/'); };
   // Пока инвентарь загружается — сами проверяем каждые 30 секунд (только на этой вкладке и при открытом приложении).
   clearTimeout(state.invPoll);
   if (st.pending) state.invPoll = setTimeout(function () { if (state.tab === 'inv' && document.visibilityState === 'visible' && !$('#sheet').classList.contains('on')) inventory(); }, 30000);

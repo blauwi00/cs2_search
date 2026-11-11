@@ -197,13 +197,15 @@ test('объявление о новых функциях: один раз, то
     { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { const b = JSON.parse(String(init?.body)); sent.push({ method: u.split('/').pop()!, body: b }); return json({ ok: true, result: { message_id: 5 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
-  const ann = () => sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234 && String(s.body.text).includes('Под каждым скином теперь есть график'));
+  const ann = () => sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234 && String(s.body.text).includes('Под каждым скином теперь есть график'));
   await runCycle(env, { now: Date.parse('2026-11-10T09:30:00Z') / 1000, fetcher });
   assert.equal(ann().length, 0, 'до своей даты не публикуется');
   await runCycle(env, { now: Date.parse('2026-11-11T01:30:00Z') / 1000, fetcher });
   assert.equal(ann().length, 0, 'ночью по Варшаве — нет');
   await runCycle(env, { now: Date.parse('2026-11-11T09:30:00Z') / 1000, fetcher });
-  assert.equal(ann().length, 1);
+  assert.equal(ann().length, 0, 'ждём картинку-карточку от сборщика');
+  await runCycle(env, { now: Date.parse('2026-11-11T10:05:00Z') / 1000, fetcher });
+  assert.equal(ann().length, 1, 'картинка не пришла за 25 минут — пост уходит без неё');
   assert.match(JSON.stringify(ann()[0]!.body.reply_markup), /Открыть Ценолов/);
   await runCycle(env, { now: Date.parse('2026-11-11T09:40:00Z') / 1000, fetcher });
   await runCycle(env, { now: Date.parse('2026-11-12T09:30:00Z') / 1000, fetcher });

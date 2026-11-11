@@ -104,25 +104,26 @@ test('канал: в понедельник — «Окупается ли кей
   for (const s of ['ideas', 'trends', 'cases', 'weekly']) await setMetaStmt(D, `channel_done_${s}`, '2099-01-01').run();
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 1 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
   const cycle = async (t: number) => { await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`); await runCycle(env, { now: t, fetcher }); };
   await runCycle(env, { now: MON13 - 1000, fetcher });
   await cycle(MON13);
   await cycle(MON13 + 600);
-  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  await cycle(MON13 + 1700); await cycle(MON13 + 2000); // картинку никто не нарисовал — через 25 минут пост уходит без неё
+  const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один раз в день');
   assert.match(posts[0].body.text, /Kilowatt Case: в среднем возвращает[\s\S]*\$/);
   // Четверг: свежие данные — следующий кейс, без повтора
   const THU = MON13 + 3 * 86400;
   await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'case_ev', fetchedAt: THU - 600, items: [evItem, { ...evItem, name: 'Revolution Case' }] }) }), env, THU - 600);
-  await cycle(THU);
-  const p2 = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  await cycle(THU); await cycle(THU + 600); await cycle(THU + 1700); await cycle(THU + 2000);
+  const p2 = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   assert.equal(p2.length, 2);
   assert.match(p2[1].body.text, /Revolution Case/);
   // Следующий понедельник: данные старше 2 суток — история вместо устаревших цифр
-  await cycle(MON13 + 7 * 86400);
-  const p3 = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  await cycle(MON13 + 7 * 86400); await cycle(MON13 + 7 * 86400 + 600); await cycle(MON13 + 7 * 86400 + 1700); await cycle(MON13 + 7 * 86400 + 2000);
+  const p3 = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   assert.ok(STORIES.some((x) => p3[2].body.text.includes(x.title)));
 });

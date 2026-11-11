@@ -13,7 +13,7 @@ import { loadLatestFx } from '../storage/db.ts';
 import { CHECK_AFTER, ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, type IdeaRow } from './insights.ts';
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
-import { rubricFor, pickCaseEV, caseEvPost, trackedPost, storyPost, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
+import { rubricFor, pickCaseEV, caseEvPost, caseEvCard, trackedPost, storyPost, storyAt, storyQuote, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
 import { hook, dealBlock, moveLine, FOOT_DEALS, pct, plus, ruDate } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'rubric' | 'trends' | 'cases' | 'weekly';
@@ -39,8 +39,10 @@ export async function channelButton(d: D1Database): Promise<Keyboard> {
 }
 
 /** Разовые объявления в канал (новые функции). Публикуются один раз, днём по Варшаве; id запоминается в meta announce_done. */
-export const ANNOUNCEMENTS: { id: string; after: number; text: string; button: string }[] = [
-  { id: '2026-11-chart', after: Date.parse('2026-11-11T00:00:00Z') / 1000, button: 'Открыть Ценолов', text: [
+export const ANNOUNCEMENTS: { id: string; after: number; text: string; button: string; card?: { title: string; subtitle: string; bullets: string[]; note: string } }[] = [
+  { id: '2026-11-chart', after: Date.parse('2026-11-11T00:00:00Z') / 1000, button: 'Открыть Ценолов',
+    card: { title: 'Под каждым скином — график цены', subtitle: 'Новое в боте Ценолов', bullets: ['Масштаб щипком, листать пальцем, двойной тап — сброс', 'Цены по площадкам: Market.CSGO, Waxpeer, LIS-SKINS, CSFloat', '«За неделю» по инвентарю и «Куда потратить баланс Steam»'], note: 'Справочные цифры, не обещание прибыли' },
+    text: [
     '<b>Под каждым скином теперь есть график цены</b>', '',
     'Открой любой скин в боте: график прямо под ценами по площадкам. Масштаб щипком, листать пальцем, двойной тап возвращает.', '',
     'С 11 ноября бот копит историю по дням: Market.CSGO, Waxpeer, LIS-SKINS, CSFloat и средняя продажа Steam. Чем дольше копится, тем длиннее график.', '',
@@ -205,7 +207,8 @@ export async function composeChannelPost(d: D1Database, slot: Slot, now: number)
 
 /** Данные для картинки поста (рисует сборщик). Все суммы уже строками в долларах. */
 export interface PostCard {
-  id: string; slot: Slot; date: string; title: string; subtitle?: string; note?: string | null; big?: string; bigLabel?: string;
+  id: string; slot: Slot | 'caseev' | 'news' | 'story'; date: string; title: string; subtitle?: string; note?: string | null; big?: string; bigLabel?: string;
+  img?: string | null; backPct?: number; lines?: { k: string; v: string }[]; bullets?: string[]; quote?: string;
   deals?: { name: string; img?: string | null; buy: string; buyPrice: string; sell: string; sellPrice: string; profit: string; roi: string }[];
   up?: { name: string; img?: string | null; pct: string; upward: boolean; price: string | null }[];
   down?: { name: string; img?: string | null; pct: string; upward: boolean; price: string | null }[];
@@ -237,6 +240,12 @@ export async function caseStats(d: D1Database): Promise<CaseStat[]> {
 
 const jsonList = (v: string | null): string[] => { try { const x = JSON.parse(v ?? '[]'); return Array.isArray(x) ? x.filter((s) => typeof s === 'string') : []; } catch { return []; } };
 
+/** Карточка для картинки (рисует сборщик): id по дню, суммы-метки переводятся в доллары. */
+export async function buildCard(d: D1Database, now: number, slot: 'caseev' | 'news' | 'story', fields: Omit<PostCard, 'id' | 'slot' | 'date'>): Promise<PostCard> {
+  const usd = curFor('USD', await loadRates(d));
+  return JSON.parse(renderMoney(JSON.stringify({ ...fields, id: `${slot}-${warsawDate(now)}`, slot, date: ruDate(now) }), usd)) as PostCard;
+}
+
 /** Рубрика дня (13:00). Нет данных для рубрики — выходит история, чтобы день не пустовал. */
 export async function composeRubric(d: D1Database, kind: RubricKind, fresh: ScanEntry[] | null, fx: Map<Currency, FxRate>, now: number): Promise<ChannelPost | null> {
   if (kind === 'caseev') {
@@ -244,7 +253,11 @@ export async function composeRubric(d: D1Database, kind: RubricKind, fresh: Scan
     try { ev = JSON.parse((await getMeta(d, 'case_ev')) ?? '{}'); } catch { ev = {}; }
     const recent = jsonList(await getMeta(d, 'caseev_recent'));
     const c = ev.at && now - ev.at < 2 * 86400 && Array.isArray(ev.items) ? pickCaseEV(ev.items, recent) : null;
-    if (c) return { text: caseEvPost(c, fx, now), image: safeImg(c.img) ?? await itemImage(d, c.name, fresh), card: null, meta: [['caseev_recent', JSON.stringify([c.name, ...recent].slice(0, 30))]] };
+    if (c) {
+      const img = safeImg(c.img) ?? await itemImage(d, c.name, fresh);
+      const card = await buildCard(d, now, 'caseev', { ...caseEvCard(c, fx), img });
+      return { text: caseEvPost(c, fx, now), image: img, card, meta: [['caseev_recent', JSON.stringify([c.name, ...recent].slice(0, 30))]] };
+    }
   }
   if (kind === 'tracked') {
     const rows = (await d.prepare(`SELECT i.name AS name, COUNT(DISTINCT w.telegram_id) AS n FROM watchlist w JOIN items i ON i.id = w.item_id
@@ -254,5 +267,8 @@ export async function composeRubric(d: D1Database, kind: RubricKind, fresh: Scan
     if (text) return { text, image: rows[0] ? await itemImage(d, rows[0].name, fresh) : null, card: null };
   }
   const idx = Number(await getMeta(d, 'story_idx')) || 0;
-  return { text: storyPost(idx, now), image: null, card: null, meta: [['story_idx', String(idx + 1)]] };
+  const st = storyAt(idx);
+  const simg = st.item ? await itemImage(d, st.item, fresh) : null;
+  const scard = await buildCard(d, now, 'story', { title: st.title, subtitle: 'История CS2', quote: storyQuote(idx), img: simg, note: 'История CS2' });
+  return { text: storyPost(idx, now), image: simg, card: scard, meta: [['story_idx', String(idx + 1)]] };
 }

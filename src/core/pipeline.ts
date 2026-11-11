@@ -26,7 +26,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { ANNOUNCEMENTS, composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
+import { ANNOUNCEMENTS, buildCard, composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, newsRuLines, extraPost, EXTRA_BUTTON, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
@@ -856,6 +856,8 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
       // Под каждым постом — ещё и «Предложить пост» (предложка канала).
       const m = await ctx.tg.sendPost(Number(chat), text, [...kb, ...(user ? [[{ text: '💡 Предложить пост', url: `https://t.me/${user}?start=suggest` }]] : [])], image);
       bump(ctx, 'channel_posts');
+      // Номер сообщения запоминаем: так пост можно будет поправить позже (раньше номера не хранились).
+      if (m?.message_id) writes.push(ctx.db.prepare('INSERT OR IGNORE INTO channel_posts (msg_id, at, head, photo) VALUES (?, ?, ?, ?)').bind(m.message_id, ctx.now, text.replace(/<[^>]+>/g, '').split('\n')[0]!.slice(0, 120), image ? 1 : 0));
       return m?.message_id ?? 0;
     } catch (e) {
       const msg = (e as Error).message;
@@ -870,13 +872,13 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   // 0. Пост, который ждёт свою картинку от сборщика (не дольше CARD_WAIT_SEC, потом — без неё).
   const pendRaw = await getMeta(ctx.db, 'channel_pending');
   if (pendRaw) {
-    let pend: { id: string; text: string; image: string | null; at: number } | null = null;
+    let pend: { id: string; text: string; image: string | null; at: number; button?: string } | null = null;
     try { pend = JSON.parse(pendRaw); } catch { pend = null; }
     const card = pend ? await ctx.db.prepare('SELECT created_at FROM cards WHERE id = ?').bind(pend.id).first<{ created_at: number }>() : null;
     const origin = await getMeta(ctx.db, 'public_origin');
     if (!pend || (card && origin) || ctx.now - pend.at > CARD_WAIT_SEC) {
       writes.push(ctx.db.prepare(`DELETE FROM meta WHERE key IN ('channel_pending', 'card_request')`));
-      if (pend) await post(pend.text, botButton(user), card && origin ? `${origin}/card/${pend.id}.jpg?v=${card.created_at}` : pend.image);
+      if (pend) await post(pend.text, botButton(user, pend.button), card && origin ? `${origin}/card/${pend.id}.jpg?v=${card.created_at}` : pend.image);
     }
     if (writes.length) await ctx.db.batch(writes);
     return;
@@ -907,7 +909,13 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     let done: string[] = [];
     try { done = JSON.parse((await getMeta(ctx.db, 'announce_done')) ?? '[]'); } catch { done = []; }
     const a = ANNOUNCEMENTS.find((x) => !done.includes(x.id) && ctx.now >= x.after);
-    if (a) {
+    if (a && a.card) {
+      // С картинкой: сначала заказываем карточку у сборщика, пост выходит через общий механизм ожидания (не дольше 25 минут, потом без неё).
+      const card = await buildCard(ctx.db, ctx.now, 'news', a.card);
+      writes.push(setMetaStmt(ctx.db, 'announce_done', JSON.stringify([...done, a.id])));
+      writes.push(setMetaStmt(ctx.db, 'channel_pending', JSON.stringify({ id: card.id, text: a.text, image: null, at: ctx.now, button: a.button })));
+      writes.push(setMetaStmt(ctx.db, 'card_request', JSON.stringify(card)));
+    } else if (a) {
       const id = await post(a.text, botButton(user, a.button), null);
       if (id) writes.push(setMetaStmt(ctx.db, 'announce_done', JSON.stringify([...done, a.id])));
     }

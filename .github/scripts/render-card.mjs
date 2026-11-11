@@ -66,7 +66,7 @@ function body(c) {
         <div class="sub" style="text-align:center">иллюстрация, не реальные цены</div></div></div>`;
   }
   if (c.slot === 'story') {
-    return `<div style="flex:1;display:flex;align-items:center"><div style="font-size:30px;line-height:1.35;color:#ced4da;max-width:980px;border-left:6px solid ${ACCENT.story};padding-left:28px">${esc(c.quote ?? '')}</div></div>`;
+    return `<div style="flex:1;display:flex;align-items:center;gap:36px">${c.img ? `<div class="glow">${img(c.img, 260)}</div>` : ''}<div style="font-size:30px;line-height:1.35;color:#ced4da;max-width:${c.img ? 760 : 980}px;border-left:6px solid ${ACCENT.story};padding-left:28px">${esc(c.quote ?? '')}</div></div>`;
   }
   if (c.slot === 'ideas' && c.deals?.length) {
     const [d, ...rest] = c.deals;

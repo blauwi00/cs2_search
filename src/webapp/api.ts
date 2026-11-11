@@ -1,5 +1,6 @@
 // JSON API для Telegram Mini App. Каждый запрос подписан Telegram (initData) и принимается только от администратора.
 
+import { peopleList, personCard, saveNameStmts, type PeopleFilter } from './people.ts';
 import { weekDelta, parseTop, type HistRow } from '../core/history.ts';
 import { spendIdeas, SPEND_MIN_KOP, type SpendIdea } from '../core/spend.ts';
 import type { Env } from '../env.ts';
@@ -334,7 +335,7 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
   if (!user) return bad('forbidden', 403);
   const d0 = budgetedDb(rawDb ?? env.DB, newBudget());
   await db.ensureUser(d0, user.id, user.id === Number(env.ADMIN_TELEGRAM_ID), now, guessCurrency(user.language_code));
-  await d0.batch(db.touchActiveStmts(d0, user.id, now, true));
+  await d0.batch([...db.touchActiveStmts(d0, user.id, now, true), ...saveNameStmts(d0, user.id, user.username, user.first_name, now)]);
   const res = await appApi(req, env, now, user.id, rawDb);
   // Суммы в текстах (метки ⟦копейки⟧) — в валюте человека; саму валюту отдаём приложению в каждом ответе.
   if (!res.headers.get('Content-Type')?.startsWith('application/json')) return res;
@@ -1348,7 +1349,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const s = await db.getSettings(d, tid);
       return json({ ok: true, display: displayValue(m, s), value });
     }
-    if ((path === 'status' || path === 'jobs/enable' || path.startsWith('owner')) && !isAdmin) return bad('admin_only', 403);
+    if ((path === 'status' || path === 'jobs/enable' || path.startsWith('owner') || path.startsWith('people')) && !isAdmin) return bad('admin_only', 403);
     // Ключ домашнего агента: новый ключ заменяет старый; в базе — только хэш, сам ключ показывается один раз.
     if (path === 'owner/agent-key' && method === 'POST') {
       const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -1389,6 +1390,25 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         jobs: jobs.filter((j) => j.enabled !== 1 || j.fail_count > 0).map((j) => ({ name: j.name, enabled: j.enabled === 1, fails: j.fail_count, error: j.last_error })),
         errors: errs, copies: Object.keys(js(m.copies) ?? {}).length, images: m.img_cursor === '-1' ? 'готово' : m.img_cursor ?? '—',
       });
+    }
+    // Вкладка «Люди» (только владелец): сводка, список со страницами и карточка человека. Жалобы, пожертвования и «откуда пришли» — на первой странице.
+    if (path === 'people' && method === 'GET') {
+      const f = (['all', 'new', 'steam', 'list'].includes(url.searchParams.get('f') ?? '') ? url.searchParams.get('f') : 'all') as PeopleFilter;
+      const offset = Math.min(5000, Math.max(0, Number(url.searchParams.get('o')) || 0));
+      const r = await peopleList(d, now, f, offset);
+      if (offset > 0) return json({ ok: true, ...r });
+      const [refs, don, donLast, fb] = await Promise.all([
+        d.prepare(`SELECT COALESCE(s.value, 'без метки') AS ref, COUNT(*) AS n FROM users u LEFT JOIN user_settings s ON s.telegram_id = u.telegram_id AND s.key = 'ref' WHERE u.is_admin = 0 GROUP BY 1 ORDER BY n DESC LIMIT 6`).all<{ ref: string; n: number }>(),
+        d.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS s, COALESCE(SUM(CASE WHEN created_at >= ? THEN stars END), 0) AS s30 FROM donations').bind(now - 30 * 86400).first<{ n: number; s: number; s30: number }>(),
+        d.prepare('SELECT stars, name, created_at FROM donations ORDER BY id DESC LIMIT 5').all<{ stars: number; name: string | null; created_at: number }>(),
+        d.prepare('SELECT telegram_id, item, reason, comment, context, created_at FROM feedback ORDER BY id DESC LIMIT 10').all<Record<string, unknown>>(),
+      ]);
+      return json({ ok: true, ...r, refs: refs.results, money: { stars: don?.s ?? 0, count: don?.n ?? 0, stars30: don?.s30 ?? 0, last: donLast.results }, feedback: fb.results });
+    }
+    if (seg[0] === 'people' && seg[1] && method === 'GET') {
+      const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
+      const card = await personCard(d, now, Number(seg[1]), usd);
+      return card ? json({ ok: true, ...card }) : bad('not_found', 404);
     }
     if (path === 'owner/action' && method === 'POST') {
       const a = String(body.action ?? '');

@@ -1,3 +1,4 @@
+import { saveNameStmts } from '../webapp/people.ts';
 import { getMeta, channelButton } from '../core/channel.ts';
 import { loadScan } from '../storage/scan.ts';
 import { buildRecs, MARKETS } from '../core/recs.ts';
@@ -41,7 +42,7 @@ export function safeEqual(a: string | null | undefined, b: string | null | undef
   return diff === 0;
 }
 
-interface TgUser { is_bot?: boolean; id: number; language_code?: string; first_name?: string }
+interface TgUser { is_bot?: boolean; id: number; language_code?: string; first_name?: string; username?: string }
 interface TgMessage { message_id: number; from?: TgUser; chat: { id: number; type: string }; text?: string; caption?: string; photo?: { file_id: string; width: number }[]; successful_payment?: { currency: string; total_amount: number; invoice_payload: string; telegram_payment_charge_id: string } }
 interface TgCallback { id: string; from: TgUser; data?: string; message?: TgMessage }
 interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallback; pre_checkout_query?: { id: string; from: TgUser; currency: string; total_amount: number; invoice_payload: string } }
@@ -81,7 +82,8 @@ export async function handleWebhook(req: Request, env: Env, now: number, fetcher
   const lang = update.message?.from?.language_code ?? update.callback_query?.from?.language_code;
   try {
     await db.ensureUser(d, uid, isAdmin, now, guessCurrency(lang));
-    await d.batch(db.touchActiveStmts(d, uid, now, false));
+    const from = update.message?.from ?? update.callback_query?.from;
+    await d.batch([...db.touchActiveStmts(d, uid, now, false), ...saveNameStmts(d, uid, from?.username, from?.first_name, now)]);
     if (update.callback_query) await onCallback(update.callback_query, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (update.message?.successful_payment) await onPaid(update.message.successful_payment, update.message.from?.first_name, { env, d, tg, uid, isAdmin, now, fetcher, origin: new URL(req.url).origin });
     else if (isAdmin && (update.message as { forward_origin?: { type?: string } } | undefined)?.forward_origin?.type === 'channel') {

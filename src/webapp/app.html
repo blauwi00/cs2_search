@@ -2554,13 +2554,82 @@ function promoSheet() {
     step(6, '«Пригласить друга»', 'Кнопка у всех в «Ещё» — ссылка ?start=fr, приходы видны в /stats.') +
     '</div><div class="note">Не использовать накрутку подписчиков и «рефералов»: это против правил Telegram, бот могут ограничить.</div>');
 }
+// ---------- Люди (только владелец) ----------
+var PEOPLE = { f: 'all', n: 0, first: null };
+function personName(p) { return p.username ? '@' + p.username : (p.name || 'без имени'); }
+function dm(t) { var d = new Date(t * 1000); return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0'); }
+function personRow(p) {
+  var tags = [];
+  if (p.steam) tags.push('Steam'); if (p.watch) tags.push('Список ' + p.watch); if (p.trades) tags.push('Сделки ' + p.trades);
+  return '<div class="row" data-pid="' + p.id + '"><div class="ic"></div><div class="m"><div class="n">' + esc(personName(p)) + '</div><div class="d">' + (p.seen ? 'был ' + ago(p.seen) : 'пока не заходил в приложение') + ' · пришёл ' + dm(p.createdAt) + (p.ref ? ' · из: ' + esc(p.ref) : '') + '</div>' +
+    '<div class="d">' + (tags.length ? esc(tags.join(' · ')) : 'ничего не добавил') + '</div></div></div>';
+}
+function peopleScreen() {
+  PEOPLE.f = 'all'; PEOPLE.n = 0;
+  sheet('<div class="skel"></div><div class="skel" style="height:160px"></div><div class="skel"></div>');
+  api('people?f=all&o=0').then(function (r) {
+    PEOPLE.first = r; var sm = r.summary;
+    var h = '<h2>Люди</h2><div class="sub">Только для владельца. Время «был» — с точностью до 12 часов.</div>';
+    h += '<div class="grid2">' + stat('Сегодня', sm.today, 'из ' + sm.total + ' всего') + stat('Новых за сутки', sm.newToday, 'вернулись сегодня: ' + sm.back) + '</div>';
+    h += '<div class="seg" id="pf"><button data-f="all" class="on">Все ' + sm.total + '</button><button data-f="new">Новые</button><button data-f="steam">Steam ' + sm.steam + '</button><button data-f="list">Список ' + sm.list + '</button></div>';
+    h += '<div id="plist"></div><div id="pmore"></div><div id="pextra"></div>';
+    $('#sc').innerHTML = h;
+    renderPeople(r, false);
+    Array.prototype.forEach.call(document.querySelectorAll('#pf button'), function (b) {
+      b.onclick = function () {
+        haptic(); PEOPLE.f = b.getAttribute('data-f'); PEOPLE.n = 0;
+        Array.prototype.forEach.call(document.querySelectorAll('#pf button'), function (x) { x.className = x === b ? 'on' : ''; });
+        $('#plist').innerHTML = '<div class="skel"></div>'; $('#pmore').innerHTML = '';
+        api('people?f=' + PEOPLE.f + '&o=0').then(function (q) { renderPeople(q, false); }).catch(function (e) { toast(e.message); });
+      };
+    });
+    var ex = '';
+    if (r.refs && r.refs.length) ex += '<details class="more"><summary><span class="chev">›</span> Откуда пришли</summary><div class="card">' + r.refs.map(function (x) { return kv(esc(x.ref), x.n); }).join('') + '</div></details>';
+    ex += '<details class="more"' + (r.feedback.length ? ' open' : '') + '><summary><span class="chev">›</span> Сообщения об ошибках (' + r.feedback.length + ')</summary><div class="card" style="font-size:13px">' +
+      (r.feedback.length ? r.feedback.map(function (f) { return '<div style="padding:6px 0;border-bottom:1px solid var(--sep)"><b>' + esc(f.item || 'без предмета') + '</b> · ' + esc((REASONS.filter(function (x) { return x[0] === f.reason; })[0] || [0, f.reason])[1]) + ' · ' + ago(f.created_at) + (f.comment ? '<div>' + esc(f.comment) + '</div>' : '') + '<div class="mut">от ' + f.telegram_id + (f.context ? ' · ' + esc(f.context) : '') + '</div></div>'; }).join('') : '<span class="mut">Пока нет</span>') + '</div></details>';
+    ex += '<details class="more"><summary><span class="chev">›</span> Пожертвования: ' + r.money.stars + ' зв., ' + r.money.count + ' шт.</summary><div class="card">' +
+      (r.money.last.length ? r.money.last.map(function (x) { return kv(esc(x.name || 'Аноним'), x.stars + ' зв. · ' + ago(x.created_at)); }).join('') : '<span class="mut">Пока нет</span>') + '<div class="mut" style="font-size:12px;margin-top:6px">За 30 дней: ' + r.money.stars30 + ' зв.</div></div></details>';
+    $('#pextra').innerHTML = ex;
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+}
+function renderPeople(r, append) {
+  var box = $('#plist'); if (!box) return;
+  var h = r.people.map(personRow).join('');
+  if (append) box.insertAdjacentHTML('beforeend', h); else box.innerHTML = h || '<div class="card mut">Пока никого.</div>';
+  PEOPLE.n += r.people.length;
+  $('#pmore').innerHTML = r.more ? '<button class="btn sec2" id="pm-b">Показать ещё</button>' : '';
+  if ($('#pm-b')) $('#pm-b').onclick = function () { haptic(); api('people?f=' + PEOPLE.f + '&o=' + PEOPLE.n).then(function (q) { renderPeople(q, true); }).catch(function (e) { toast(e.message); }); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-pid]'), function (el) { el.onclick = function () { haptic(); personSheet(+el.getAttribute('data-pid')); }; });
+  deEmoji(box);
+}
+var EV_RU = { watch: 'добавил в список', buy: 'записал покупку', sell: 'записал продажу', report: 'отправил сообщение об ошибке', notice: 'получил уведомление' };
+function personSheet(id) {
+  sheet('<div class="skel"></div><div class="skel" style="height:160px"></div><div class="skel"></div>');
+  api('people/' + id).then(function (c) {
+    var p = c.person, h = '<h2>' + esc(personName(p)) + '</h2><div class="sub">ID ' + p.id + ' · пришёл ' + dm(p.createdAt) + (p.seen ? ' · был ' + ago(p.seen) : '') + (p.ref ? ' · из: ' + esc(p.ref) : '') + '</div>';
+    h += '<div class="sec">Инвентарь Steam</div>';
+    if (!p.steam) h += '<div class="card mut">Steam не подключён.</div>';
+    else if (!c.inventory.items.length) h += '<div class="card mut">' + (p.invStatus === 'private' || p.invStatus === 'blocked' ? 'Инвентарь закрыт.' : 'Пока пусто.') + '</div>';
+    else {
+      h += '<div class="card" style="padding:2px 14px">' + c.inventory.items.map(function (x) { return kv(esc(x.name) + ' <span class="mut">×' + x.qty + '</span>', x.marketable ? (x.kop ? '≈ ' + uahShort(x.kop * x.qty) : '<span class="mut">нет цены</span>') : '<span class="mut">нельзя продать</span>'); }).join('') + '</div>';
+      h += '<div class="note">Итого ≈ ' + uahShort(c.inventory.totalKop) + (c.inventory.noPrice ? ' (без цены: ' + c.inventory.noPrice + ')' : '') + '. Оценка по средним продажам в Steam. Показаны самые дорогие до 40 позиций' + (c.invSyncedAt ? ', обновлено ' + ago(c.invSyncedAt) : '') + '.</div>';
+    }
+    h += '<div class="sec">Следит</div>';
+    h += c.watch.length ? '<div class="card" style="padding:2px 14px">' + c.watch.map(function (w) { return kv(esc(w.name), w.target ? 'цель ' + uahShort(w.target) : '<span class="mut">без цели</span>'); }).join('') + '</div>' : '<div class="card mut">Список пуст.</div>';
+    h += '<div class="sec">Сделки</div><div class="card">' + kv('Записано покупок', c.trades.total) + kv('Открытых', c.trades.open) + kv('Продано штук', c.trades.sold) + '</div>';
+    h += '<div class="sec">Последние действия</div>';
+    h += c.events.length ? '<div class="card" style="padding:2px 14px">' + c.events.map(function (e) { return kv(esc(EV_RU[e.k] || e.k) + (e.t && e.k !== 'notice' ? ': ' + esc(e.t) : ''), '<span class="mut">' + ago(e.at) + '</span>'); }).join('') + '</div>' : '<div class="card mut">Действий пока нет.</div>';
+    h += '<button class="btn sec2" id="pp-back">Назад к списку</button>';
+    $('#sc').innerHTML = h; deEmoji($('#sc'));
+    $('#pp-back').onclick = function () { haptic(); peopleScreen(); };
+  }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+}
 function ownerPanel() {
   sheet('<div class="skel"></div><div class="skel" style="height:200px"></div><div class="skel"></div>');
   api('owner').then(function (o) {
     var now = Date.now() / 1000, u = o.users, st = o.steam, ra = o.rally, ag = st.agent;
     var dot = function (ok) { return ok ? '🟢' : '🔴'; };
     var h = '<h2>🛠 Панель владельца</h2><div class="sub">Всё о боте в одном месте</div>';
-    h += '<div class="grid2">' + stat('Пользователей', u.total, '+' + u.d1 + ' за сутки · +' + u.d7 + ' за неделю') + stat('Пожертвования', o.money.stars + ' ⭐', o.money.count + ' шт. · ' + o.money.stars30 + ' ⭐ за 30 дн.') + '</div>';
     h += '<div class="sec">Сбор цен</div><div class="card">' +
       kv(dot(st.collectorOk && now - st.collectorOk < 45 * 60) + ' Сборщик GitHub', st.collectorOk ? ago(st.collectorOk) : 'нет данных') +
       kv((st.pauseUntil > now ? '🟡' : '🟢') + ' Steam с GitHub', st.pauseUntil > now ? 'пауза ещё ' + Math.round((st.pauseUntil - now) / 60) + ' мин (Steam ограничил)' : 'без паузы') +
@@ -2573,12 +2642,7 @@ function ownerPanel() {
       kv('Закрыто сделок', ra.closed + ' из ' + ra.need) + kv('В плюсе', ra.wins) + kv('Итог', '<span class="' + cls(ra.realizedKop) + '">' + uah(ra.realizedKop, true) + '</span>') +
       kv('Открыто сейчас', ra.open) + (ra.since ? kv('Идёт с', dateRu(ra.since)) : '') + '</div>' +
       '<button class="btn sec2" id="ow-bot">' + (ra.on ? '⏸ Остановить проверку' : '▶️ Запустить проверку') + '</button>';
-    h += '<div class="sec">Аудитория</div><div class="card">' + kv('Подключили Steam', u.steam) + kv('Со списком наблюдения', u.watchUsers + ' (' + u.watchItems + ' предметов)') + kv('Открывали «Разгон»', u.rally) +
-      kv('Канал', o.channel.connected ? esc(o.channel.title || 'подключён') + (o.channel.pending ? ' · пост ждёт картинку' : '') : 'не подключён') + kv('Копии бота (чужие)', o.copies) + '</div>';
-    if (u.refs.length) h += '<details class="more"><summary><span class="chev">›</span> Откуда пришли</summary><div class="card">' + u.refs.map(function (x) { return kv(esc(x.ref), x.n); }).join('') + '</div></details>';
-    h += '<details class="more"' + (o.feedback.length ? ' open' : '') + '><summary><span class="chev">›</span> Сообщения об ошибках (' + o.feedback.length + ')</summary><div class="card" style="font-size:13px">' +
-      (o.feedback.length ? o.feedback.map(function (f) { return '<div style="padding:6px 0;border-bottom:1px solid var(--sep)"><b>' + esc(f.item || 'без предмета') + '</b> · ' + esc((REASONS.filter(function (x) { return x[0] === f.reason; })[0] || [0, f.reason])[1]) + ' · ' + ago(f.created_at) + (f.comment ? '<div>' + esc(f.comment) + '</div>' : '') + '<div class="mut">от ' + f.telegram_id + (f.context ? ' · ' + esc(f.context) : '') + '</div></div>'; }).join('') : '<span class="mut">Пока нет</span>') + '</div></details>';
-    if (o.money.last.length) h += '<details class="more"><summary><span class="chev">›</span> Последние пожертвования</summary><div class="card">' + o.money.last.map(function (x) { return kv(esc(x.name || 'Аноним'), x.stars + ' ⭐ · ' + ago(x.created_at)); }).join('') + '</div></details>';
+    h += '<div class="sec">Канал и копии</div><div class="card">' + kv('Канал', o.channel.connected ? esc(o.channel.title || 'подключён') + (o.channel.pending ? ' · пост ждёт картинку' : '') : 'не подключён') + kv('Копии бота (чужие)', o.copies) + '</div>';
     h += '<details class="more"' + (o.jobs.length || o.errors.length ? '' : '') + '><summary><span class="chev">›</span> Ошибки и задачи (' + (o.jobs.length + o.errors.length) + ')</summary><div class="card" style="font-size:13px">' +
       o.jobs.map(function (j) { return kv((j.enabled ? '🟡 ' : '🔴 ') + esc(j.name), (j.enabled ? 'сбоев ' + j.fails : 'выключена') + (j.error ? '<div class="mut" style="font-size:12px;font-weight:400;white-space:normal">' + esc(String(j.error).slice(0, 120)) + '</div>' : '')); }).join('') +
       o.errors.map(function (e) { return '<div style="padding:5px 0;border-bottom:1px solid var(--sep)"><span class="mut">' + ago(e.at) + ' · ' + esc(e.source || '') + '</span><div>' + esc(String(e.message).slice(0, 160)) + '</div></div>'; }).join('') +
@@ -2680,12 +2744,13 @@ function more() {
     row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
     row('m-talk', '✉️', 'Связь с автором', 'Канал, предложить пост, сообщить об ошибке, поддержать') + '</div>' +
-    (state.isAdmin ? '<div class="grp">' + row('m-own', '🛠', 'Для владельца', 'Панель, состояние системы') + '</div>' : '') +
+    (state.isAdmin ? '<div class="grp">' + row('m-people', '', 'Люди', 'Кто пользуется, что у них в инвентаре, что делают') + row('m-own', '🛠', 'Для владельца', 'Состояние системы, сбор цен, ошибки') + '</div>' : '') +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте, пересчёт по курсу НБУ.</div>';
   var menu = function (items) {
     sheet('<div class="list-s">' + items.map(function (x, i) { return '<div class="row" data-mm="' + i + '"><div class="ic">' + x[0] + '</div><div class="m"><div class="n">' + x[1] + '</div><div class="d">' + x[2] + '</div></div><div class="mut">›</div></div>'; }).join('') + '</div>');
     Array.prototype.forEach.call(document.querySelectorAll('[data-mm]'), function (el) { el.onclick = function () { haptic(); items[+el.getAttribute('data-mm')][3](); }; });
   };
+  if ($('#m-people')) $('#m-people').onclick = function () { haptic(); peopleScreen(); };
   if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🏠', 'Домашний агент', 'Цены Steam с твоего компьютера, пока он включён', agentSheet], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
   $('#m-invite').onclick = function () { haptic(); inviteFriend(); };

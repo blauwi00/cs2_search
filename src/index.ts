@@ -8,6 +8,14 @@ import { handleChart } from './chart.ts';
 import { handleIngest } from './ingest.ts';
 import { handleAppApi } from './webapp/api.ts';
 import APP_HTML from './webapp/app.html';
+let etag: string | null = null;
+/** Отпечаток версии приложения (меняется с каждой выкладкой) — для кэша браузера. */
+function appEtag(): string {
+  if (etag) return etag;
+  let h = 5381;
+  for (let i = 0; i < APP_HTML.length; i++) h = ((h << 5) + h + APP_HTML.charCodeAt(i)) | 0;
+  return (etag = `"a${(h >>> 0).toString(36)}-${APP_HTML.length.toString(36)}"`);
+}
 import { handleCard } from './card.ts';
 import { handleImgProxy } from './imgproxy.ts';
 import { FINGERPRINT, OFFICIAL_HOST, recordCopy, rememberSelfHost } from './core/origin.ts';
@@ -31,7 +39,9 @@ export default {
     if (url.pathname.startsWith('/admin/')) return handleAdmin(req, env, nowSec());
     if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest') return handleIngest(req, env, nowSec());
     if (url.pathname === '/app' && req.method === 'GET') {
-      return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
+      // ETag: при повторном открытии телефон получает «не изменилось» (304) вместо 300 КБ — приложение открывается быстрее.
+      if (req.headers.get('If-None-Match') === appEtag()) return new Response(null, { status: 304, headers: { ETag: appEtag(), 'Cache-Control': 'no-cache' } });
+      return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: appEtag(), 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
     }
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
     if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());

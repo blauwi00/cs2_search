@@ -228,8 +228,8 @@ html.th .toast{background:var(--card);color:var(--text);border:1px solid color-m
 /* «Сотворение Адама» с перчаткой CS2: руки выезжают из-за краёв и тянутся к радару, пальцы — к его краю. Чёрный фон картинки растворяется (screen). */
 #splash .rad{position:relative;width:120px;height:120px}
 #splash .hd{position:absolute;height:100px;width:auto;mix-blend-mode:screen;pointer-events:none}
-#splash .hl{right:calc(100% + 2px);top:20px;animation:hdl 1s .05s cubic-bezier(.16,.84,.3,1) both}
-#splash .hr{left:calc(100% + 2px);top:29px;animation:hdr 1s .05s cubic-bezier(.16,.84,.3,1) both}
+#splash .hl{right:calc(100% + 2px);top:20px;animation:hdl .85s 0s cubic-bezier(.16,.84,.3,1) both}
+#splash .hr{left:calc(100% + 2px);top:29px;animation:hdr .85s 0s cubic-bezier(.16,.84,.3,1) both}
 @keyframes hdl{from{transform:translateX(-60vw);opacity:0}30%{opacity:1}to{transform:none;opacity:1}}
 @keyframes hdr{from{transform:translateX(60vw);opacity:0}30%{opacity:1}to{transform:none;opacity:1}}
 #splash .nm{font-size:34px;font-weight:900;letter-spacing:-1px;animation:lgi .9s .25s cubic-bezier(.2,.9,.25,1) both}
@@ -286,10 +286,10 @@ html.gold #view.enter .row:nth-of-type(2){animation-delay:.06s}html.gold #view.e
 #fx{display:none}
 html.gold #fx{display:block;position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 html.gold #view,html.gold .top{position:relative;z-index:1}html.gold .top{position:sticky}
-#fx .fl{position:absolute;opacity:.34;filter:drop-shadow(0 10px 18px rgba(0,0,0,.7)) saturate(1.1);transition:transform .25s ease-out;will-change:transform}
+#fx .fl{position:absolute;opacity:.34;transition:transform .25s ease-out;will-change:transform}
 #fx .fl img{width:100%;display:block;animation:flt var(--d,9s) ease-in-out infinite alternate}
 @keyframes flt{from{transform:translateY(-10px) rotate(var(--r0,-8deg))}to{transform:translateY(12px) rotate(var(--r1,6deg))}}
-#fx i{position:absolute;bottom:-10px;width:3px;height:3px;border-radius:50%;background:var(--gold2);box-shadow:0 0 6px var(--gold);opacity:0;animation:dust var(--d,12s) linear infinite;animation-delay:var(--dl,0s)}
+#fx i{position:absolute;bottom:-10px;width:3px;height:3px;border-radius:50%;background:var(--gold2);opacity:0;animation:dust var(--d,12s) linear infinite;animation-delay:var(--dl,0s)}
 @keyframes dust{0%{opacity:0;transform:translate(0,0)}10%{opacity:.8}90%{opacity:.6}100%{opacity:0;transform:translate(var(--dx,20px),-105vh)}}
 /* Главная «Золото»: сводка в две колонки, лучшая сделка с бегущим бликом по рамке и искрами, быстрые плитки */
 .gsum{display:grid;grid-template-columns:1.15fr 1fr;border-radius:20px;padding:16px 4px;margin:4px 0 12px;background:linear-gradient(180deg,#161616,#0e0e0e);border:1px solid rgba(255,255,255,.06);cursor:pointer}
@@ -300,9 +300,10 @@ html.gold #view,html.gold .top{position:relative;z-index:1}html.gold .top{positi
 @keyframes gup{0%,100%{transform:none}50%{transform:translate(2px,-3px)}}
 .gsum .p{font-size:44px;font-weight:900;letter-spacing:-1px;color:#8fd16a;margin-top:12px;text-shadow:0 0 22px rgba(143,209,106,.35)}
 .gbest{position:relative;border-radius:20px;padding:2px;margin:0 0 12px;cursor:pointer;isolation:isolate;overflow:hidden}
-.gbest:before{content:"";position:absolute;inset:-60%;z-index:-2;background:conic-gradient(from 0deg,rgba(231,178,76,.15),var(--gold2) 8%,rgba(231,178,76,.15) 18%,rgba(231,178,76,.15) 50%,var(--gold) 58%,rgba(231,178,76,.15) 68%);animation:gspin 4.5s linear infinite}
+.gbest:before{content:"";position:absolute;left:50%;top:50%;width:150%;aspect-ratio:1;margin:-75% 0 0 -75%;will-change:transform;z-index:-2;background:conic-gradient(from 0deg,rgba(231,178,76,.15),var(--gold2) 8%,rgba(231,178,76,.15) 18%,rgba(231,178,76,.15) 50%,var(--gold) 58%,rgba(231,178,76,.15) 68%);animation:gspin 4.5s linear infinite}
 .gbest:after{content:"";position:absolute;inset:2px;z-index:-1;border-radius:18px;background:linear-gradient(160deg,#1b1610,#0e0e0e 55%)}
 @keyframes gspin{to{transform:rotate(360deg)}}
+html.paused *,html.paused *:before,html.paused *:after{animation-play-state:paused!important}
 .gbest .in{padding:14px 14px 12px}
 .gbest .cr{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--gold2),var(--gold3));color:#1a1305;font-weight:800;font-size:13px;border-radius:999px;padding:4px 11px}
 .gbest .bd{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;align-items:center;margin-top:10px}
@@ -833,7 +834,7 @@ function fxDecor(imgs) {
   fx._n = list.length;
   var slots = [[-7, 9, 120, .9], [74, 6, 112, .6], [-9, 38, 104, .7], [80, 34, 118, 1], [-5, 64, 110, .8], [77, 62, 100, .5], [28, 84, 92, .4]];
   var h = list.map(function (src, i) { var p = slots[i]; return '<div class="fl" data-k="' + p[3] + '" style="left:' + p[0] + '%;top:' + p[1] + '%;width:' + p[2] + 'px;--d:' + (7 + i * 1.3) + 's;--r0:' + (-12 + i * 3) + 'deg;--r1:' + (8 - i * 2) + 'deg"><img src="' + esc(src) + '" alt=""></div>'; }).join('');
-  for (var i = 0; i < 16; i++) h += '<i style="left:' + ((i * 37) % 100) + '%;--d:' + (9 + (i * 7) % 9) + 's;--dl:' + (-(i * 1.7) % 12) + 's;--dx:' + (((i % 5) - 2) * 18) + 'px"></i>';
+  for (var i = 0; i < 10; i++) h += '<i style="left:' + ((i * 37) % 100) + '%;--d:' + (9 + (i * 7) % 9) + 's;--dl:' + (-(i * 1.7) % 12) + 's;--dx:' + (((i % 5) - 2) * 18) + 'px"></i>';
   fx.innerHTML = h;
   if (!fx._tilt) {
     fx._tilt = true;
@@ -919,6 +920,7 @@ function deEmoji(root) {
   ['#view', '#sc', '#toast'].forEach(function (q) { var el = $(q); if (el) mo.observe(el, { childList: true, subtree: true, characterData: true }); });
   var bb = $('#balbtn'); if (bb) mo.observe(bb, { childList: true, subtree: true });
 })();
+document.addEventListener('visibilitychange', function () { document.documentElement.classList.toggle('paused', document.hidden); });
 // «Золото»: волна от пальца на кнопках и плитках.
 document.addEventListener('pointerdown', function (e) {
   if (THEME !== 'gold') return;
@@ -2521,7 +2523,7 @@ loading(3);
   if (!sp || seen || THEME === 'tg' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
   sp.style.display = '';
   var hide = function () { sp.classList.add('out'); setTimeout(function () { sp.style.display = 'none'; }, 480); };
-  sp.onclick = hide; setTimeout(hide, 1800); // руки дотягиваются за ~1 с — даём полсекунды полюбоваться
+  sp.onclick = hide; setTimeout(hide, 1150); // руки дотягиваются за ~1 с
 })();
 renderBal(); refreshBal();
 api('terms').then(function (t) { if (t.accepted && !t.onboarded) onboarding(first); else if (t.accepted) { go(first); if (first !== 'home') refreshTicker(); } else termsGate(t, first); }).catch(function () { go(first); });

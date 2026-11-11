@@ -33,7 +33,7 @@ test('импорт со Skinport: только владельцу; сопост�
   assert.equal(r.items.length, 21);
   assert.equal(r.items[0].name, 'Dreams & Nightmares Case');
   assert.equal(r.items.find((x: any) => /Marsh/.test(x.text)).name, 'P2000 | Marsh (Field-Tested)', 'износ взят из инвентаря');
-  assert.equal(r.items[1].name, null, 'Kitbash нет в инвентаре — выбрать вручную');
+  assert.equal(r.items[1].name, 'MP5-SD | Kitbash (Field-Tested)', 'Kitbash нет в инвентаре (уже на Skinport) — берём название со скриншота');
   const b = await call(ADMIN, 'sales/batch', 'POST', { rows: [{ name: 'Dreams & Nightmares Case', qty: 1, receivedKop: 3500, platform: 'skinport', buyKop: 0, pending: true }] });
   assert.equal(b.sold, 1);
   assert.equal((await call(ADMIN, 'trades')).pending.length, 1);

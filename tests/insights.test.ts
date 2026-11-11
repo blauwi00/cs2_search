@@ -86,13 +86,13 @@ test('обновления CS2: первые новости только зап�
   await db.storeFx(D, [EUR, USD], DAY1);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 1 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
   await runCycle(env, { now: DAY1, fetcher });
   await runCycle(env, { now: DAY1 + 400, fetcher });
   await runCycle(env, { now: DAY1 + 800, fetcher });
-  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   const newsPosts = posts.filter((p) => /Обновление CS2/.test(p.body.text));
   assert.equal(newsPosts.length, 1, 'новость — один раз');
   assert.match(newsPosts[0].body.text, /Обновление Counter-Strike 2/);
@@ -123,16 +123,17 @@ test('картинки в канале: обложка новости из Steam
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 1 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
   await runCycle(env, { now: DAY1, fetcher });
   await runCycle(env, { now: DAY1 + 400, fetcher });
-  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   const n = posts.find((s) => /Обновление CS2/.test(s.body.text))!;
-  assert.deepEqual(n.body.link_preview_options, { url: 'https://clan.akamai.steamstatic.com/images/1/cover.jpg', prefer_large_media: true, show_above_text: true });
+  assert.equal(n.method, 'sendPhoto');
+  assert.equal(n.body.photo, 'https://clan.akamai.steamstatic.com/images/1/cover.jpg');
   const idea = posts.find((s) => /Рекомендации дня/.test(s.body.text));
-  if (idea) assert.equal(idea.body.link_preview_options.url, img);
+  if (idea) assert.equal(idea.body.photo, img);
   const admin = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id !== -1001234);
   if (admin) assert.deepEqual(admin.body.link_preview_options, { is_disabled: true });
 });
@@ -149,7 +150,7 @@ test('обновление CS2 вышло по-английски (перево�
   await db.storeFx(D, [EUR, USD], DAY1);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 1 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
   await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`);
@@ -159,7 +160,7 @@ test('обновление CS2 вышло по-английски (перево�
   await runCycle(env, { now: DAY1 + 300, fetcher });
   await ingest(env, { kind: 'news_ru', gid: '5', titleRu: 'Обновление Counter-Strike 2', summary: { market: [], sections: [{ name: 'Геймплей', items: ['Исправлена ошибка с гранатами'] }], more: 0 } }, DAY1 + 600);
   for (const t of [DAY1 + 700, DAY1 + 1100, DAY1 + 1500]) { await d.db.exec(`UPDATE scheduler_jobs SET next_run_at = 0 WHERE name = 'channel'`); await runCycle(env, { now: t, fetcher }); }
-  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234 && /Обновление CS2/.test(s.body.text));
+  const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234 && /Обновление CS2/.test(s.body.text));
   assert.equal(posts.length, 1, 'новый пост не пишется');
   assert.doesNotMatch(posts[0].body.text, /Геймплей/);
   const edits = sent.filter((s) => s.method === 'editMessageText' && s.body.chat_id === -1001234);
@@ -180,7 +181,7 @@ test('владелец пересылает боту старый пост из 
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 9 } }); } },
   ]);
   const fwd = { update_id: 1, message: { message_id: 50, date: DAY1, from: { id: ADMIN, is_bot: false, first_name: 'A' }, chat: { id: ADMIN, type: 'private' }, text: 'Counter-Strike 2 Update', forward_origin: { type: 'channel', chat: { id: -1001234, type: 'channel' }, message_id: 77, date: DAY1 } } };
   await handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify(fwd) }), env, DAY1 + 100, fetcher);
@@ -195,7 +196,7 @@ test('владелец пересылает боту старый пост из 
   assert.equal(edits.length, 1);
   assert.equal(edits[0].body.message_id, 77);
   assert.match(edits[0].body.text, /Mirage/);
-  assert.equal(sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234).length, 0, 'нового поста нет');
+  assert.equal(sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234).length, 0, 'нового поста нет');
 });
 
 test('владелец не может переслать пост — присылает ссылку на него, бот исправляет этот пост', async () => {
@@ -208,7 +209,7 @@ test('владелец не может переслать пост — прис�
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 9 } }); } },
   ]);
   const msg = (text: string, from = ADMIN) => handleWebhook(new Request('https://x/telegram', { method: 'POST', headers: { 'X-Telegram-Bot-Api-Secret-Token': env.TELEGRAM_WEBHOOK_SECRET }, body: JSON.stringify({ update_id: 1, message: { message_id: 1, from: { id: from }, chat: { id: from, type: 'private' }, text } }) }), env, DAY1 + 100, fetcher);
   await msg('https://t.me/c/1234/42', 555);

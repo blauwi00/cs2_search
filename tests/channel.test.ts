@@ -81,7 +81,7 @@ test('канал: /channel проверяет права бота, публик�
   // Картинку никто не нарисовал (сборщика в тесте нет) — пост уходит без неё через 25 минут.
   await runCycle(env, { now: AT10 + 26 * 60, fetcher });
   await runCycle(env, { now: AT10 + 34 * 60, fetcher });
-  const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один пост за слот');
   assert.match(posts[0].body.text, /Рекомендации дня/);
 });
@@ -128,10 +128,10 @@ test('картинка поста: Worker заказывает её у сбор�
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
-    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 1 } }); } },
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: (() => { const b = JSON.parse(String(init?.body)); if (b.caption !== undefined && b.text === undefined) b.text = b.caption; return b; })() }); return json({ ok: true, result: { message_id: 1 } }); } },
     { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
   ]);
-  const posts = () => sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
+  const posts = () => sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   await runCycle(env, { now: AT10, fetcher });
   await runCycle(env, { now: AT10 + 120, fetcher });
   assert.equal(posts().length, 0, 'ждём картинку');
@@ -143,7 +143,8 @@ test('картинка поста: Worker заказывает её у сбор�
   assert.equal(up.status, 200);
   await runCycle(env, { now: AT10 + 450, fetcher });
   assert.equal(posts().length, 1);
-  assert.equal(posts()[0].body.link_preview_options.url, `https://cs2.example.dev/card/ideas-2026-11-04.jpg?v=${AT10 + 300}`);
+  assert.equal(posts()[0].method, 'sendPhoto', 'картинка — настоящее фото, а не ссылка с превью');
+  assert.equal(posts()[0].body.photo, `https://cs2.example.dev/card/ideas-2026-11-04.jpg?v=${AT10 + 300}`);
   const img = await handleCard(new URL('https://cs2.example.dev/card/ideas-2026-11-04.jpg'), env);
   assert.equal(img.headers.get('Content-Type'), 'image/jpeg');
   assert.equal((await handleCard(new URL('https://x/card/../../etc.jpg'), env)).status, 404);
@@ -156,5 +157,32 @@ test('картинка поста: Worker заказывает её у сбор�
   await runCycle(env, { now: AT15 + 28 * 60, fetcher });
   await runCycle(env, { now: AT15 + 34 * 60, fetcher });
   const tr = posts().find((p) => /Растут в цене/.test(p.body.text));
-  if (tr) assert.notEqual(tr.body.link_preview_options?.url?.includes('/card/'), true);
+  if (tr) assert.notEqual(String(tr.body.photo ?? tr.body.link_preview_options?.url ?? '').includes('/card/'), true);
+});
+
+test('пост с картинкой: фото с подписью; длинный текст — фото и затем текст; фото не скачалось — прежний вариант с превью', async () => {
+  const calls: { method: string; body: Record<string, any> }[] = [];
+  let failPhoto = false;
+  const fetcher = (async (url: string, init?: RequestInit) => {
+    const method = String(url).split('/').pop()!; const body = JSON.parse(String(init?.body ?? '{}'));
+    calls.push({ method, body });
+    if (method === 'sendPhoto' && failPhoto) return new Response(JSON.stringify({ ok: false, description: 'Bad Request: wrong type of the web page content' }), { status: 400 });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }));
+  }) as unknown as typeof fetch;
+  const { TelegramClient } = await import('../src/telegram/api.ts');
+  const tg = new TelegramClient('T', fetcher);
+  await tg.sendPost(1, 'коротко', [[{ text: 'Открыть', url: 'https://t.me/x' }]], 'https://i/x.jpg');
+  assert.deepEqual(calls.map((c) => c.method), ['sendPhoto']);
+  assert.equal(calls[0]!.body.caption, 'коротко'); assert.ok(calls[0]!.body.reply_markup);
+  calls.length = 0;
+  await tg.sendPost(1, 'я'.repeat(1500), undefined, 'https://i/x.jpg');
+  assert.deepEqual(calls.map((c) => c.method), ['sendPhoto', 'sendMessage'], 'длиннее 1024 — фото, потом текст');
+  assert.equal(calls[0]!.body.caption, undefined);
+  calls.length = 0; failPhoto = true;
+  await tg.sendPost(1, 'коротко', undefined, 'https://i/x.jpg');
+  assert.deepEqual(calls.map((c) => c.method), ['sendPhoto', 'sendMessage']);
+  assert.equal(calls[1]!.body.link_preview_options.url, 'https://i/x.jpg');
+  calls.length = 0;
+  await tg.sendPost(1, 'без картинки', undefined, null);
+  assert.deepEqual(calls.map((c) => c.method), ['sendMessage']);
 });

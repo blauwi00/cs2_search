@@ -817,7 +817,7 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     if (!spendExternal(ctx)) return false;
     try {
       // Под каждым постом — ещё и «Предложить пост» (предложка канала).
-      const m = await ctx.tg.sendMessage(Number(chat), text, [...kb, ...(user ? [[{ text: '💡 Предложить пост', url: `https://t.me/${user}?start=suggest` }]] : [])], image);
+      const m = await ctx.tg.sendPost(Number(chat), text, [...kb, ...(user ? [[{ text: '💡 Предложить пост', url: `https://t.me/${user}?start=suggest` }]] : [])], image);
       bump(ctx, 'channel_posts');
       return m?.message_id ?? 0;
     } catch (e) {

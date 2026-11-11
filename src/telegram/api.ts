@@ -49,6 +49,22 @@ export class TelegramClient {
     });
   }
 
+  /**
+   * Пост канала: настоящая картинка (фото), а не ссылка с превью. Подпись у фото — до 1024 символов; если текст длиннее,
+   * сначала уходит фото, затем текст с кнопками отдельным сообщением. Не получилось скачать картинку по адресу — старый вариант (превью ссылки).
+   */
+  async sendPost(chatId: number, text: string, keyboard: Keyboard | undefined, image: string | null): Promise<{ message_id: number }> {
+    if (!image) return this.sendMessage(chatId, text, keyboard, null);
+    try {
+      if (text.length <= 1024) return await this.sendPhoto(chatId, image, text, keyboard);
+      await this.call('sendPhoto', { chat_id: chatId, photo: image });
+      return await this.sendMessage(chatId, text, keyboard, null);
+    } catch (e) {
+      if (/Forbidden|not enough rights|chat not found|kicked/i.test((e as Error).message)) throw e;
+      return this.sendMessage(chatId, text, keyboard, image);
+    }
+  }
+
   /** Фото по file_id (уже лежит в Telegram) с подписью до 1024 символов. */
   sendPhoto(chatId: number, photo: string, caption: string, keyboard?: Keyboard): Promise<{ message_id: number }> {
     return this.call('sendPhoto', { chat_id: chatId, photo, caption, parse_mode: 'HTML', ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) });
@@ -62,8 +78,14 @@ export class TelegramClient {
         ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
       });
     } catch (e) {
+      const m = String((e as Error).message);
+      // Пост-фото: у него не текст, а подпись.
+      if (m.includes('no text in the message')) {
+        try { await this.call('editMessageCaption', { chat_id: chatId, message_id: messageId, caption: text, parse_mode: 'HTML', ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}) }); return; }
+        catch (e2) { if (String((e2 as Error).message).includes('not modified')) return; throw e2; }
+      }
       // "message is not modified" — не ошибка.
-      if (!String((e as Error).message).includes('not modified')) throw e;
+      if (!m.includes('not modified')) throw e;
     }
   }
 

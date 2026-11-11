@@ -22,9 +22,14 @@ export async function jobHistory(ctx: Ctx): Promise<{ wrote: boolean }> {
         FROM steam_inventory v JOIN steam_avg a ON a.item_id = v.item_id
         WHERE v.marketable = 1 AND COALESCE(a.d1, a.d7) > 0 AND a.updated_at >= ?)
       SELECT t, ?, CAST(SUM(u * q) AS INTEGER), json_group_object(CAST(i AS TEXT), json_array(u, q)) FILTER (WHERE rn <= ${TOP_ITEMS}) FROM r GROUP BY t`).bind(fresh, day),
+    // Цены площадок на сегодня + реальная средняя продаж Steam за сутки (из открытого прайса) — по одной строке на отслеживаемый скин.
     d.prepare(`INSERT OR REPLACE INTO site_price_daily (item_id, day, json)
-      SELECT i.id, ?, sp.json FROM site_prices sp JOIN items i ON i.market_hash_name = sp.name
-      WHERE sp.updated_at >= ? AND i.id IN (SELECT item_id FROM steam_inventory UNION SELECT item_id FROM watchlist WHERE active = 1 UNION SELECT item_id FROM trades WHERE quantity > sold_quantity UNION SELECT item_id FROM item_views WHERE at >= ?)`).bind(day, fresh, ctx.now - 30 * 86400),
+      SELECT i.id, ?, CASE WHEN a.d1 > 0 THEN json_set(COALESCE(sp.json, '{}'), '$.steamavg', a.d1) ELSE sp.json END
+      FROM items i
+      LEFT JOIN site_prices sp ON sp.name = i.market_hash_name AND sp.updated_at >= ?
+      LEFT JOIN steam_avg a ON a.item_id = i.id AND a.updated_at >= ?
+      WHERE i.id IN (SELECT item_id FROM steam_inventory UNION SELECT item_id FROM watchlist WHERE active = 1 UNION SELECT item_id FROM trades WHERE quantity > sold_quantity UNION SELECT item_id FROM item_views WHERE at >= ?)
+        AND (sp.json IS NOT NULL OR a.d1 > 0)`).bind(day, fresh, fresh, ctx.now - 30 * 86400),
     setMetaStmt(d, 'hist_day', day),
   ]);
   return { wrote: true };

@@ -762,16 +762,16 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         return bad('not_found', 404);
       }
       await d.prepare('INSERT INTO item_views (item_id, at) VALUES (?, ?) ON CONFLICT(item_id) DO UPDATE SET at = excluded.at').bind(itemId, now).run();
-      const days = [7, 30].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 7;
+      const days = [7, 30, 90].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 7;
       const [quotes, rows, s] = await Promise.all([
         db.getQuotes(d, itemId),
         d.prepare(`SELECT source, price_type, observed_at, price_kop FROM price_snapshots WHERE item_id = ? AND observed_at >= ?
           AND ((source = 'steam' AND price_type IN ('lowest_listing','median_24h')) OR (source = 'skinport' AND price_type = 'lowest_listing'))
-          ORDER BY observed_at LIMIT 3000`).bind(itemId, now - days * 86400).all<{ source: string; price_type: string; observed_at: number; price_kop: number | null }>(),
+          ORDER BY observed_at DESC LIMIT 3000`).bind(itemId, now - days * 86400).all<{ source: string; price_type: string; observed_at: number; price_kop: number | null }>(),
         db.getSettings(d, tid),
       ]);
       const g = (src: string, t: string) => quotes.find((x) => x.source === src && x.price_type === t) ?? null;
-      const ser = (src: string, t: string) => rows.results.filter((r) => r.source === src && r.price_type === t).map((r) => ({ t: r.observed_at, v: r.price_kop }));
+      const ser = (src: string, t: string) => rows.results.filter((r) => r.source === src && r.price_type === t).map((r) => ({ t: r.observed_at, v: r.price_kop })).reverse();
       const p = parseMarketHashName(item.market_hash_name);
       const liq = classifyLiquidity({ steamSales24h: g('steam', 'median_24h')?.volume ?? null, skinportSales7d: g('skinport', 'sale_median_7d')?.volume ?? null, activeListings: null });
       const st = stats(ser('steam', 'lowest_listing').map((x) => ({ at: x.t, minor: x.v, currency: 'UAH', volume: null })));
@@ -785,11 +785,6 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const sa = (await steamAvgFor(d, [itemId])).get(itemId) ?? null;
       const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
       const conv = (c: number | null) => (c && usd ? toKop(c, 'USD', usd) : null);
-      // Средние продажи Steam за 90/30/7/1 дней есть у любого предмета — даёт линию сразу, даже без накопленной истории (точка — середина периода).
-      const avgPts: { t: number; v: number }[] = [];
-      if (sa) for (const [c, back] of [[sa.d90, 45], [sa.d30, 15], [sa.d7, 3.5], [sa.d1, 0.5]] as [number | null, number][]) {
-        const v = conv(c); if (v && now - back * 86400 >= now - days * 86400) avgPts.push({ t: Math.floor(now - back * 86400), v });
-      }
       const steamAvg = sa && (sa.d1 || sa.d7 || sa.d30) ? { d1: conv(sa.d1), d7: conv(sa.d7), d30: conv(sa.d30), d90: conv(sa.d90), at: sa.updated_at } : null;
       // Цены на других площадках — суточные точки с момента, как бот начал их копить (раньше истории нет, не выдумываем).
       const siteRows = (await d.prepare('SELECT day, json FROM site_price_daily WHERE item_id = ? AND day >= ? ORDER BY day LIMIT 100').bind(itemId, new Date((now - days * 86400) * 1000).toISOString().slice(0, 10)).all<{ day: string; json: string }>()).results;
@@ -797,7 +792,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       for (const r of siteRows) {
         let o: Record<string, number> = {};
         try { o = JSON.parse(r.json); } catch { continue; }
-        for (const key of ['csgomarket', 'waxpeer', 'lisskins', 'csfloat']) {
+        for (const key of ['csgomarket', 'waxpeer', 'lisskins', 'csfloat', 'steamavg']) {
           const v = o[key] && usd ? toKop(o[key]!, 'USD', usd) : null;
           if (v) (siteSeries[key] ??= []).push({ t: Math.floor(Date.parse(r.day + 'T12:00:00Z') / 1000), v });
         }
@@ -809,7 +804,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         item: { id: item.id, name: item.market_hash_name, img: (await imagesFor(d, [item.market_hash_name])).get(item.market_hash_name) ?? null, category: p.category, categoryRu: CATEGORY_RU[p.category], stattrak: p.stattrak, souvenir: p.souvenir, uniquePriced: p.uniquePriced },
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
-        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing'), ...siteSeries, ...(avgPts.length ? { steamAvg: avgPts } : {}) }, sitesSince,
+        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing'), ...siteSeries }, sitesSince,
         stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7, steamAvg,
         backtest: bt, links: { steam: steamListingUrl(item.market_hash_name), skinport: safeLink(g('skinport', 'lowest_listing')?.url) },
       });

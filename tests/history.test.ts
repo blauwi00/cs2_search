@@ -22,7 +22,8 @@ test('запись раз в сутки вечером: стоимость ин�
   assert.equal(rows[0]!.total_usd_c, 3000);
   assert.deepEqual(parseTop(rows[0]!.top), { '1': [100, 10], '2': [2000, 1] });
   const sp = d.db.prepare('SELECT item_id, json FROM site_price_daily').all() as { item_id: number; json: string }[];
-  assert.deepEqual(sp.map((x) => x.item_id), [1], 'только предметы из инвентарей и наблюдений');
+  assert.deepEqual(sp.map((x) => x.item_id), [1, 2], 'только предметы из инвентарей и наблюдений (с ценой площадок или средней Steam)');
+  assert.deepEqual(JSON.parse(sp[0]!.json), { waxpeer: 95, steamavg: 100 }, 'реальная средняя продаж Steam за сутки сохраняется рядом с ценами площадок');
   cleanupHistoryStmts(D, now + 200 * 86400).forEach((s) => (s as unknown as { run: () => unknown }).run());
   assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM inv_value_daily').get() as { n: number }).n, 0, 'старше 120 дней удаляется');
 });

@@ -1275,16 +1275,73 @@ function bindSearch(input, out, onPick, mark) {
 // График цены сразу в окне скина (без отдельной кнопки): 7/30 дней, все площадки, что накопились.
 // Под названием скина — сразу график и цены на площадках (в любом окне скина, без кнопок).
 function skinTop() { return '<div id="icbox"><div class="skel" style="height:190px"></div></div>' + pricesBoxHtml(); }
-function skinRun(name) { inlineChart(name, 30); loadPrices(name); }
-function inlineChart(name, days) {
-  var box = $('#icbox'); if (!box) return;
-  days = days || 30;
-  api('item/name?n=' + encodeURIComponent(name) + '&days=' + days).then(function (r) {
-    box = $('#icbox'); if (!box) return;
-    box.innerHTML = '<div class="seg" id="icd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>' +
-      '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>' +
-      '<div class="note">Steam и Skinport — история с момента запуска. Остальные площадки — по одной точке в сутки, копятся ' + (r.sitesSince ? 'с ' + r.sitesSince.slice(8) + '.' + r.sitesSince.slice(5, 7) : 'с этого вечера') + '.</div>';
-    Array.prototype.forEach.call(document.querySelectorAll('#icd button'), function (b) { b.onclick = function () { haptic(); inlineChart(name, +b.getAttribute('data-d')); }; });
+function skinRun(name) { inlineChart(name); loadPrices(name); }
+var CH = null;
+function chartClamp() {
+  var DAY = 86400, now = CH.now, span = CH.to - CH.from;
+  span = Math.min(90 * DAY, Math.max(6 * 3600, span));
+  var to = Math.min(now, CH.to), from = to - span;
+  if (from < now - 90 * DAY) { from = now - 90 * DAY; to = from + span; }
+  CH.from = from; CH.to = to;
+}
+function chartDraw() {
+  CH.raf = 0; var el = $('#icplot'); if (!el || !CH) return;
+  el.innerHTML = '<div class="card">' + chart(CH.series, CH.from, CH.to, CH.avg) + '</div>';
+}
+function chartSoon() { if (CH && !CH.raf) CH.raf = requestAnimationFrame(chartDraw); }
+// Жесты: двумя пальцами — масштаб, одним — листание, двойной тап — сброс; колесо мыши — масштаб (компьютер).
+function bindChartGestures(el) {
+  var ptrs = {}, tapAt = 0, tapX = 0, tapY = 0, moved = 0;
+  function count() { var n = 0; for (var k in ptrs) if (ptrs.hasOwnProperty(k)) n++; return n; }
+  function swipes(on) { try { if (tg) { if (on && tg.enableVerticalSwipes) tg.enableVerticalSwipes(); if (!on && tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } } catch (e) {} }
+  function zoomAt(frac, factor) {
+    var span = CH.to - CH.from, t0 = CH.from + frac * span, ns = span * factor;
+    CH.from = t0 - frac * ns; CH.to = CH.from + ns; chartClamp(); chartSoon();
+  }
+  el.addEventListener('pointerdown', function (e) {
+    if (!CH) return;
+    ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; moved = 0;
+    try { el.setPointerCapture(e.pointerId); } catch (er) {}
+    swipes(false);
+    if (count() === 1) {
+      var now = Date.now();
+      if (now - tapAt < 320 && Math.abs(e.clientX - tapX) < 24 && Math.abs(e.clientY - tapY) < 24) { CH.to = CH.now; CH.from = CH.now - 30 * 86400; chartSoon(); tapAt = 0; }
+      else { tapAt = now; tapX = e.clientX; tapY = e.clientY; }
+    }
+  });
+  el.addEventListener('pointermove', function (e) {
+    var old = ptrs[e.pointerId]; if (!old || !CH) return;
+    var rect = el.getBoundingClientRect(), w = Math.max(1, rect.width * (340 - 44 - 6) / 340), n = count();
+    if (n === 1) {
+      var dx = e.clientX - old.x, span = CH.to - CH.from; moved += Math.abs(dx);
+      if (moved > 6) tapAt = 0;
+      CH.from -= dx / w * span; CH.to -= dx / w * span; chartClamp(); chartSoon();
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    } else if (n === 2) {
+      var other = null; for (var k in ptrs) if (ptrs.hasOwnProperty(k) && +k !== e.pointerId) other = ptrs[k];
+      var d0 = Math.abs(old.x - other.x) + 1, d1 = Math.abs(e.clientX - other.x) + 1;
+      var mid = (e.clientX + other.x) / 2, frac = Math.max(0, Math.min(1, (mid - rect.left - rect.width * 44 / 340) / w));
+      tapAt = 0; zoomAt(frac, d0 / d1);
+      ptrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    }
+  });
+  function up(e) { delete ptrs[e.pointerId]; if (!count()) swipes(true); }
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', function (e) {
+    if (!CH) return; e.preventDefault();
+    var rect = el.getBoundingClientRect(), frac = Math.max(0, Math.min(1, (e.clientX - rect.left - rect.width * 44 / 340) / (rect.width * 290 / 340)));
+    zoomAt(frac, e.deltaY > 0 ? 1.15 : 1 / 1.15);
+  }, { passive: false });
+}
+// Под названием скина — график и цены на площадках (в любом окне скина, без кнопок).
+function inlineChart(name) {
+  api('item/name?n=' + encodeURIComponent(name) + '&days=90').then(function (r) {
+    var box = $('#icbox'); if (!box) return;
+    var now = Math.floor(Date.now() / 1000);
+    CH = { series: r.series || {}, avg: r.avg7Kop || null, now: now, to: now, from: now - 30 * 86400, raf: 0 };
+    box.innerHTML = '<div id="icplot" style="touch-action:none;-webkit-user-select:none;user-select:none"></div>' +
+      '<div class="note">Двумя пальцами — приблизить, пальцем — листать, двойной тап — сброс. Steam и Skinport — история с момента запуска; остальные площадки и средняя продаж Steam — по одной точке в сутки' + (r.sitesSince ? ', копятся с ' + r.sitesSince.slice(8) + '.' + r.sitesSince.slice(5, 7) : ', с этого вечера') + '.</div>';
+    chartDraw(); bindChartGestures($('#icplot'));
   }).catch(function () { var b2 = $('#icbox'); if (b2) b2.innerHTML = '<div class="note">График не загрузился.</div>'; });
 }
 function itemSheet(id, days) {
@@ -1337,31 +1394,39 @@ function itemSheet(id, days) {
     } else $('#i-add').onclick = function () { api('watch', { method: 'POST', body: { name: it.name } }).then(function () { haptic('ok'); toast('Слежу — впиши цель ниже'); if (state.tab === 'market') market(); itemSheet(id, days); }).catch(function (e) { toast(e.message); }); };
   }).catch(function (e) { $('#sc').innerHTML = '<div class="empty">⚠️ ' + esc(errText(e)) + '</div>'; });
 }
-function chart(series, days, avg) {
-  var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22;
-  var defs = [['steamLow', 'Steam объявление', THEME === 'gold' ? '#e7b24c' : '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b'],
-    ['steamAvg', 'Steam: средняя продаж', '#9aa3b2'], ['csgomarket', 'Market.CSGO', '#c06bff'], ['waxpeer', 'Waxpeer', '#ff6b8a'], ['lisskins', 'LIS-SKINS', '#7ddc7a'], ['csfloat', 'CSFloat', '#46c2ff']];
-  var all = []; defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
-  if (all.length < 2) return '<div class="empty" style="padding:22px">📉 История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен.</span></div>';
-  var now = Date.now() / 1000, from = now - days * 86400;
+// График цен: окно [from, to] в секундах; точки вне окна обрезаются рамкой, подписи осей пересчитываются под масштаб.
+var CHART_DEFS = [['steamLow', 'Steam объявление', '#e7b24c'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b'],
+  ['steamavg', 'Steam: средняя продаж за сутки', '#9aa3b2'], ['csgomarket', 'Market.CSGO', '#c06bff'], ['waxpeer', 'Waxpeer', '#ff6b8a'], ['lisskins', 'LIS-SKINS', '#7ddc7a'], ['csfloat', 'CSFloat', '#46c2ff']];
+var CHART_DAILY = /^(steamavg|csgomarket|waxpeer|lisskins|csfloat)$/;
+function chart(series, from, to, avg) {
+  var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22, defs = CHART_DEFS;
+  var total = 0; defs.forEach(function (d) { total += (series[d[0]] || []).length; });
+  if (total < 2) return '<div class="empty" style="padding:22px">История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен: Steam и Skinport сразу, остальные площадки — раз в сутки.</span></div>';
+  var span = to - from, all = [];
+  defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null && p.t >= from && p.t <= to) all.push(p.v); }); });
+  if (!all.length) defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
   if (avg) all.push(avg);
   var mn = Math.min.apply(null, all), mx = Math.max.apply(null, all); if (mn === mx) { mn -= 100; mx += 100; }
   var pad = (mx - mn) * .1; mn = Math.max(0, mn - pad); mx += pad;
-  function x(t) { return L + (t - from) / (now - from) * (W - L - R); }
+  function x(t) { return L + (t - from) / span * (W - L - R); }
   function y(v) { return T + (1 - (v - mn) / (mx - mn)) * (H - T - B); }
-  var s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '">';
+  var s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '"><defs><clipPath id="chclip"><rect x="' + L + '" y="0" width="' + (W - L - R) + '" height="' + (H - B + 4) + '"/></clipPath></defs>';
   for (var i = 0; i <= 3; i++) { var v = mn + (mx - mn) * i / 3; s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v).toFixed(1) + '" y2="' + y(v).toFixed(1) + '" stroke="currentColor" stroke-opacity=".1"/><text x="' + (L - 5) + '" y="' + (y(v) + 3).toFixed(1) + '" font-size="9" text-anchor="end" fill="currentColor" fill-opacity=".55">' + Math.round(v / 100) + '</text>'; }
-  for (var j = 0; j <= 3; j++) { var t = from + (now - from) * j / 3, dt = new Date(t * 1000); s += '<text x="' + x(t).toFixed(1) + '" y="' + (H - 6) + '" font-size="9" text-anchor="middle" fill="currentColor" fill-opacity=".55">' + String(dt.getDate()).padStart(2, '0') + '.' + String(dt.getMonth() + 1).padStart(2, '0') + '</text>'; }
+  var two = function (n) { return String(n).padStart(2, '0'); };
+  for (var j = 0; j <= 3; j++) {
+    var t = from + span * j / 3, dt = new Date(t * 1000);
+    s += '<text x="' + x(t).toFixed(1) + '" y="' + (H - 6) + '" font-size="9" text-anchor="middle" fill="currentColor" fill-opacity=".55">' + (span <= 3 * 86400 ? two(dt.getDate()) + '.' + two(dt.getMonth() + 1) + ' ' + two(dt.getHours()) + ':' + two(dt.getMinutes()) : two(dt.getDate()) + '.' + two(dt.getMonth() + 1)) + '</text>';
+  }
   if (avg) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(avg).toFixed(1) + '" y2="' + y(avg).toFixed(1) + '" stroke="currentColor" stroke-opacity=".55" stroke-dasharray="4 4"/><text x="' + (W - R) + '" y="' + (y(avg) - 4).toFixed(1) + '" font-size="9" text-anchor="end" fill="currentColor" fill-opacity=".7">средняя 7 дн</text>';
-  var gap = Math.max(3 * 3600, days * 86400 / 40);
+  s += '<g clip-path="url(#chclip)">';
   defs.forEach(function (d) {
-    var pts = (series[d[0]] || []).filter(function (p) { return p.v != null && p.t >= from; }), seg = [], last = null;
-    function flush() { if (seg.length > 1) s += '<polyline fill="none" stroke="' + d[2] + '" stroke-width="2" stroke-linejoin="round" points="' + seg.join(' ') + '"/>'; else if (seg.length === 1) { var c = seg[0].split(','); s += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="2.2" fill="' + d[2] + '"/>'; } seg = []; }
-    var gp = d[0] === 'steamAvg' ? 1e9 : /^(csgomarket|waxpeer|lisskins|csfloat)$/.test(d[0]) ? 2 * 86400 : gap;
+    var gp = CHART_DAILY.test(d[0]) ? 2 * 86400 : 6 * 3600, seg = [], last = null;
+    var pts = (series[d[0]] || []).filter(function (p) { return p.v != null && p.t >= from - span && p.t <= to + span; });
+    function flush() { if (seg.length > 1) s += '<polyline fill="none" stroke="' + d[2] + '" stroke-width="2" stroke-linejoin="round" points="' + seg.join(' ') + '"/>'; else if (seg.length === 1) { var c = seg[0].split(','); s += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="2.4" fill="' + d[2] + '"/>'; } seg = []; }
     pts.forEach(function (p) { if (last != null && p.t - last > gp) flush(); seg.push(x(p.t).toFixed(1) + ',' + y(p.v).toFixed(1)); last = p.t; });
     flush();
   });
-  s += '</svg><div class="legend">' + defs.filter(function (d) { return (series[d[0]] || []).length; }).map(function (d) { return '<span><i style="background:' + d[2] + '"></i>' + d[1] + '</span>'; }).join('') + '</div>';
+  s += '</g></svg><div class="legend">' + defs.filter(function (d) { return (series[d[0]] || []).length; }).map(function (d) { return '<span><i style="background:' + d[2] + '"></i>' + d[1] + '</span>'; }).join('') + '</div>';
   return s;
 }
 

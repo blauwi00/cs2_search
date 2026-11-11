@@ -32,6 +32,9 @@ const P = [
   { zone: 'mid2', lines: [['Никакой', 110, -3, -120], ['*лудки.*', 190, 2, 40], ['Никаких', 104, 3, 110], ['*кручений.*', 138, -2, -20], ['Только', 110, -4, -150], ['*голова.*', 200, 2, 10]] },
   { zone: 'bot', lines: [['Завязывай', 100, -4, -70], ['с *рулеткой* —', 96, 3, 50], ['включай *головушку!*', 80, -2, 0]] },
 ];
+const ENTER = ['pop', 'slide', 'slam', 'drop', 'type', 'slide', 'drop', 'slam', 'slam', 'pop'];
+const UNDER = [4, 5, 6, 9];
+const EXIT = ['{ opacity: 0, scale: 1.12 }', '{ opacity: 0, y: -260 }', '{ opacity: 0, y: 320, rotation: 7 }', '{ opacity: 0, scale: 2.2 }', '{ opacity: 0, x: -700 }', '{ opacity: 0, x: 700 }', '{ opacity: 0, y: 300, rotation: -6 }', '{ opacity: 0, scale: 0.5 }', '{ opacity: 0, scale: 1.5 }', '{ opacity: 0, y: -200 }'];
 const ZONE = { top: 215, mid: 470, low: 1010, bot: 1000, mid2: 330 };
 const GOLD = '#ffd66b', W = 1080;
 
@@ -54,13 +57,21 @@ P.forEach((p, pi) => {
       lastE = Math.max(lastE, t.s + span);
       const id = `p${pi}l${li}w${k}`;
       line += `<span class="wd${acc ? ' ac' : ''}" id="${id}">${letters.map((c, i) => `<i id="${id}c${i}">${esc(c)}</i>`).join('')}</span> `;
-      // Слово влетает чуть раньше звука, буквы загораются по очереди.
-      js += `  tl.fromTo("#${id}", { opacity: 0, scale: ${acc ? 1.7 : 1.35}, y: ${k % 2 ? -26 : 26} }, { opacity: 1, scale: 1, y: 0, duration: 0.16, ease: "back.out(2.2)" }, ${r2(Math.max(0, t.s - 0.07))});\n`;
+      const style = ENTER[pi], lit = `{ color: "${GOLD}", textShadow: "0 0 26px rgba(255,190,60,.95)", duration: 0.05 }`;
+      const t0 = r2(Math.max(0, t.s - 0.07));
+      if (style === 'pop') js += `  tl.fromTo("#${id}", { opacity: 0, scale: ${acc ? 1.7 : 1.35}, y: ${k % 2 ? -26 : 26} }, { opacity: 1, scale: 1, y: 0, duration: 0.16, ease: "back.out(2.2)" }, ${t0});\n`;
+      else if (style === 'slide') js += `  tl.fromTo("#${id}", { opacity: 0, x: ${li % 2 ? 320 : -320}, skewX: ${li % 2 ? -24 : 24} }, { opacity: 1, x: 0, skewX: 0, duration: 0.2, ease: "power4.out" }, ${t0});\n`;
+      else if (style === 'drop') js += `  tl.fromTo("#${id}", { opacity: 0, y: -220, rotation: ${k % 2 ? 14 : -14} }, { opacity: 1, y: 0, rotation: 0, duration: 0.34, ease: "bounce.out" }, ${r2(Math.max(0, t.s - 0.12))});\n`;
+      else if (style === 'slam') js += `  tl.fromTo("#${id}", { opacity: 0, scale: 3.4 }, { opacity: 1, scale: 1, duration: 0.13, ease: "power4.in" }, ${r2(Math.max(0, t.s - 0.13))});\n`;
+      else js += `  tl.set("#${id}", { opacity: 1 }, ${t0});\n`; // type: буквы «печатаются» сами
       letters.forEach((c, i) => {
         const at = r2(t.s + (span * i) / letters.length);
-        js += `  tl.to("#${id}c${i}", { color: "${GOLD}", textShadow: "0 0 26px rgba(255,190,60,.95)", duration: 0.05 }, ${at});\n`;
-        if (acc) js += `  tl.fromTo("#${id}c${i}", { y: 0 }, { y: -14, duration: 0.07, yoyo: true, repeat: 1, ease: "power2.out" }, ${at});\n`;
+        if (style === 'type') js += `  tl.fromTo("#${id}c${i}", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.06 }, ${at});\n`;
+        js += `  tl.to("#${id}c${i}", ${lit}, ${at});\n`;
+        if (acc && style !== 'type') js += `  tl.fromTo("#${id}c${i}", { y: 0 }, { y: -14, duration: 0.07, yoyo: true, repeat: 1, ease: "power2.out" }, ${at});\n`;
       });
+      // Акцент: золотой маркер под словом — проводится, когда слово договорено.
+      if (acc && UNDER.includes(pi)) { line = line.replace(new RegExp(`(<span class="wd ac" id="${id}">)`), '$1' + `<u id="${id}u"></u>`); js += `  tl.fromTo("#${id}u", { scaleX: 0 }, { scaleX: 1, duration: 0.18, ease: "power3.out" }, ${r2(t.s + span * 0.6)});\n`; }
     });
     body += `<div class="ln" style="top:${y}px;font-size:${size}px;transform:translateX(${dx}px) rotate(${rot}deg) skewX(-7deg)">${line.trim()}</div>`;
     y += Math.round(size * 1.16);
@@ -73,42 +84,63 @@ P.forEach((p, pi) => {
 // Фраза держится до начала следующей (минус 0,06 с), потом вылетает.
 phraseTimes.forEach((t, i) => {
   const out = i + 1 < phraseTimes.length ? phraseTimes[i + 1].s - 0.07 : t.e + 0.25;
-  js += `  tl.set("#ph${i}", { opacity: 1 }, ${r2(Math.max(0, t.s - 0.1))});\n  tl.to("#ph${i}", { opacity: 0, scale: 1.12, duration: 0.1, ease: "power2.in" }, ${r2(out - 0.1)});\n  tl.set("#ph${i}", { opacity: 0, visibility: "hidden" }, ${r2(out)});\n`;
+  js += `  tl.set("#ph${i}", { opacity: 1 }, ${r2(Math.max(0, t.s - 0.1))});\n  tl.to("#ph${i}", { ...${EXIT[i]}, duration: 0.14, ease: "power3.in" }, ${r2(out - 0.14)});\n  tl.set("#ph${i}", { opacity: 0, visibility: "hidden" }, ${r2(out)});\n`;
 });
 
 // ---------- Камера по записи экрана: точка (fx, fy) записи 1080×2338 → в (540, focusY), масштаб s ----------
 const cam = (fx, fy, s, fY) => ({ x: Math.round(540 - fx * s), y: Math.round(fY - fy * s), scale: s });
 const SHOTS = [
-  { id: 'c1', clip: 'gprices', from: 4.25, start: 10.05, dur: 4.07, fY: 1090, cam: [[0, 540, 1230, 1.12], [2.3, 540, 1230, 1.2], [2.6, 540, 1230, 1.5], [4.07, 540, 1230, 1.42]], in: 'R' },
-  { id: 'c2', clip: 'gideas', from: 1.0, start: 14.12, dur: 3.6, fY: 520, cam: [[0, 540, 640, 1.25], [0.75, 540, 640, 1.3], [1.05, 215, 640, 2.5], [2.0, 215, 640, 2.4], [2.3, 540, 640, 2.5], [3.6, 540, 640, 2.35]], in: 'L' },
-  { id: 'c3', clip: 'gideas', from: 3.2, start: 17.72, dur: 2.4, fY: 1010, cam: [[0, 800, 700, 2.0], [2.4, 800, 700, 2.25]], in: 'U' },
-  { id: 'c4', clip: 'ghome', from: 1.0, start: 25.45, dur: 3.1, fY: 520, cam: [[0, 540, 1050, 1.02], [3.1, 540, 1080, 1.14]], in: 'R' },
+  { id: 'c1', clip: 'gprices', from: 4.25, start: 10.0, dur: 4.14, fY: 1090, cam: [[0, 540, 1230, 1.12], [2.3, 540, 1230, 1.2], [2.6, 540, 1230, 1.5], [4.14, 540, 1230, 1.42]], in: 'Z', out: 14.0 },
+  { id: 'c2', clip: 'gideas', from: 1.0, start: 14.12, dur: 3.6, fY: 520, cam: [[0, 540, 640, 1.25], [0.75, 540, 640, 1.3], [1.05, 215, 640, 2.5], [2.0, 215, 640, 2.4], [2.3, 540, 640, 2.5], [3.6, 540, 640, 2.35]], in: 'P' },
+  { id: 'c3', clip: 'gideas', from: 3.2, start: 17.72, dur: 2.4, fY: 1010, cam: [[0, 800, 700, 2.0], [2.4, 800, 700, 2.25]], in: 'C' },
+  { id: 'c4', clip: 'ghome', from: 1.0, start: 25.45, dur: 3.5, fY: 520, cam: [[0, 540, 1050, 1.02], [3.5, 540, 1080, 1.14]], in: 'I', melt: true },
 ];
-const IN = { R: '{ x: 900, rotationY: -38, rotationZ: 6, opacity: 0 }', L: '{ x: -900, rotationY: 38, rotationZ: -6, opacity: 0 }', U: '{ y: 1200, rotationX: 30, opacity: 0 }' };
-let shots = '';
+// Входы: Z — пролёт сквозь логотип (из крупного), P — сдвиг справа (старый уезжает влево), C — жёсткая склейка с ударом, I — раскрытие кругом.
+const IN = { Z: '{ scale: 1.9, opacity: 0 }', P: '{ x: 1150, opacity: 1 }', C: '{ scale: 1.22, opacity: 1 }', I: '{ opacity: 1 }' };
+let shots = '', meltShot = '';
 for (const s of SHOTS) {
-  shots += `  <div class="cam" id="${s.id}c"><div class="ent" id="${s.id}e"><video class="clip" id="${s.id}" src="assets/${s.clip}.mp4" data-start="${s.start}" data-duration="${s.dur}" data-media-start="${s.from}" data-track-index="1" muted playsinline></video></div></div>\n`;
+  const tag = `<div class="scw" style="z-index:${s.id === 'c1' ? 4 : s.id === 'c2' ? 5 : 6}"><div class="persp"${s.in === 'I' ? ' id="iris"' : ''}><div class="cam" id="${s.id}c"><div class="ent" id="${s.id}e"><video class="clip" id="${s.id}" src="assets/${s.clip}.mp4" data-start="${s.start}" data-duration="${s.dur}" data-media-start="${s.from}" data-track-index="1" muted playsinline></video></div></div></div></div>\n`;
+  if (s.melt) meltShot = tag; else shots += '  ' + tag;
   const c0 = cam(...s.cam[0].slice(1), s.fY);
   js += `  tl.set("#${s.id}c", { x: ${c0.x}, y: ${c0.y}, scale: ${c0.scale} }, 0);\n`;
-  js += `  tl.fromTo("#${s.id}e", ${IN[s.in]}, { x: 0, y: 0, rotationX: 0, rotationY: 0, rotationZ: 0, opacity: 1, duration: 0.42, ease: "expo.out" }, ${s.start});\n`;
+  js += `  tl.fromTo("#${s.id}e", ${IN[s.in]}, { x: 0, scale: 1, opacity: 1, duration: ${s.in === 'C' ? 0.22 : 0.34}, ease: "${s.in === 'C' ? 'power3.out' : 'expo.out'}" }, ${s.start});\n`;
+  if (s.out) js += `  tl.to("#${s.id}e", { x: -1150, duration: 0.2, ease: "power3.in" }, ${s.out});\n`;
   for (let i = 1; i < s.cam.length; i++) {
     const [t, fx, fy, sc] = s.cam[i], prev = s.cam[i - 1][0], c = cam(fx, fy, sc, s.fY), d = t - prev;
     js += `  tl.to("#${s.id}c", { x: ${c.x}, y: ${c.y}, scale: ${c.scale}, duration: ${r2(d)}, ease: "${d <= 0.5 ? 'power4.inOut' : 'sine.inOut'}" }, ${r2(s.start + prev)});\n`;
   }
 }
 
-// ---------- Золотые потёки (переход): полосы стекают сверху, закрывают кадр и уходят вниз ----------
-const drips = (id, at) => {
-  const lens = [0.86, 1.1, 0.74, 1.22, 0.95, 1.3, 0.8, 1.15, 0.9];
-  let h = `  <div class="clip drip" id="${id}" data-start="${r2(at - 0.3)}" data-duration="0.95" data-track-index="5">`;
-  lens.forEach((L, i) => {
-    h += `<b id="${id}b${i}" style="left:${i * 120}px;height:${Math.round(1920 * (1.05 + L * 0.35))}px"></b>`;
-    const d = ((i * 5) % 9) * 0.022;
-    js += `  tl.fromTo("#${id}b${i}", { yPercent: -100 }, { yPercent: 0, duration: 0.3, ease: "power2.in" }, ${r2(at - 0.3 + d)});\n`;
-    js += `  tl.to("#${id}b${i}", { yPercent: 100, duration: 0.36, ease: "power2.in" }, ${r2(at + 0.08 + d)});\n`;
-  });
-  return h + '</div>\n';
+// ---------- Плавление: экран сам сползает вниз неровными каплями (маска по 9 колонкам), по кромке — золото ----------
+const COLS = 9;
+const maskCss = (off) => Array.from({ length: COLS }, (_, i) =>
+  `radial-gradient(circle at 60px 60px,#000 59.5px,transparent 60px) ${i * 120}px calc(var(--m${i}) - ${off}px) / 120px 120px no-repeat, linear-gradient(#000,#000) ${i * 120}px calc(var(--m${i}) + ${60 - off}px) / 121px 4000px no-repeat`).join(', ');
+const meltVars = Array.from({ length: COLS }, (_, i) => `--m${i}:-320px`).join(';');
+const melt = (id, at) => {
+  const order = [3, 7, 1, 5, 0, 8, 4, 2, 6], speed = [1, 0.78, 1.12, 0.86, 1.2, 0.74, 1.05, 0.92, 0.8];
+  // Золотая кромка видна только пока экран плавится.
+  js += `  tl.set("#${id} .rim", { opacity: 0 }, 0);\n  tl.set("#${id} .rim", { opacity: 1 }, ${r2(at - 0.02)});\n  tl.set("#${id} .rim", { opacity: 0 }, ${r2(at + 1.1)});\n`;
+  order.forEach((col, n) => { js += `  tl.to("#${id}", { "--m${col}": "2100px", duration: ${r2(0.62 * speed[col])}, ease: "power2.in" }, ${r2(at + n * 0.035)});\n`; });
 };
+
+// ---------- Искры и кольца-импульсы ----------
+let fxHtml = '';
+const sparks = (at, x, y, n = 16) => {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (i % 3) * 0.21, d = 260 + ((i * 37) % 5) * 70, id = `sp${fxHtml.length}`;
+    fxHtml += `<b class="spk" id="${id}" style="left:${x}px;top:${y}px"></b>`;
+    js += `  tl.fromTo("#${id}", { x: 0, y: 0, opacity: 1, scale: 1, rotation: ${Math.round((a * 180) / Math.PI)} }, { x: ${Math.round(Math.cos(a) * d)}, y: ${Math.round(Math.sin(a) * d)}, opacity: 0, scale: 0.3, duration: ${r2(0.5 + (i % 4) * 0.08)}, ease: "power3.out", immediateRender: false }, ${at});\n`;
+    js += `  tl.set("#${id}", { opacity: 0 }, 0);\n`;
+  }
+};
+const pulse = (at, x, y) => {
+  const id = `pl${fxHtml.length}`;
+  fxHtml += `<b class="pls" id="${id}" style="left:${x - 120}px;top:${y - 120}px"></b>`;
+  js += `  tl.set("#${id}", { opacity: 0 }, 0);\n  tl.fromTo("#${id}", { scale: 0.3, opacity: 1 }, { scale: 2.6, opacity: 0, duration: 0.5, ease: "power2.out", immediateRender: false }, ${at});\n`;
+};
+sparks(9.24, 540, 600); sparks(24.72, 540, 1000, 20); sparks(30.36, 540, 1195, 18);
+pulse(15.5, 540, 520); pulse(16.75, 540, 520); pulse(17.95, 560, 1010);
+melt('mw1', 8.86); melt('mw2', 28.3);
 
 // ---------- Тряска кадра на ударах ----------
 const shake = (at, k = 1) => { js += `  tl.fromTo("#stage", { x: ${-22 * k}, y: ${14 * k} }, { x: 0, y: 0, duration: 0.32, ease: "elastic.out(1.2, 0.25)", immediateRender: false }, ${at});\n`; };
@@ -136,9 +168,20 @@ js += `
   tl.fromTo("#x2", { scaleX: 0 }, { scaleX: 1, duration: 0.16, ease: "power4.out" }, 6.95);
   // «Это Ценолов!»: логотип с ударом и кольцами.
   tl.fromTo("#lg", { scale: 0.2, rotation: -40, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 0.45, ease: "back.out(2)" }, 9.1);
+  // Пролёт сквозь логотип в интерфейс.
+  tl.to("#lg", { scale: 16, opacity: 0, duration: 0.3, ease: "power3.in" }, 9.76);
+  // Золотая линия сканирует список цен.
+  tl.fromTo("#scan", { y: 0, opacity: 0 }, { y: 760, opacity: 1, duration: 1.1, ease: "power1.inOut" }, 12.55);
+  tl.to("#scan", { opacity: 0, duration: 0.15 }, 13.6);
+  // Склейка-удар на «Комиссии».
+  tl.fromTo("#flash", { opacity: 0.55 }, { opacity: 0, duration: 0.2, immediateRender: false }, 17.72);
+  // Сообщение о разгоне: весь экран выезжает снизу.
+  tl.fromTo("#pump", { y: 1920 }, { y: 0, duration: 0.3, ease: "expo.out" }, 20.1);
+  // Раскрытие кругом из «головы» в главную бота.
+  tl.fromTo("#iris", { clipPath: "circle(0% at 50% 52%)" }, { clipPath: "circle(120% at 50% 52%)", duration: 0.5, ease: "power3.out" }, 25.45);
   tl.fromTo("#lgr", { scale: 0.5, opacity: 0.9 }, { scale: 3.2, opacity: 0, duration: 0.8, ease: "power2.out" }, 9.22);
   // «Вбросы видит»: сообщение бота падает сверху.
-  tl.fromTo("#pm", { y: -700, rotation: -8, opacity: 0 }, { y: 0, rotation: -2, opacity: 1, duration: 0.4, ease: "back.out(1.5)" }, 20.14);
+  tl.fromTo("#pm", { scale: 0.7, rotation: 5 }, { scale: 1, rotation: -2, duration: 0.45, ease: "elastic.out(1, 0.5)" }, 20.25);
   tl.to(".pm-r", { backgroundColor: "rgba(255,214,107,.26)", duration: 0.2, stagger: 0.14 }, 20.5);
   // Слоганы: зачёркивания.
   tl.fromTo("#st1", { scaleX: 0 }, { scaleX: 1, duration: 0.16, ease: "power4.out" }, 22.62);
@@ -152,7 +195,7 @@ js += `
   tl.fromTo("#efr", { scale: 2.2, opacity: 0, rotation: -14 }, { scale: 1, opacity: 1, rotation: -5, duration: 0.2, ease: "power4.in" }, 30.16);
   tl.fromTo("#stage", { scale: 1.06 }, { scale: 1, duration: 0.3, ease: "power2.out", immediateRender: false }, 30.36);
 `;
-const sfx = [['whoosh', 8.72, 0.3], ['whoosh', 10.0, 0.28], ['whoosh', 14.07, 0.28], ['whoosh', 17.67, 0.28], ['whoosh', 20.08, 0.28], ['whoosh', 25.4, 0.28], ['whoosh', 28.1, 0.3],
+const sfx = [['whoosh', 8.8, 0.3], ['whoosh', 9.74, 0.28], ['whoosh', 13.97, 0.28], ['whoosh', 20.06, 0.28], ['whoosh', 25.4, 0.28], ['whoosh', 28.24, 0.3], ['pop', 17.73, 0.5],
   ['pop', 2.74, 0.5], ['pop', 6.32, 0.5], ['pop', 6.83, 0.6], ['pop', 9.24, 0.5], ['pop', 21.79, 0.5], ['pop', 22.88, 0.5], ['pop', 24.19, 0.55], ['pop', 30.36, 0.55]]
   .map(([n, at, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${n}.wav" data-start="${at}" data-duration="${n === 'pop' ? 0.12 : 0.45}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
 
@@ -188,7 +231,16 @@ const page = `<!doctype html>
   #lgr { position: absolute; left: 340px; top: 400px; width: 400px; height: 400px; border-radius: 50%; border: 8px solid #ffd66b; }
   .cam { position: absolute; left: 0; top: 0; width: 1080px; height: 2338px; transform-origin: 0 0; }
   .ent { position: absolute; left: 0; top: 0; width: 1080px; height: 2338px; transform-origin: 50% 30%; }
-  .persp { position: absolute; inset: 0; perspective: 1400px; }
+  .persp { position: absolute; inset: 0; overflow: hidden; }
+  .scw { position: absolute; inset: 0; }
+  #iris { background: #070707; }
+  .mw { position: absolute; inset: 0; pointer-events: none; }
+  .mk { position: absolute; inset: 0; }
+  .rim { position: absolute; inset: 0; background: linear-gradient(90deg, #a8741f, #fbe7a8 20%, #e7b24c 45%, #fff3c9 60%, #b97d22 85%, #e7b24c); }
+  #fxl { position: absolute; inset: 0; z-index: 24; pointer-events: none; }
+  .spk { position: absolute; width: 46px; height: 10px; margin: -5px 0 0 -23px; border-radius: 6px; background: linear-gradient(90deg, #fff3c9, #e7b24c); box-shadow: 0 0 18px #ffbe3c; opacity: 0; }
+  .pls { position: absolute; width: 240px; height: 240px; border-radius: 50%; border: 10px solid #ffd66b; box-shadow: 0 0 40px rgba(255,190,60,.8); opacity: 0; }
+  #scan { position: absolute; left: 0; right: 0; top: 640px; height: 10px; background: #ffd66b; box-shadow: 0 0 50px 14px rgba(255,190,60,.75); opacity: 0; }
   .cam video { position: absolute; left: 0; top: 0; width: 1080px; height: 2338px; }
   .drip { position: absolute; inset: 0; z-index: 20; overflow: hidden; }
   .drip b { position: absolute; top: 0; width: 121px; border-radius: 0 0 60px 60px; background: linear-gradient(180deg, #a8741f, #e7b24c 30%, #fbe7a8 55%, #e7b24c 80%, #b97d22); box-shadow: inset -14px 0 22px rgba(120,76,14,.5), inset 12px 0 18px rgba(255,255,255,.35); }
@@ -215,33 +267,36 @@ const page = `<!doctype html>
   .wd { display: inline-block; opacity: 0; -webkit-text-stroke: 14px #050505; paint-order: stroke fill; }
   .wd i { display: inline-block; font-style: normal; color: #fff; }
   .wd.dash { color: #fff; }
+  .wd { position: relative; }
+  .wd u { position: absolute; left: -6px; right: -6px; bottom: 2px; height: 16%; background: #ffd66b; box-shadow: 0 0 30px rgba(255,190,60,.9); transform-origin: 0 50%; z-index: -1; border-radius: 6px; }
 </style>
 </head>
 <body>
 <!-- Эдит «Это тебе не апгрейдер» (9:16). Сгенерировано video/edit/gen.mjs — правьте генератор, а не этот файл. -->
 <div id="main" data-composition-id="main" data-start="0" data-duration="${DUR}" data-width="1080" data-height="1920">
  <div id="stage">
-  <div class="clip scene" id="wheel" data-start="0" data-duration="9.12" data-track-index="1">
+  <div class="clip scene gbg" id="end" data-start="28.2" data-duration="${r2(DUR - 28.2)}" data-track-index="2" style="z-index:1">
+    <img id="elg" src="assets/logo.png" alt=""><div id="enm">${[...'Ценолов'].map((c) => `<i>${c}</i>`).join('')}</div>
+    <div id="etg">@cenolow_bot · Telegram</div><div id="efr">БЕСПЛАТНО</div></div>
+  <div class="clip scene gbg" id="logo" data-start="8.8" data-duration="1.4" data-track-index="2" style="z-index:2"><div id="lgr"></div><img id="lg" src="assets/logo.png" alt=""></div>
+  <div class="mw" id="mw1" style="z-index:3;${meltVars}"><div class="rim" style="-webkit-mask:${maskCss(30)};mask:${maskCss(30)}"></div><div class="mk" style="-webkit-mask:${maskCss(0)};mask:${maskCss(0)}">
+  <div class="clip scene" id="wheel" data-start="0" data-duration="9.7" data-track-index="1">
     <div id="wheelin"><div id="ring"></div><img id="skin" src="assets/ak.png" alt=""><div id="arm"></div>
       <div id="chance">ШАНС 25%</div><div id="loss"><b>−229 ₴</b></div>
       <div class="miss" id="miss1">МИМО</div><div class="miss" id="miss2">МИМО</div></div>
     <div id="x1w"><div class="xb" id="x1"></div></div><div id="x2w"><div class="xb" id="x2"></div></div>
-  </div>
-  <div class="clip scene gbg" id="logo" data-start="9.05" data-duration="1.1" data-track-index="2"><div id="lgr"></div><img id="lg" src="assets/logo.png" alt=""></div>
-  <div class="clip scene gbg" id="ui" data-start="10.05" data-duration="10.07" data-track-index="3"></div>
-  <div class="clip scene gbg" id="ui2" data-start="25.45" data-duration="3.2" data-track-index="3"></div>
-  <div class="persp">
-${shots}  </div>
-  <div class="clip scene" id="pump" data-start="20.12" data-duration="1.66" data-track-index="2">
+  </div></div></div>
+  <div class="clip scene gbg" id="ui" data-start="10.0" data-duration="10.4" data-track-index="3" style="z-index:3"></div>
+${shots}  <div class="clip" id="scanw" data-start="12.5" data-duration="1.3" data-track-index="4" style="position:absolute;inset:0;z-index:6"><div id="scan"></div></div>
+  <div class="clip scene" id="pump" data-start="20.1" data-duration="1.68" data-track-index="2" style="z-index:7">
     <div id="pm"><h3>Похоже на разгон цены</h3>Цена за сутки на 200% выше, чем за месяц.
       <div class="pm-r">• мало продаж: 6 за сутки</div><div class="pm-r">• на других площадках намного дешевле</div><div class="pm-r">• выросла в 3 раза без спроса</div></div>
   </div>
-  <div class="clip scene" id="kin" data-start="21.75" data-duration="3.72" data-track-index="2"><div id="kbg"></div><div id="halo"></div>
+  <div class="clip scene" id="kin" data-start="21.75" data-duration="4.25" data-track-index="2" style="z-index:8"><div id="kbg"></div><div id="halo"></div>
     <div id="stw1"><div class="strike" id="st1" style="top:${st(8, 1)}px"></div></div><div id="stw2"><div class="strike" id="st2" style="top:${st(8, 3)}px"></div></div></div>
-  <div class="clip scene gbg" id="end" data-start="28.42" data-duration="${r2(DUR - 28.42)}" data-track-index="2">
-    <img id="elg" src="assets/logo.png" alt=""><div id="enm">${[...'Ценолов'].map((c) => `<i>${c}</i>`).join('')}</div>
-    <div id="etg">@cenolow_bot · Telegram</div><div id="efr">БЕСПЛАТНО</div></div>
-${drips('dr1', 9.05)}${drips('dr2', 28.42)}
+  <div class="mw" id="mw2" style="z-index:9;${meltVars}"><div class="rim" style="-webkit-mask:${maskCss(30)};mask:${maskCss(30)}"></div><div class="mk" style="-webkit-mask:${maskCss(0)};mask:${maskCss(0)}">
+    ${meltShot}  </div></div>
+  <div id="fxl">${fxHtml}</div>
   <div id="caps">
 ${html}  </div>
   <div id="flash"></div>

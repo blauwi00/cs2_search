@@ -5,7 +5,7 @@ import type { FxRate } from '../currency/nbu.ts';
 import type { Currency } from '../types/market.ts';
 import { warsawDate } from '../utils/time.ts';
 import { formatUah, formatSignedUah } from '../utils/money.ts';
-import { header, dealBlock, moveLine, pct, esc } from './postfmt.ts';
+import { header, hook, plus, ruDate, dealBlock, moveLine, pct, esc } from './postfmt.ts';
 
 export const IDEA_SETTINGS = { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 };
 export const IDEAS_PER_DAY = 4;
@@ -99,7 +99,7 @@ export function yesterdayLine(rows: IdeaRow[]): string | null {
 export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): string | null {
   const y = yesterdayLine(yesterday);
   if (!rows.length && !y) return null;
-  const lines = [header('💡', 'Рекомендации дня', now), ''];
+  const lines = [rows.length ? hook(`Идея дня: ${esc(rows[0].name)}, чистыми ${plus(rows[0].profit_kop)}`) : hook('Сегодня выгодных сделок нет'), ''];
   if (!rows.length) {
     lines.push(`Сегодня выгодных сделок нет: нигде после всех комиссий не остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%. Бот ничего не придумывает, когда выгоды нет.`, '');
   }
@@ -118,23 +118,24 @@ export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: n
   const ch = cases.filter((c) => c.d7 && c.d30).map((c) => ({ name: c.name, bp: Math.trunc(((c.d7! - c.d30!) * 10000) / c.d30!) }));
   const checked = week.filter((r) => r.outcome === 'plus' || r.outcome === 'minus');
   if (ch.length < 5 && !checked.length) return null;
-  const lines = [header('📅', 'Итоги недели', now), ''];
+  const head = checked.length ? `Итоги недели: рекомендации бота — ${checked.filter((r) => r.outcome === 'plus').length} из ${checked.length} в плюсе` : 'Итоги недели: что с кейсами Steam';
+  const lines = [hook(head), ''];
   if (ch.length >= 5) {
     const avg = Math.round(ch.reduce((s, x) => s + x.bp, 0) / ch.length);
-    lines.push(`📦 Индекс кейсов Steam: <b>${pct(avg)}</b>`, `<i>в среднем по ${ch.length} кейсам, неделя к месяцу</i>`, '');
+    lines.push(`Индекс кейсов Steam: <b>${pct(avg)}</b>`, `<i>в среднем по ${ch.length} кейсам, неделя к месяцу</i>`, '');
     const up = [...ch].sort((a, b) => b.bp - a.bp).filter((x) => x.bp > 0).slice(0, 3);
     const down = [...ch].sort((a, b) => a.bp - b.bp).filter((x) => x.bp < 0).slice(0, 3);
-    if (up.length) { lines.push('📈 <b>Выросли сильнее всех</b>', ...up.map((x) => moveLine(x.name, x.bp, null)), ''); }
-    if (down.length) { lines.push('📉 <b>Упали сильнее всех</b>', ...down.map((x) => moveLine(x.name, x.bp, null)), ''); }
+    if (up.length) { lines.push('<b>Выросли сильнее всех</b>', ...up.map((x) => moveLine(x.name, x.bp, null)), ''); }
+    if (down.length) { lines.push('<b>Упали сильнее всех</b>', ...down.map((x) => moveLine(x.name, x.bp, null)), ''); }
   }
   if (checked.length) {
     const plusN = checked.filter((r) => r.outcome === 'plus').length;
     const best = [...checked].sort((a, b) => (b.profit_kop_24 ?? 0) - (a.profit_kop_24 ?? 0))[0];
     const avgReal = Math.round(checked.reduce((s, r) => s + (r.profit_kop_24 ?? 0), 0) / checked.length);
-    lines.push(`💡 <b>Рекомендации бота: ${plusN} из ${checked.length} в плюсе</b> (${Math.round((plusN / checked.length) * 100)}%)`,
+    lines.push(`<b>Рекомендации бота: ${plusN} из ${checked.length} в плюсе</b> (${Math.round((plusN / checked.length) * 100)}%)`,
       `В среднем ${sign(avgReal)} на сделку · лучшая — ${esc(best.name)} ${sign(best.profit_kop_24 ?? 0)}`, '');
   }
-  if (users.total >= 20) lines.push(`👥 В боте ${users.total} человек${users.week ? ` (+${users.week} за неделю)` : ''}`, '');
+  if (users.total >= 20) lines.push(`В боте ${users.total} человек${users.week ? ` (+${users.week} за неделю)` : ''}`, '');
   lines.push('<i>Это статистика прошлого, а не прогноз.</i>');
   return lines.join('\n');
 }
@@ -197,14 +198,12 @@ export function extraPost(n: NewsItem): string {
 export function newsPost(n: NewsItem): string {
   const ru = newsRuLines(n);
   if (ru) return [
-    header('🛠', valveKind(n), n.published_at), '',
-    `<b>${esc(n.title_ru || n.title)}</b>`, '',
+    `<b>${esc(n.title_ru || n.title)}</b>`, `<i>${valveKind(n)} · ${ruDate(n.published_at)}</i>`, '',
     ...ru, '',
     '<i>Кратко и в переводе. После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',
   ].join('\n').replace(/\n{3,}/g, '\n\n');
   return [
-    header('🛠', valveKind(n), n.published_at), '',
-    `<b>${esc(n.title)}</b>`,
+    `<b>${esc(n.title)}</b>`, `<i>${valveKind(n)} · ${ruDate(n.published_at)}</i>`, '',
     ...(n.snippet ? [`<blockquote>${esc(n.snippet)}</blockquote>`] : []),
     '', '<i>После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',
   ].join('\n');

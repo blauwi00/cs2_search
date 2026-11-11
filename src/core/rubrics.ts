@@ -6,7 +6,7 @@
 
 import type { Currency } from '../types/market.ts';
 import { toKop, type FxRate } from '../currency/nbu.ts';
-import { header, esc, money } from './postfmt.ts';
+import { header, hook, esc, money } from './postfmt.ts';
 
 export type RubricKind = 'caseev' | 'story' | 'tracked';
 
@@ -64,7 +64,7 @@ export function trackedPost(rows: { name: string; n: number }[], totalUsers: num
   const top = rows.filter((r) => r.n >= TRACKED_MIN_USERS).slice(0, 7);
   if (top.length < 3) return null;
   return [
-    header('👀', 'Что отслеживают в Ценолове', now), '',
+    hook(`Больше всего следят за ${esc(top[0].name)}: ${top[0].n} чел.`), '',
     ...top.map((r, i) => `${i + 1}. <b>${esc(r.name)}</b> — у ${r.n} чел.`), '',
     `Всего следят за ценами: ${totalUsers} чел.`,
     '<i>Без имён — только сколько человек добавили предмет в наблюдение или инвентарь. Хочешь получать уведомления по своим предметам — жми кнопку ниже.</i>',

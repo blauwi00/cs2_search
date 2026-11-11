@@ -14,7 +14,7 @@ import { CHECK_AFTER, ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, ty
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
 import { rubricFor, pickCaseEV, caseEvPost, trackedPost, storyPost, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
-import { header, dealBlock, moveLine, FOOT_DEALS, pct, ruDate } from './postfmt.ts';
+import { hook, dealBlock, moveLine, FOOT_DEALS, pct, plus, ruDate } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'rubric' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
@@ -68,9 +68,9 @@ export interface CardRow { name: string; bp: number; kop: number | null }
 export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency, FxRate>, now: number): { text: string; lead: string | null; up?: CardRow[]; down?: CardRow[] } | null {
   if (slot === 'ideas') {
     const { deals } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0, minHeldSec: HELD_SEC });
-    const top = deals.slice(0, 4);
+    const top = deals.slice(0, 3);
     if (!top.length) return null;
-    const lines = [header('💡', 'Рекомендации дня', now), ''];
+    const lines = [hook(`Идея дня: ${esc(top[0].name)}, чистыми ${plus(top[0].profitKop!)}`), ''];
     top.forEach((d, i) => lines.push(...dealBlock(i + 1, { name: d.name, buyName: MARKETS[d.buyAt].name, sellName: MARKETS[d.sellAt].name, payKop: d.payKop, sellKop: d.sellKop, getKop: d.getKop!, profitKop: d.profitKop!, roiBp: d.roiBp ?? 0, cash: d.wallet === 'cash' }), ''));
     lines.push(FOOT_DEALS);
     return { text: lines.join('\n'), lead: top[0].name };
@@ -79,11 +79,11 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
     const { trends } = buildRecs(entries, fx, { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 });
     const top = trends.slice(0, 5);
     if (!top.length) return null;
-    const lines = [header('📈', 'Растут в цене', now), '<i>неделя к месяцу</i>', ''];
+    const lines = [hook(`За неделю сильнее всех выросли: ${esc(top[0].name)} ${pct(top[0].trendBp ?? 0)}`), ''];
     for (const t of top) {
       lines.push(`${moveLine(t.name, t.trendBp ?? 0, null)} · от ${fmt(t.payKop)} на ${MARKETS[t.buyAt].name}`);
     }
-    lines.push('', '<i>Рост уже случился и может развернуться. Покупай только то, что готов держать.</i>');
+    lines.push('', '<i>Неделя к месяцу. Рост уже случился и может развернуться.</i>');
     return { text: lines.join('\n'), lead: top[0].name, up: top.map((t) => ({ name: t.name, bp: t.trendBp ?? 0, kop: t.payKop })) };
   }
   // cases: средние продажи Steam за сутки против месяца (прайс Steam), только кейсы с продажами.
@@ -95,10 +95,11 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
   const up = [...rows].sort((a, b) => b.d - a.d).filter((x) => x.d > 200).slice(0, 3);
   const down = [...rows].sort((a, b) => a.d - b.d).filter((x) => x.d < -200).slice(0, 3);
   if (!up.length && !down.length) return null;
-  const lines = [header('📦', 'Кейсы Steam', now), '<i>цена продаж за сутки к средней за месяц</i>', ''];
-  if (up.length) lines.push('📈 <b>Дорожают</b>', ...up.map((x) => moveLine(x.name, x.d, x.kop)), '');
-  if (down.length) lines.push('📉 <b>Дешевеют</b>', ...down.map((x) => moveLine(x.name, x.d, x.kop)), '');
-  lines.push('<i>Дешевеющий кейс — не обязательно выгодная покупка.</i>');
+  const lead0 = up[0] ?? down[0];
+  const lines = [hook(`Кейсы за сутки: ${esc(lead0.name)} ${pct(lead0.d)}`), ''];
+  if (up.length) lines.push('<b>Дорожают</b>', ...up.map((x) => moveLine(x.name, x.d, x.kop)), '');
+  if (down.length) lines.push('<b>Дешевеют</b>', ...down.map((x) => moveLine(x.name, x.d, x.kop)), '');
+  lines.push('<i>Цена продаж за сутки к средней за месяц. Дешевеющий кейс — не обязательно выгодная покупка.</i>');
   return { text: lines.join('\n'), lead: (up[0] ?? down[0]).name, up: up.map((x) => ({ name: x.name, bp: x.d, kop: x.kop })), down: down.map((x) => ({ name: x.name, bp: x.d, kop: x.kop })) };
 }
 

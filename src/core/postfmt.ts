@@ -1,4 +1,4 @@
-// Единый вид постов канала: заголовок с датой, короткие блоки, цифры жирным, пояснения — одной строкой в конце.
+// Единый вид постов канала: крючок первой строкой (жирным, с главной цифрой), 3–5 коротких строк, вывод и сноска в одну строку, без эмодзи.
 
 import { formatUah, formatSignedUah } from '../utils/money.ts';
 import { warsawDate } from '../utils/time.ts';
@@ -15,6 +15,10 @@ export const money = (k: number | null) => formatUah(k);
 export const plus = (k: number) => (k > 0 ? formatSignedUah(k) : formatUah(k));
 export const pct = (bp: number) => `${bp >= 0 ? '+' : '−'}${Math.abs(Math.round(bp / 100))}%`;
 
+/** Крючок: первая строка поста — жирным, с главным фактом или цифрой. */
+export const hook = (text: string): string => `<b>${text}</b>`;
+
+/** Старый заголовок «значок название · дата» — остался для редких служебных постов. */
 export function header(icon: string, title: string, now: number): string {
   return `${icon} <b>${title}</b> · ${ruDate(now)}`;
 }
@@ -23,9 +27,9 @@ export function header(icon: string, title: string, now: number): string {
 export function dealBlock(i: number, d: { name: string; buyName: string; sellName: string; payKop: number; sellKop: number | null; getKop: number; profitKop: number; roiBp: number; cash: boolean }): string[] {
   return [
     `<b>${i}. ${esc(d.name)}</b>`,
-    `🛒 Купить: ${esc(d.buyName)} — <b>${money(d.payKop)}</b>`,
-    `💰 Продать: ${esc(d.sellName)} — ${money(d.sellKop)}`,
-    `✅ Чистыми: <b>${plus(d.profitKop)}</b> (${pct(d.roiBp)}) · ${d.cash ? 'деньгами' : 'на баланс Steam'}`,
+    `Купить: ${esc(d.buyName)} — <b>${money(d.payKop)}</b>`,
+    `Продать: ${esc(d.sellName)} — ${money(d.sellKop)}`,
+    `Чистыми: <b>${plus(d.profitKop)}</b> (${pct(d.roiBp)}) · ${d.cash ? 'деньгами' : 'на баланс Steam'}`,
   ];
 }
 
@@ -34,4 +38,4 @@ export function moveLine(name: string, bp: number, kop: number | null): string {
   return `${bp >= 0 ? '▲' : '▼'} ${esc(name)} — <b>${pct(bp)}</b>${kop ? ` · ${money(kop)}` : ''}`;
 }
 
-export const FOOT_DEALS = '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет — проверь цену на сайте.</i>';
+export const FOOT_DEALS = '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет.</i>';

@@ -20,8 +20,9 @@ const kase = (n: string, d1: number, d30: number): ScanEntry => ({ name: n, offe
 
 test('посты: «Рекомендации дня» с полной цепочкой и дисклеймером; пусто — поста нет', () => {
   const p = renderMoney(buildPost('ideas', [deal], FX, AT10)!, UAH_CUR);
-  assert.match(p, /Рекомендации дня<\/b> · 4 ноября/);
-  assert.match(p, /Купить: Skinport — <b>450,00 ₴<\/b>\n💰 Продать: Skinport — 585,00 ₴\n✅ Чистыми: <b>\+/);
+  assert.match(p, /^<b>Идея дня: .+, чистыми /, "крючок первой строкой");
+  assert.doesNotMatch(p, /[\u{1F300}-\u{1FAFF}]/u, "без эмодзи");
+  assert.match(p, /Купить: Skinport — <b>450,00 ₴<\/b>\nПродать: Skinport — 585,00 ₴\nЧистыми: <b>\+/);
   assert.match(p, /Не финансовый совет/);
   assert.equal(buildPost('ideas', [], FX, AT10), null);
   const c = buildPost('cases', [kase('Kilowatt Case', 120, 100), kase('Gallery Case', 80, 100), kase('Fever Case', 100, 100)], FX, AT10)!;
@@ -84,7 +85,7 @@ test('канал: /channel проверяет права бота, публик�
   await runCycle(env, { now: AT10 + 34 * 60, fetcher });
   const posts = sent.filter((s) => (s.method === 'sendMessage' || s.method === 'sendPhoto') && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один пост за слот');
-  assert.match(posts[0].body.text, /Рекомендации дня/);
+  assert.match(posts[0].body.text, /^<b>Идея дня: /);
 });
 
 test('метки источников: /start tt сохраняется один раз; /stats видит только владелец', async () => {
@@ -157,7 +158,7 @@ test('картинка поста: Worker заказывает её у сбор�
   await runCycle(env, { now: AT15 + 120, fetcher });
   await runCycle(env, { now: AT15 + 28 * 60, fetcher });
   await runCycle(env, { now: AT15 + 34 * 60, fetcher });
-  const tr = posts().find((p) => /Растут в цене/.test(p.body.text));
+  const tr = posts().find((p) => /За неделю сильнее всех выросли/.test(p.body.text));
   if (tr) assert.notEqual(String(tr.body.photo ?? tr.body.link_preview_options?.url ?? '').includes('/card/'), true);
 });
 

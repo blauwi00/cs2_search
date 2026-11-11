@@ -28,7 +28,7 @@ test('история идей: записываются один раз за д�
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1 - 600);
   await ingest(env, { kind: 'scan', items: [scanItem(13)] }, DAY1);
   const p1 = (await composePost(D, 'ideas', DAY1))!;
-  assert.match(p1, /Рекомендации дня<\/b> · 4 ноября/);
+  assert.match(p1, /^<b>Идея дня: .+, чистыми /);
   assert.match(p1, /через неделю, когда продажа станет возможной, покажем честный итог/);
   assert.ok(!/недельной давности/.test(p1));
   await composePost(D, 'ideas', DAY1 + 600);
@@ -132,7 +132,7 @@ test('картинки в канале: обложка новости из Steam
   const n = posts.find((s) => /Обновление CS2/.test(s.body.text))!;
   assert.equal(n.method, 'sendPhoto');
   assert.equal(n.body.photo, 'https://clan.akamai.steamstatic.com/images/1/cover.jpg');
-  const idea = posts.find((s) => /Рекомендации дня/.test(s.body.text));
+  const idea = posts.find((s) => /^<b>Идея дня: /.test(s.body.text));
   if (idea) assert.equal(idea.body.photo, img);
   const admin = sent.find((s) => s.method === 'sendMessage' && s.body.chat_id !== -1001234);
   if (admin) assert.deepEqual(admin.body.link_preview_options, { is_disabled: true });

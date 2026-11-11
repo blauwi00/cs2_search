@@ -7,6 +7,10 @@ import { join } from 'node:path';
 const DIR = process.argv[2];
 const DUR = 20;
 const r2 = (x) => Math.round(x * 100) / 100;
+// Настоящие записи Mixkit/Kenney (video/sfx-library.md); варианты pop2, pop3… чередуем, чтобы не звучало одинаково
+const NV = { whoosh: 3, pop: 3, tick: 2, slam: 2, chime: 2, coin: 2 };
+const vn = (n, i) => (NV[n] > 1 && i % NV[n] ? n + (i % NV[n] + 1) : n);
+const DURS = { pop: 0.5, whoosh: 0.9, tick: 0.3, thump: 0.6, chime: 1.4, slam: 1, click: 0.4, correct: 1, coin: 1, wrong: 1, scratch: 0.9, lock: 0.6, camera: 0.5, glitch: 0.7 };
 // [название, файл, варианты, номер верного, цена]
 const Q = [
   ['Gallery Case', 'Gallery_Case.png', ['12 ₴', '33 ₴', '90 ₴'], 1, 33.01],
@@ -37,7 +41,7 @@ Q.forEach(([nm, img, opts, ok, price], r) => {
   js += `  tl.fromTo("#p${r}", { opacity: 0, scale: 0.6, y: 40 }, { opacity: 1, scale: 1, y: 0, duration: 0.3, ease: "back.out(2.2)" }, ${r2(T + 0.05)});\n`;
   js += `  var o${r} = { v: 0 };\n  tl.to(o${r}, { v: ${price}, duration: 0.7, ease: "power2.out", onUpdate: function () { document.getElementById("pv${r}").textContent = (${fmt.toString()})(o${r}.v) + " ₴"; } }, ${r2(T + 0.05)});\n`;
   js += `  tl.to("#q${r}", { opacity: 0, duration: 0.12 }, ${r2(t + 4.0)});\n`;
-  sfxL.push(['whoosh', t, 0.3], ['pop', t + 0.4, 0.35], ['pop', t + 0.5, 0.35], ['pop', t + 0.6, 0.35], ['chime', T, 0.55], ['pop', T + 0.05, 0.4]);
+  sfxL.push(['whoosh', t, 0.3], ['pop', t + 0.4, 0.35], ['pop', t + 0.5, 0.35], ['pop', t + 0.6, 0.35], ['correct', T, 0.6], ['pop', T + 0.05, 0.4]);
   rounds += `<div class="rnd" id="q${r}">
     <div class="cnt">${r + 1} / ${Q.length}</div>
     <div class="card" id="c${r}"><img src="assets/${img}" alt=""><div class="cn">${nm}</div></div>
@@ -56,7 +60,7 @@ js += `  tl.fromTo("#etx", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 
 js += `  tl.fromTo("#etg", { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2.2)" }, ${E + 1.0});\n`;
 js += `  tl.fromTo("#efr", { scale: 2.4, opacity: 0, rotation: -14 }, { scale: 1, opacity: 1, rotation: -5, duration: 0.2, ease: "power4.in" }, ${E + 1.8});\n`;
 sfxL.push(['whoosh', E, 0.3], ['pop', E + 0.15, 0.5], ['pop', E + 0.4, 0.5], ['chime', E + 1.0, 0.6], ['slam', E + 1.85, 0.5]);
-const sfx = sfxL.map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${n}.wav" data-start="${r2(t)}" data-duration="${{ pop: 0.12, whoosh: 0.45, tick: 0.06, thump: 0.4, chime: 1.1, slam: 0.5, click: 0.15 }[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
+const sfx = sfxL.map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${vn(n, i)}.wav" data-start="${r2(t)}" data-duration="${DURS[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
 
 const page = `<!doctype html>
 <html lang="ru">

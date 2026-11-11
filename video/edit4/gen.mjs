@@ -8,6 +8,10 @@ import { join } from 'node:path';
 const DIR = process.argv[2];
 const DUR = 35.4;
 const r2 = (x) => Math.round(x * 100) / 100;
+// Настоящие записи Mixkit/Kenney (video/sfx-library.md); варианты pop2, pop3… чередуем, чтобы не звучало одинаково
+const NV = { whoosh: 3, pop: 3, tick: 2, slam: 2, chime: 2, coin: 2 };
+const vn = (n, i) => (NV[n] > 1 && i % NV[n] ? n + (i % NV[n] + 1) : n);
+const DURS = { pop: 0.5, whoosh: 0.9, tick: 0.3, thump: 0.6, chime: 1.4, slam: 1, click: 0.4, correct: 1, coin: 1, wrong: 1, scratch: 0.9, lock: 0.6, camera: 0.5, glitch: 0.7 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const raw = JSON.parse(readFileSync(join(DIR, 'assets/transcript.json'), 'utf8'));
 const W = (raw.words || raw).map((w) => ({ s: w.start, e: w.end }));
@@ -116,7 +120,7 @@ const sfx = [['click', 3.2, 0.5], ['slam', 3.22, 0.7], ['slam', 4.82, 0.7], ['wh
   ['whoosh', 14.1, 0.18], ['whoosh', 15.2, 0.18], ['whoosh', 16.3, 0.18], ['tick', 17.09, 0.6], ['whoosh', 17.0, 0.25],
   ...Array.from({ length: 8 }, (_, i) => ['tick', 18.35 + i * 0.23, 0.45]), ['tick', 20.33, 0.6], ['whoosh', 20.23, 0.2], ['tick', 22.55, 0.7], ['whoosh', 22.45, 0.3],
   ['click', 22.95, 0.7], ['pop', 22.96, 0.4], ['chime', 24.3, 0.7], ['whoosh', 24.15, 0.3], ['whoosh', 30.0, 0.3], ['pop', 30.76, 0.5], ['pop', 31.27, 0.55], ['whoosh', 32.55, 0.3], ['pop', 32.66, 0.5], ['pop', 34.74, 0.6], ['slam', 34.74, 0.45]]
-  .map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${n}.wav" data-start="${r2(t)}" data-duration="${{ pop: 0.12, whoosh: 0.45, tick: 0.06, thump: 0.4, chime: 1.1, slam: 0.5, click: 0.15 }[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
+  .map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${vn(n, i)}.wav" data-start="${r2(t)}" data-duration="${DURS[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
 
 const boxes = Array.from({ length: 7 }, (_, i) => `<b class="bx" id="bx${i + 1}">${i + 1}</b>`).join('');
 const spPath = 'M' + P.map((p) => p.join(',')).join(' L');

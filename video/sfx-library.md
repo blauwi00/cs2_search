@@ -1,11 +1,10 @@
 # Звуки для роликов
 
-Раньше звуки синтезировал ffmpeg (video/edit4/sfx.sh) — на слух «нейронка». Теперь берём настоящие записи Kenney (CC0, без указания автора):
+Синтез ffmpeg (video/edit4/sfx.sh) звучал «нейронно». Теперь — настоящие записи:
 
-- Impact Sounds: `impact_punch_heavy_000` → slam, `impact_soft_heavy_001` → thump, `impact_bell_heavy_000` → chime
-- Interface Sounds: `tick_001` → tick
-- UI Audio: `click3` → pop, `mouseclick1` → click
-- whoosh убран (тишина): «взмахи» звучали фальшиво
+- Mixkit (бесплатно, для коммерции, без указания автора): свуши, поп/щелчки, монеты, «верно/неверно», замок, камера, сердцебиение, винил-скрэтч, глитч. Каталог ~3000 звуков по категориям скачивается скриптом по страницам mixkit.co/free-sound-effects/<категория>/ (превью mp3 с assets.mixkit.co).
+- Kenney (CC0): удары, интерфейс, RPG, цифровые, sci-fi (репозитории Boyquotes/kenney-*-for-godot, Calinou/kenney-*).
+- Мемные звуки (вайн-бум и т.п.) не берём: авторские права; их выбирают в библиотеке TikTok при публикации.
 
-Источник: репозитории Boyquotes/kenney-impact-sounds-for-godot, Calinou/kenney-interface-sounds, Calinou/kenney-ui-audio (копии наборов Kenney).
-Файлы в репозиторий не кладём, только ссылки. Нужны WAV 44,1 кГц стерео, пик выровнен ffmpeg.
+В генераторах имена звуков (pop, whoosh, tick…) чередуются вариантами (pop2, pop3…), чтобы не звучало одинаково.
+Файлы в репозиторий не кладём.

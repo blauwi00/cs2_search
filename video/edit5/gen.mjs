@@ -7,6 +7,10 @@ import { join } from 'node:path';
 const DIR = process.argv[2];
 const DUR = 15;
 const r2 = (x) => Math.round(x * 100) / 100;
+// Настоящие записи Mixkit/Kenney (video/sfx-library.md); варианты pop2, pop3… чередуем, чтобы не звучало одинаково
+const NV = { whoosh: 3, pop: 3, tick: 2, slam: 2, chime: 2, coin: 2 };
+const vn = (n, i) => (NV[n] > 1 && i % NV[n] ? n + (i % NV[n] + 1) : n);
+const DURS = { pop: 0.5, whoosh: 0.9, tick: 0.3, thump: 0.6, chime: 1.4, slam: 1, click: 0.4, correct: 1, coin: 1, wrong: 1, scratch: 0.9, lock: 0.6, camera: 0.5, glitch: 0.7 };
 // [площадка, сколько придёт со 100 ₴, точно?]
 const ROWS = [['Steam', 86.97, true], ['Skinport', 92, false], ['Waxpeer', 94, false], ['Market.CSGO', 95, false], ['LIS-SKINS', 95, false], ['CSFloat', 98, false]];
 const fmt = (v, exact) => (exact ? v.toFixed(2).replace('.', ',') : String(Math.round(v)));
@@ -40,8 +44,8 @@ js += `  tl.fromTo("#efr", { scale: 2.4, opacity: 0, rotation: -14 }, { scale: 1
 js += `  tl.fromTo("#top", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.1);\n`;
 js += `  tl.fromTo("#h100", { scale: 2.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: "power4.in" }, 0.5);\n`;
 
-const sfx = [['pop', 0.5, 0.6], ...ROWS.flatMap((_, i) => [['pop', 1.7 + i * 0.85 + 0.12, 0.35], ['tick', 1.7 + i * 0.85 + 0.62, 0.5]]), ['slam', 7.5, 0.5], ['whoosh', 9.0, 0.25], ['pop', 9.3, 0.5], ['whoosh', 9.8, 0.2], ['whoosh', 10.4, 0.2], ['slam', 11.3, 0.7], ['whoosh', 12.4, 0.3], ['pop', 12.55, 0.5], ['chime', 13.3, 0.6], ['slam', 14.2, 0.5]]
-  .map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${n}.wav" data-start="${r2(t)}" data-duration="${{ pop: 0.12, whoosh: 0.45, tick: 0.06, thump: 0.4, chime: 1.1, slam: 0.5, click: 0.15 }[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
+const sfx = [['pop', 0.5, 0.6], ...ROWS.flatMap((_, i) => [['pop', 1.7 + i * 0.85 + 0.12, 0.35], ['coin', 1.7 + i * 0.85 + 0.62, 0.55]]), ['slam', 7.5, 0.5], ['whoosh', 9.0, 0.25], ['pop', 9.3, 0.5], ['whoosh', 9.8, 0.2], ['whoosh', 10.4, 0.2], ['slam', 11.3, 0.7], ['whoosh', 12.4, 0.3], ['pop', 12.55, 0.5], ['chime', 13.3, 0.6], ['slam', 14.2, 0.5]]
+  .map(([n, t, v], i) => `  <audio id="fx${i}" class="clip" src="assets/sfx/${vn(n, i)}.wav" data-start="${r2(t)}" data-duration="${DURS[n]}" data-track-index="7" data-volume="${v}"></audio>`).join('\n');
 
 const rows = ROWS.map(([nm, v, ex], i) => `<div class="row" id="r${i}" style="top:${i * 195}px"><div class="nm">${nm}</div><div class="vl" id="v${i}" style="color:${i === 0 ? '#ff8c99' : '#35d07f'}">0 ₴</div><div class="bar"><div class="gr" id="g${i}" style="width:${(v * 8.8).toFixed(1)}px;background:${i === 0 ? '#e0526a' : '#35d07f'}"></div><div class="rd" id="d${i}" style="width:${((100 - v) * 8.8).toFixed(1)}px"></div></div><div class="ls" id="l${i}">−${(100 - v).toFixed(2).replace('.', ',')} ₴ комиссия${ex ? '' : ' (≈)'}</div></div>`).join('\n      ');
 const page = `<!doctype html>

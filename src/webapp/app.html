@@ -1103,6 +1103,16 @@ function deals() {
       if (hid.length) h += '<div id="r-hid"><div class="row" id="r-hid-b"><div class="ic">💳</div><div class="m"><div class="n">Ещё ' + hid.length + ' ' + (hid.length === 1 ? 'идея' : hid.length < 5 ? 'идеи' : 'идей') + ' дороже баланса</div><div class="d">Показать</div></div><div class="mut">›</div></div></div>';
       if (r.trends.length) h += '<div class="sec">Растут в цене</div>';
       h += r.trends.map(recCard).join('');
+      if (r.limitKop != null) {
+        h += '<div class="sec">Куда потратить баланс Steam (≈' + uahShort(r.limitKop) + ')</div>';
+        if (r.spend && r.spend.length) {
+          h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Деньги на балансе Steam вывести нельзя. Это то, что продаётся каждый день и дорожало за неделю. Гарантии нет: при продаже обратно Steam берёт ≈13%, поэтому «в ноль» выйдешь, только если цена вырастет.</div>';
+          h += r.spend.map(function (x) {
+            return '<div class="rc"><div class="hd">' + pic(x.img, '📈') + '<div class="n">' + esc(x.name) + '<div class="c">' + x.vol24h + ' продаж в Steam за сутки</div></div><span class="act a-buy">📈 +' + Math.round(x.trendBp / 100) + '%</span></div>' +
+              '<div class="mut" style="font-size:13px">В Steam сейчас ' + uahShort(x.priceKop) + '. Чтобы вернуть потраченное после комиссии, выставляй не дешевле ' + uahShort(x.breakevenKop) + '.</div></div>';
+          }).join('');
+        } else h += '<div class="card mut" style="font-size:14px">Сейчас нет предметов по карману, которые и продаются каждый день, и дорожали за неделю. Лучше не покупать ради покупки.</div>';
+      }
       h += '<div class="row" id="r-stats" style="margin-bottom:6px"><div class="ic">📊</div><div class="m"><div class="n">Честная статистика</div><div class="d" id="r-stats-d">Сколько рекомендаций в плюсе через 7 дней, когда можно продать</div></div><div class="mut">›</div></div>';
     }
     view.innerHTML = h;

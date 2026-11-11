@@ -1,5 +1,6 @@
 // JSON API для Telegram Mini App. Каждый запрос подписан Telegram (initData) и принимается только от администратора.
 
+import { spendIdeas, SPEND_MIN_KOP, type SpendIdea } from '../core/spend.ts';
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
 import * as T from '../storage/trades.ts';
@@ -107,7 +108,7 @@ async function rateOn(d: D1Database, code: string, date: string, today: string):
  */
 async function recsFor(d: D1Database, tid: number, now: number, m: Memo, pre?: { st: db.Settings; bal: SteamBalance | null }) {
   const [scan, fx, st] = await Promise.all([scanCached(d, m, now), db.loadLatestFx(d), pre ? pre.st : db.getSettings(d, tid)]);
-  const empty = { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[], hidden: [] as RecDto[], limitKop: null as number | null };
+  const empty = { fetchedAt: scan?.fetchedAt ?? null, scanned: 0, deals: [] as RecDto[], trends: [] as RecDto[], hidden: [] as RecDto[], limitKop: null as number | null, spend: [] as SpendIdea[] };
   if (!scan || now - scan.fetchedAt > 86400) return empty;
   const rs = { minProfitKop: db.num(st.min_profit_kop), minRoiBp: db.num(st.min_roi_bp), depositFeeBp: db.num(st.deposit_fee_bp), withdrawFeeBp: db.num(st.withdraw_fee_bp) };
   // Одинаковые пороги и комиссии у большинства — считаем идеи один раз на скан и курс.
@@ -119,7 +120,9 @@ async function recsFor(d: D1Database, tid: number, now: number, m: Memo, pre?: {
   const split = splitByBalance(r.deals, limitKop), splitT = splitByBalance(r.trends, limitKop);
   const pages = await loadSkinportPages(d, [...r.deals, ...r.trends].filter((x) => x.buyAt === 'skinport' || x.sellAt === 'skinport').map((x) => x.name).slice(0, 200));
   const dto = (x: Rec): RecDto => ({ ...recDto(x, pages), fitsBalance: limitKop !== null && x.payKop <= limitKop });
-  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: split.shown.map(dto), trends: splitT.shown.map(dto), hidden: [...split.hidden, ...splitT.hidden].map(dto), limitKop };
+  // Баланс Steam вписан — подсказываем, куда его потратить (без гарантии прибыли).
+  const spend = limitKop !== null && limitKop >= SPEND_MIN_KOP ? spendIdeas(scan.entries, limitKop) : [];
+  return { fetchedAt: scan.fetchedAt, scanned: scan.entries.length, stale: now - scan.fetchedAt > 2 * 3600, deals: split.shown.map(dto), trends: splitT.shown.map(dto), hidden: [...split.hidden, ...splitT.hidden].map(dto), limitKop, spend };
 }
 /** Баланс Steam для приложения (шапка, окно баланса). byBalance — галочка (действует только при вписанном балансе). */
 function balanceDto(b: SteamBalance | null, st: db.Settings) {

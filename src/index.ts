@@ -14,7 +14,7 @@ function appEtag(): string {
   if (etag) return etag;
   let h = 5381;
   for (let i = 0; i < APP_HTML.length; i++) h = ((h << 5) + h + APP_HTML.charCodeAt(i)) | 0;
-  return (etag = `"a${(h >>> 0).toString(36)}-${APP_HTML.length.toString(36)}"`);
+  return (etag = `W/"a${(h >>> 0).toString(36)}-${APP_HTML.length.toString(36)}"`); // слабый: Cloudflare сохраняет его при сжатии
 }
 import { handleCard } from './card.ts';
 import { handleImgProxy } from './imgproxy.ts';
@@ -40,7 +40,7 @@ export default {
     if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest') return handleIngest(req, env, nowSec());
     if (url.pathname === '/app' && req.method === 'GET') {
       // ETag: при повторном открытии телефон получает «не изменилось» (304) вместо 300 КБ — приложение открывается быстрее.
-      if (req.headers.get('If-None-Match') === appEtag()) return new Response(null, { status: 304, headers: { ETag: appEtag(), 'Cache-Control': 'no-cache' } });
+      if ((req.headers.get('If-None-Match') ?? '').replace(/^W\//, '') === appEtag().replace(/^W\//, '')) return new Response(null, { status: 304, headers: { ETag: appEtag(), 'Cache-Control': 'no-cache' } });
       return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: appEtag(), 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
     }
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());

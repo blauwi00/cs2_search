@@ -407,11 +407,6 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без
 // ---------- Темы оформления: своя палитра вместо цветов Telegram. «tg» — как в Telegram. ----------
 var THEMES = {
   gold: { name: 'Золото', bg2: '#070707', bg: '#0c0c0c', card: '#121212', text: '#f3f1ea', hint: '#8f8a7d', link: '#e7b24c', accent: '#e7b24c', at: '#1a1305', green: '#8fd16a', red: '#ff5d5d', grad: 'linear-gradient(135deg,#f6d98a,#e7b24c 45%,#a8741f)', glow: '#c8902e' },
-  radar: { name: 'Радар', bg2: '#060a12', bg: '#0b111c', card: '#0e1522', text: '#eef2fa', hint: '#8b98b3', link: '#5fe6cc', accent: '#38e1c0', at: '#04110e', green: '#3be59a', red: '#ff5d73', grad: 'linear-gradient(135deg,#38e1c0,#2f7bff)', glow: '#1c4fd6' },
-  orange: { name: 'CS2 оранж', bg2: '#0b0907', bg: '#120e0a', card: '#16120d', text: '#f6efe6', hint: '#a39684', link: '#ffb03a', accent: '#ff9124', at: '#1a0d02', green: '#55d38f', red: '#ff5b4d', grad: 'linear-gradient(135deg,#ffb03a,#ff6a1f)', glow: '#b8480e' },
-  neon: { name: 'Неон', bg2: '#08061a', bg: '#0e0b24', card: '#120e28', text: '#f1eeff', hint: '#9a92bf', link: '#c49bff', accent: '#b07bff', at: '#ffffff', green: '#45e6a8', red: '#ff5c82', grad: 'linear-gradient(135deg,#ff5fd2,#7c5cff)', glow: '#5b2dd6' },
-  lime: { name: 'Графит лайм', bg2: '#0b0d0c', bg: '#111413', card: '#151918', text: '#eef3ef', hint: '#94a09a', link: '#c8ff3d', accent: '#c8ff3d', at: '#0b1200', green: '#c8ff3d', red: '#ff6a5a', grad: 'linear-gradient(135deg,#c8ff3d,#5dffb4)', glow: '#3f6b10' },
-  tg: { name: 'Как в Telegram' }
 };
 var THEME_VARS = { bg2: '--bg2', bg: '--bg', card: '--card', text: '--text', hint: '--hint', link: '--link', accent: '--accent', at: '--accent-t', green: '--green', red: '--red', grad: '--grad', glow: '--glow' };
 function applyTheme(key) {
@@ -424,18 +419,8 @@ function applyTheme(key) {
   } catch (e) { /* старый Telegram — цвета шапки не меняются */ }
   return t;
 }
-var THEME = applyTheme(lsGet('theme') || 'gold');
-function themeSheet() {
-  var h = '<h2>🎨 Тема оформления</h2><div class="sub">Запоминается на этом устройстве.</div><div class="thg">' + Object.keys(THEMES).map(function (k) {
-    var t = THEMES[k];
-    if (k === 'tg') return '<div class="tho' + (THEME === k ? ' on' : '') + '" data-th="tg" style="background:var(--tg-theme-secondary_bg_color,#171a21);color:var(--tg-theme-text_color,#fff)"><b>' + t.name + '</b><div class="sws"><i style="background:var(--tg-theme-bg-color,#0f1115)"></i><i style="background:var(--tg-theme-section_bg_color,#1c2029)"></i><i style="background:var(--tg-theme-button_color,#5b8cff)"></i></div><div class="tb" style="background:var(--tg-theme-button_color,#5b8cff);color:var(--tg-theme-button_text_color,#fff)">цвета Telegram</div></div>';
-    return '<div class="tho' + (THEME === k ? ' on' : '') + '" data-th="' + k + '" style="background:' + t.bg2 + ';color:' + t.text + '"><b>' + t.name + '</b><div class="sws"><i style="background:' + t.card + '"></i><i style="background:' + t.accent + '"></i><i style="background:' + t.green + '"></i><i style="background:' + t.red + '"></i></div><div class="tb" style="background:' + t.grad + ';color:' + t.at + '">кнопка</div></div>';
-  }).join('') + '</div>';
-  sheet(h);
-  Array.prototype.forEach.call(document.querySelectorAll('[data-th]'), function (el) {
-    el.onclick = function () { haptic('ok'); THEME = applyTheme(el.getAttribute('data-th')); lsSet('theme', THEME); themeSheet(); };
-  });
-}
+// Одна тема — «Золото» (выбор тем убран по решению владельца).
+var THEME = applyTheme('gold');
 /** Выбор валюты для поля ввода; key — что запомнить (например, сайт продажи). */
 function curSelect(id, key) {
   var def = (key && lsGet('cur_' + key)) || CUR.code;
@@ -2429,7 +2414,6 @@ function more() {
     row('m-set', '⚙️', 'Настройки', 'Валюта, пороги прибыли, уведомления, тихие часы') +
     row('m-bal', '💳', 'Баланс Steam', state.bal ? 'Сейчас ' + uahShort(state.bal.kop) + ' — бот подбирает идеи под него' : 'Впиши — бот покажет идеи, на которые хватит') +
     row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
-    row('m-theme', '🎨', 'Тема оформления', 'Сейчас: ' + esc(THEMES[THEME].name)) +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
     row('m-talk', '✉️', 'Связь с автором', 'Канал, предложить пост, сообщить об ошибке, поддержать') + '</div>' +
     (state.isAdmin ? '<div class="grp">' + row('m-own', '🛠', 'Для владельца', 'Панель, состояние системы') + '</div>' : '') +
@@ -2443,7 +2427,6 @@ function more() {
   $('#m-invite').onclick = function () { haptic(); inviteFriend(); };
   $('#m-sites').onclick = function () { haptic(); sitesSheet(); };
   $('#m-bal').onclick = function () { haptic(); balanceSheet(); };
-  $('#m-theme').onclick = function () { haptic(); themeSheet(); };
   $('#m-help').onclick = function () {
     haptic();
     menu([

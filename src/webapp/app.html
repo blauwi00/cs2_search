@@ -348,6 +348,14 @@ html.gold .btns{gap:10px}
 html.gold .btn.danger{border-radius:16px;box-shadow:0 4px 0 #2a0b0b}
 html.gold .rip{position:absolute;border-radius:50%;pointer-events:none;width:10px;height:10px;margin:-5px 0 0 -5px;background:radial-gradient(circle,rgba(255,240,200,.85),rgba(231,178,76,.35) 45%,transparent 70%);animation:rip .6s ease-out forwards}
 @keyframes rip{from{transform:scale(1);opacity:1}to{transform:scale(46);opacity:0}}
+
+/* «Золото» без смайликов: вместо них — тонкие линейные иконки одного стиля */
+html.gold .btn .bi{width:19px;height:19px;flex:none;margin-right:8px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+html.gold .btn.sec2 .bi{display:inline-block;margin:0 8px 0 0;stroke:var(--gold2)}
+html.gold .gpair:not(.one) .btn.sec2{flex-direction:column}html.gold .gpair:not(.one) .btn.sec2 .bi{display:block;margin:0 auto 6px;width:22px;height:22px}
+html.gold a{color:var(--gold2)}
+html.gold .ic .gi{width:20px;height:20px;stroke:var(--gold);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+html.gold .ic{background:linear-gradient(180deg,#1c1a14,#100f0c);border:1px solid rgba(231,178,76,.22)}
 </style>
 </head>
 <body>
@@ -884,6 +892,48 @@ function bindHero(s) {
   if ($('#gt-w')) $('#gt-w').onclick = function () { haptic(); go('market'); };
   if ($('#gt-i')) $('#gt-i').onclick = function () { haptic(); go('inv'); };
 }
+// «Золото» без смайликов: убираем их из текста, кнопкам и значкам — линейные иконки по смыслу.
+var EMO = /[\uD83C-\uDBFF][\uDC00-\uDFFF]|[☀-➿⭐⬆⬇⬛⬜⏩-⏺⌚⌛↩↪⤴⤵〰〽]️?|[️‍⃣]/g;
+var BI = {
+  cart: '<path d="M3 4h2l2.2 11h10.6L20 7H6.2"/><circle cx="9" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/>',
+  check: '<path d="M4 12.5l5 5L20 6.5"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  chart: '<path d="M4 20V10M10 20V5M16 20v-7M21 20H3"/>',
+  out: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
+  sold: '<path d="M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2 2.6 5 3.1 5 1.3 5 3.3-2.2 3.4-5 3.4-5-1.2-5-3.2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  share: '<path d="M12 15V3M7.5 7.5L12 3l4.5 4.5"/><path d="M5 12v7h14v-7"/>',
+  back: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+  box: '<path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="m4 7 8 4 8-4M12 11v10"/>'
+};
+var BI_RULES = [[/купить|купи /i, 'cart'], [/я купил|сохранить|деньги пришли|продано|принимаю|да$/i, 'check'], [/следить|отслеж/i, 'eye'], [/график/i, 'chart'], [/я продал|продал/i, 'sold'],
+  [/уведомить|напомн/i, 'bell'], [/поделиться|пригласить/i, 'share'], [/снял|вернуть|назад/i, 'back'], [/удалить|убрать|отключить/i, 'trash'], [/записать цену|изменить|вписать/i, 'edit'],
+  [/записать|добавить/i, 'plus'], [/steam market|skinport|market\.csgo|csfloat|открыть|на сайт|перейти/i, 'out'], [/настро/i, 'gear']];
+function svgI(k, cls) { return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true">' + BI[k] + '</svg>'; }
+function deEmoji(root) {
+  if (THEME !== 'gold' || !root) return;
+  var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false), n, list = [];
+  var EMO1 = new RegExp(EMO.source);
+  while ((n = w.nextNode())) if (EMO1.test(n.nodeValue)) list.push(n);
+  list.forEach(function (t) { EMO.lastIndex = 0; t.nodeValue = t.nodeValue.replace(EMO, '').replace(/^\s+(?=\S)/, function (m) { return t.previousSibling ? ' ' : ''; }).replace(/\s{2,}/g, ' '); });
+  EMO.lastIndex = 0;
+  Array.prototype.forEach.call(root.querySelectorAll('.btn:not([data-bi])'), function (b) {
+    b.setAttribute('data-bi', '1'); var tx = b.textContent.trim().toLowerCase();
+    for (var i = 0; i < BI_RULES.length; i++) if (BI_RULES[i][0].test(tx)) { b.insertAdjacentHTML('afterbegin', svgI(BI_RULES[i][1], 'bi')); break; }
+  });
+  Array.prototype.forEach.call(root.querySelectorAll('.ic:not(.site)'), function (ic) { if (!ic.querySelector('img,svg') && !ic.textContent.trim()) ic.innerHTML = svgI('box', 'gi'); });
+}
+(function () {
+  if (!window.MutationObserver) return;
+  var busy = false, run = function () { if (busy) return; busy = true; try { ['#view', '#sc', '.top', '#toast'].forEach(function (q) { deEmoji($(q)); }); } finally { setTimeout(function () { busy = false; }, 0); } };
+  var mo = new MutationObserver(function () { if (!busy) requestAnimationFrame(run); });
+  ['#view', '#sc', '#toast'].forEach(function (q) { var el = $(q); if (el) mo.observe(el, { childList: true, subtree: true, characterData: true }); });
+  var bb = $('#balbtn'); if (bb) mo.observe(bb, { childList: true, subtree: true });
+})();
 // «Золото»: волна от пальца на кнопках и плитках.
 document.addEventListener('pointerdown', function (e) {
   if (THEME !== 'gold') return;

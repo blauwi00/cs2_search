@@ -974,6 +974,7 @@ function deEmoji(root) {
   EMO.lastIndex = 0;
   Array.prototype.forEach.call(root.querySelectorAll('.btn:not([data-bi])'), function (b) {
     b.setAttribute('data-bi', '1'); var tx = b.textContent.trim().toLowerCase();
+    if (/^[＋+−✓→←↑↓]/.test(tx)) return;
     for (var i = 0; i < BI_RULES.length; i++) if (BI_RULES[i][0].test(tx)) { b.insertAdjacentHTML('afterbegin', svgI(BI_RULES[i][1], 'bi')); break; }
   });
   Array.prototype.forEach.call(root.querySelectorAll('.ic:not(.site)'), function (ic) { if (!ic.querySelector('img,svg') && !ic.textContent.trim()) ic.innerHTML = svgI('box', 'gi'); });
@@ -1393,7 +1394,7 @@ function trades() {
           kv('Выпало на', uah(got) + '<div class="mut" style="font-size:12px;font-weight:400">' + (co.soldKop ? 'продано ' + uahShort(co.soldKop) + ' + ' : '') + 'лежит ≈ ' + uahShort(co.valueKop) + ' (Steam, после 15%)' + (co.noPrice ? ' · без цены: ' + co.noPrice : '') + '</div>') +
           kv('Итог', '<span class="' + cls(res) + '">' + uah(res, true) + (co.spentKop ? ' (' + pct(Math.round(res * 10000 / co.spentKop)) + ')' : '') + '</span>') + '</div>';
       }
-      h += '<button class="btn" id="add" style="margin:0 0 12px">＋ Добавить покупку</button>';
+      h += '<button class="btn" id="add" style="margin:0 0 12px">Добавить покупку</button>';
       h += r.lots.length ? r.lots.map(function (l) {
         var nm = splitName(l.name);
         return '<div class="row" data-lot="' + l.id + '">' + pic(l.img, ICON[guessCat(l.name)] || '🎒') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + '×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + (l.unlockAt ? ' · 🔒 до ' + dateRu(l.unlockAt) : '') + '</div></div>' +
@@ -2316,7 +2317,7 @@ function rallyBook(r, mode) {
     var locked = p.unlock_at * 1000 > Date.now();
     return '<div class="row" data-rpos="' + p.id + '">' + pic(p.img, '📦') + '<div class="m"><div class="n">' + esc(p.name) + (p.qty > 1 ? ' ×' + p.qty : '') + '</div><div class="d">куплено по ' + uahShort(p.buy_kop) + ' · ' + (locked ? '🔒 до ' + dateRu(p.unlock_at) : '🔓 можно продавать') + (p.target_kop ? ' · план ' + uahShort(p.target_kop) : '') + '</div></div><div class="mut">›</div></div>';
   }).join('') : '<div class="card mut" style="font-size:14px">Нет открытых позиций.</div>';
-  h += '<button class="btn sec2" id="r-manual">＋ Записать покупку вручную</button>';
+  h += '<button class="btn sec2" id="r-manual">Записать покупку вручную</button>';
   if (mode === 'sim') h += '<button class="btn danger" id="r-reset">Сбросить симуляцию</button>';
   return h;
 }

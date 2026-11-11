@@ -17,7 +17,7 @@ function loadPlaywright() {
   throw new Error('playwright-core не найден');
 }
 
-const ACCENT = { ideas: '#3ee08f', trends: '#ffa94d', cases: '#ffd43b', weekly: '#74c0fc', rally: '#3ee08f' };
+const ACCENT = { ideas: '#3ee08f', trends: '#ffa94d', cases: '#ffd43b', weekly: '#74c0fc', rally: '#3ee08f', caseev: '#ff922b', news: '#e7b24c', story: '#b197fc' };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const img = (u, size) => u
   ? `<div class="pic" style="width:${size}px;height:${size}px"><img src="${esc(u)}"></div>`
@@ -43,6 +43,30 @@ function body(c) {
           <div class="row">${img(d.img, 64)}<div class="rn"><div class="nm">${esc(d.name)}</div><div class="sub">${esc(d.buyPrice)} → ${esc(d.sellPrice)}</div></div>
           <div class="pill" style="color:#3ee08f;background:rgba(62,224,143,.13)">${esc(d.profit)}</div></div>`).join('')}</div>
       </div>`;
+  }
+  if (c.slot === 'caseev') {
+    // «Окупается ли кейс»: слева картинка кейса, справа крупный процент возврата и три строки цифр.
+    const bad = (c.backPct ?? 0) < 70, mid = !bad && (c.backPct ?? 0) < 100;
+    const col = bad ? '#ff6b6b' : mid ? '#ffd43b' : '#3ee08f';
+    return `<div class="week">
+      <div class="glow">${img(c.img, 300)}</div>
+      <div class="cols1" style="justify-content:center;gap:14px">
+        <div class="bigbox" style="width:auto;padding:0"><div class="big" style="color:${col}">${esc(c.big)}</div><div class="sub" style="font-size:24px">в среднем возвращает от потраченного</div></div>
+        ${(c.lines ?? []).map((l) => `<div class="row" style="padding:10px 18px"><div class="rn"><div class="sub" style="margin:0">${esc(l.k)}</div><div class="nm">${esc(l.v)}</div></div></div>`).join('')}
+      </div></div>`;
+  }
+  if (c.slot === 'news') {
+    // Новость о новых функциях бота: крупные тезисы слева, схематичная иллюстрация графика справа.
+    return `<div class="week" style="align-items:center;flex:1">
+      <div class="cols1" style="gap:14px">${(c.bullets ?? []).map((b) => `<div class="row" style="padding:14px 20px"><div class="rn"><div class="nm" style="font-size:26px;white-space:normal">${esc(b)}</div></div></div>`).join('')}</div>
+      <div class="chartbox"><svg viewBox="0 0 360 220" width="360" height="220"><g stroke="rgba(255,255,255,.12)" stroke-width="1"><line x1="0" x2="360" y1="50" y2="50"/><line x1="0" x2="360" y1="110" y2="110"/><line x1="0" x2="360" y1="170" y2="170"/></g>
+        <polyline fill="none" stroke="#e7b24c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" points="0,150 50,138 100,160 150,110 200,118 250,78 300,92 360,48"/>
+        <polyline fill="none" stroke="#c06bff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" points="0,170 50,160 100,172 150,140 200,146 250,112 300,120 360,86"/>
+        <polyline fill="none" stroke="#46c2ff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" points="0,184 50,176 100,184 150,158 200,160 250,138 300,142 360,112"/></svg>
+        <div class="sub" style="text-align:center">иллюстрация, не реальные цены</div></div></div>`;
+  }
+  if (c.slot === 'story') {
+    return `<div style="flex:1;display:flex;align-items:center"><div style="font-size:30px;line-height:1.35;color:#ced4da;max-width:980px;border-left:6px solid ${ACCENT.story};padding-left:28px">${esc(c.quote ?? '')}</div></div>`;
   }
   if (c.slot === 'ideas' && c.deals?.length) {
     const [d, ...rest] = c.deals;
@@ -116,6 +140,7 @@ h1{font-size:54px;line-height:1;margin:14px 0 4px;font-weight:800;letter-spacing
 .pill{font-size:24px;font-weight:800;border-radius:12px;padding:6px 14px;white-space:nowrap}
 .h3{font-size:18px;letter-spacing:2px;font-weight:800;text-transform:uppercase;margin:2px 0}.h3.g{color:#3ee08f}.h3.r{color:#ff6b6b}
 .week{display:flex;gap:40px;align-items:flex-start}.bigbox{width:340px;padding-top:40px}.big{font-size:120px;font-weight:800;letter-spacing:-4px;line-height:1}.cols1{flex:1}
+.chartbox{flex:none;background:rgba(255,255,255,.04);border-radius:20px;padding:22px 22px 14px}
 .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;font-size:18px;color:#adb5bd;padding-top:14px}
 .foot b{color:${a}}
 </style></head><body><div class="wrap">

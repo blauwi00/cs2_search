@@ -285,7 +285,7 @@ html.gold #view.enter .row:nth-of-type(2){animation-delay:.06s}html.gold #view.e
 /* Фон: парящие скины (параллакс от наклона телефона) и золотая пыль */
 #fx{display:none}
 html.gold #fx{display:block;position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-html.gold #view,html.gold .top{position:relative;z-index:1}html.gold .top{position:sticky}
+html.gold #view{position:relative;z-index:1}html.gold .top{position:sticky;z-index:5}
 #fx .fl{position:absolute;opacity:.34;transition:transform .25s ease-out;will-change:transform}
 #fx .fl img{width:100%;display:block;animation:flt var(--d,9s) ease-in-out infinite alternate}
 @keyframes flt{from{transform:translateY(-10px) rotate(var(--r0,-8deg))}to{transform:translateY(12px) rotate(var(--r1,6deg))}}
@@ -357,6 +357,17 @@ html.gold .gpair:not(.one) .btn.sec2{flex-direction:column}html.gold .gpair:not(
 html.gold a{color:var(--gold2)}
 html.gold .ic .gi{width:20px;height:20px;stroke:var(--gold);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 html.gold .ic{background:linear-gradient(180deg,#1c1a14,#100f0c);border:1px solid rgba(231,178,76,.22)}
+
+/* Аудит интерфейса («Золото»): размеры нажатия от 44 px, скругления по всей системе, без «висящих» символов в кнопках */
+html.gold .seg{padding:4px;border-radius:14px;background:#121212;border:1px solid rgba(255,255,255,.06)}
+html.gold .seg button{min-height:40px;border-radius:11px;font-weight:600}
+html.gold details.more{border-radius:14px;padding:0 14px}
+html.gold details.more>summary{min-height:44px;display:flex;align-items:center;padding:10px 0}
+html.gold .btn{text-wrap:balance}
+html.gold #tg-q{background:none;border:0;padding:0;gap:8px}
+html.gold #tg-q button{background:#141414;border:1px solid rgba(231,178,76,.28);border-radius:12px;min-height:52px;color:var(--gold2);font-weight:700}
+html.gold #tg-q button:active{transform:scale(.95)}
+html.gold #fx{opacity:0;transition:opacity .4s}html.gold.at-home #fx{opacity:1}
 </style>
 </head>
 <body>
@@ -575,6 +586,7 @@ function setMenu(items) {
 function go(t) {
   setMenu(null);
   state.tab = t; closeSheet();
+  document.documentElement.classList.toggle('at-home', t === 'home'); // парящие скины — только на главной
   var bt = t === 'rally' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
   // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
@@ -905,7 +917,7 @@ function deEmoji(root) {
   var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false), n, list = [];
   var EMO1 = new RegExp(EMO.source);
   while ((n = w.nextNode())) if (EMO1.test(n.nodeValue)) list.push(n);
-  list.forEach(function (t) { EMO.lastIndex = 0; t.nodeValue = t.nodeValue.replace(EMO, '').replace(/^\s+(?=\S)/, function (m) { return t.previousSibling ? ' ' : ''; }).replace(/\s{2,}/g, ' '); });
+  list.forEach(function (t) { EMO.lastIndex = 0; t.nodeValue = t.nodeValue.replace(EMO, '').replace(/^\s+(?=\S)/, function (m) { return t.previousSibling ? ' ' : ''; }).replace(/\s{2,}/g, ' ').replace(/«\s+/g, '«').replace(/\s+»/g, '»'); });
   EMO.lastIndex = 0;
   Array.prototype.forEach.call(root.querySelectorAll('.btn:not([data-bi])'), function (b) {
     b.setAttribute('data-bi', '1'); var tx = b.textContent.trim().toLowerCase();
@@ -1250,7 +1262,7 @@ function itemSheet(id, days) {
 }
 function chart(series, days, avg) {
   var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22;
-  var defs = [['steamLow', 'Steam объявление', '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b']];
+  var defs = [['steamLow', 'Steam объявление', THEME === 'gold' ? '#e7b24c' : '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b']];
   var all = []; defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
   if (all.length < 2) return '<div class="empty" style="padding:22px">📉 История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен.</span></div>';
   var now = Date.now() / 1000, from = now - days * 86400;

@@ -6,6 +6,7 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { decodeCertificate } from './inspect.mjs';
 import { russianSummary } from './patchnotes.mjs';
+import { collectExtraNews } from './extranews.mjs';
 // caseev.mjs подключается только там, где нужен (не в домашнем агенте: у него этого файла может не быть).
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
@@ -473,6 +474,13 @@ if (!HOME) try {
   }
 } catch (e) {
   console.error('Новости CS2:', e.message);
+}
+
+// 2е. Дополнительные новости (Reddit, киберспорт, файлы игры). Пробный режим: только журнал; публикация — по переменной EXTRA_NEWS.
+if (!HOME) try {
+  await collectExtraNews({ UA, toWorker, now, sleep, enabled: process.env.EXTRA_NEWS });
+} catch (e) {
+  console.error('Доп. новости:', e.message);
 }
 
 // 3. Steam: по одному предмету с паузой; при 429 — минута паузы, при повторе — стоп до следующего запуска.

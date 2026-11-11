@@ -27,7 +27,7 @@ import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
 import { ANNOUNCEMENTS, composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
-import { ensureTodayIdeas, newsPost, newsRuLines, type NewsItem } from './insights.ts';
+import { ensureTodayIdeas, newsPost, newsRuLines, extraPost, EXTRA_BUTTON, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
 
@@ -805,6 +805,37 @@ export const newsKb = (n: NewsItem, user: string | null): Keyboard => [[{ text: 
 /** Объявления — только днём по Варшаве, чтобы не будить людей ночью. */
 const announceDue = (ctx: Ctx) => warsawHour(ctx.now) >= 10 && warsawHour(ctx.now) < 21 && ANNOUNCEMENTS.some((x) => ctx.now >= x.after);
 
+/** Лимиты: не больше 3 новостей не от Valve за сутки и не больше 1 с Reddit; только днём по Варшаве; выключатель — meta extra_news_off=1. */
+export const EXTRA_DAY_LIMIT = 3;
+export const EXTRA_PREVIEWS = 3;
+async function extraNewsStep(ctx: Ctx, chat: string, user: string | null, post: (text: string, kb: Keyboard, image: string | null) => Promise<number | false>, writes: D1PreparedStatement[]): Promise<boolean> {
+  const h = warsawHour(ctx.now);
+  if (h < 9 || h >= 22) return false;
+  if ((await getMeta(ctx.db, 'extra_news_off')) === '1') return false;
+  const n = await ctx.db.prepare(`SELECT * FROM news WHERE source != 'valve' AND posted_at IS NULL AND title_ru IS NOT NULL AND published_at >= ? ORDER BY published_at LIMIT 1`)
+    .bind(ctx.now - 2 * 86400).first<NewsItem & { posted_at: number | null }>();
+  if (!n) return false;
+  const today = await ctx.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(source = ?), 0) AS same FROM news WHERE source != 'valve' AND posted_at >= ?`)
+    .bind(n.source ?? '', ctx.now - 86400).first<{ n: number; same: number }>();
+  if ((today?.n ?? 0) >= EXTRA_DAY_LIMIT || (n.source === 'reddit' && (today?.same ?? 0) >= 1)) return false;
+  const text = extraPost(n);
+  const kb: Keyboard = [[{ text: EXTRA_BUTTON[n.source ?? ''] ?? 'Читать', url: n.url }], ...botButton(user)];
+  const previewed = Number(await getMeta(ctx.db, 'extra_preview_n')) || 0;
+  writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
+  if (previewed < EXTRA_PREVIEWS) {
+    // Предпросмотр: пост уходит владельцу, в канал — только после трёх одобренных макетов.
+    writes.push(setMetaStmt(ctx.db, 'extra_preview_n', String(previewed + 1)));
+    if (spendExternal(ctx)) {
+      try { await ctx.tg.sendMessage(ctx.adminId, `Предпросмотр ${previewed + 1} из ${EXTRA_PREVIEWS} (в канал не ушло):\n\n${text}`, kb, null); } catch (e) { await db.log(ctx.db, 'warn', 'channel', 'extra_preview', (e as Error).message.slice(0, 300), ctx.now); }
+    }
+    return true;
+  }
+  void chat;
+  const id = await post(text, kb, null);
+  if (!id) writes.pop(); // не получилось — попробуем в следующий запуск
+  return true;
+}
+
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
@@ -849,10 +880,10 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   }
   // 1. Обновление CS2 — не старше 3 суток, по одному за запуск.
   // Ждём краткое содержание на русском до 45 минут после выхода обновления; дольше — публикуем как есть.
-  const n = await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NULL AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1')
+  const n = await ctx.db.prepare("SELECT * FROM news WHERE source = 'valve' AND posted_at IS NULL AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1")
     .bind(ctx.now - 3 * 86400, ctx.now - 45 * 60).first<NewsItem>();
   // Обновление уже вышло без перевода (по-английски), а перевод пришёл позже — исправляем тот же пост на русский (один раз).
-  const late = n ? null : await ctx.db.prepare('SELECT * FROM news WHERE posted_at IS NOT NULL AND posted_at >= ? AND msg_id IS NOT NULL AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1')
+  const late = n ? null : await ctx.db.prepare("SELECT * FROM news WHERE source = 'valve' AND posted_at IS NOT NULL AND posted_at >= ? AND msg_id IS NOT NULL AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1")
     .bind(ctx.now - 2 * 86400, ctx.now - 2 * 86400).first<NewsItem & { posted_at: number; msg_id: number }>();
   if (late && newsRuLines(late)) {
     writes.push(ctx.db.prepare('UPDATE news SET ru_posted_at = ? WHERE gid = ?').bind(ctx.now, late.gid));
@@ -866,6 +897,8 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
     const id = await post(newsPost(n), newsKb(n, user), n.image ?? null);
     if (id) writes.push(ctx.db.prepare('UPDATE news SET msg_id = ? WHERE gid = ?').bind(id, n.gid));
+  } else if (await extraNewsStep(ctx, chat, user, post, writes)) {
+    // 1a. Новость не от Valve (Reddit, файлы игры, киберспорт): первые 3 — тебе в личку на одобрение, дальше — в канал.
   } else if (announceDue(ctx)) {
     // 1b. Разовое объявление о новых функциях (один раз, в дневные часы).
     let done: string[] = [];

@@ -139,7 +139,7 @@ export function weeklyPost(cases: CaseStat[], week: IdeaRow[], users: { total: n
   return lines.join('\n');
 }
 
-export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number; image?: string | null; title_ru?: string | null; summary_ru?: string | null }
+export interface NewsItem { gid: string; title: string; url: string; snippet: string | null; published_at: number; image?: string | null; title_ru?: string | null; summary_ru?: string | null; source?: string; score?: number | null; comments?: number | null }
 
 const NEWS_IMG_OK = /^https:\/\/[a-z0-9.-]*steamstatic\.com\/[^\s"'\]\[<>]{1,400}\.(png|jpe?g|gif|webp)$/i;
 /** Первая картинка из текста новости Steam ({STEAM_CLAN_IMAGE}/… или прямая ссылка на steamstatic). */
@@ -173,16 +173,37 @@ export function newsRuLines(n: NewsItem): string[] | null {
   return out;
 }
 
+/** Заголовок поста Valve: патчноуты — «Обновление CS2», остальное (события, кейсы, операции) — «Объявление Valve». */
+export const valveKind = (n: NewsItem): string => (/update|patch|release notes|обновлен/i.test(n.title) ? 'Обновление CS2' : 'Объявление Valve');
+
+/** Пост не от Valve: заголовок на русском, оригинал и ссылка; честная пометка, что это не официальная новость. */
+export const EXTRA_BUTTON: Record<string, string> = { reddit: 'Обсуждение на Reddit', datamine: 'Что изменилось в файлах', esports: 'Читать новость' };
+export function extraPost(n: NewsItem): string {
+  const ru = n.title_ru || n.title;
+  if (n.source === 'reddit') return [
+    `<b>${esc(ru)}</b>`, '',
+    `Оригинал: ${esc(n.title)}`,
+    `Рейтинг ${n.score ?? '—'} · комментариев ${n.comments ?? '—'}`, '',
+    '<i>Самое обсуждаемое в сообществе, это не новость Valve. Заголовок переведён автоматически.</i>',
+  ].join('\n');
+  if (n.source === 'datamine') return [
+    `<b>${esc(ru)}</b>`, '',
+    'По файлам игры. Valve это не подтверждала, возможны ошибки и изменения до выхода.', '',
+    '<i>Не торговый совет: цены на такие слухи часто разгоняют и потом сбрасывают.</i>',
+  ].join('\n');
+  return [`<b>${esc(ru)}</b>`, '', `Оригинал: ${esc(n.title)}`, '', '<i>Новость киберспорта: мажоры и наклейки двигают цены на капсулы. Заголовок переведён автоматически.</i>'].join('\n');
+}
+
 export function newsPost(n: NewsItem): string {
   const ru = newsRuLines(n);
   if (ru) return [
-    header('🛠', 'Обновление CS2', n.published_at), '',
+    header('🛠', valveKind(n), n.published_at), '',
     `<b>${esc(n.title_ru || n.title)}</b>`, '',
     ...ru, '',
     '<i>Кратко и в переводе. После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',
   ].join('\n').replace(/\n{3,}/g, '\n\n');
   return [
-    header('🛠', 'Обновление CS2', n.published_at), '',
+    header('🛠', valveKind(n), n.published_at), '',
     `<b>${esc(n.title)}</b>`,
     ...(n.snippet ? [`<blockquote>${esc(n.snippet)}</blockquote>`] : []),
     '', '<i>После обновлений цены кейсов и скинов часто двигаются — реакцию рынка смотри вечером в посте «Кейсы Steam».</i>',

@@ -40,6 +40,7 @@ jobs:
         env:
           WORKER_URL: https://cs2-search.blauwi925.workers.dev
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          EXTRA_NEWS: ${{ vars.EXTRA_NEWS }}
         run: node .github/scripts/collect.mjs
       # Картинка для поста в канал — только когда Worker её заказал (несколько раз в день).
       - name: Картинка для поста

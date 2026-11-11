@@ -73,7 +73,7 @@ export function pickSummary(sections, max = 9) {
   return { market, sections: picked, more: Math.max(0, total - shown) };
 }
 
-async function translate(text, sleep) {
+export async function translate(text, sleep) {
   const q = text.length > 300 ? text.slice(0, 297) + '…' : text;
   const r = await fetch(`https://api.mymemory.translated.net/get?langpair=en|ru&q=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'cenolov-bot/1.0' } });
   if (!r.ok) throw new Error(`MyMemory HTTP ${r.status}`);

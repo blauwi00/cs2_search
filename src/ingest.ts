@@ -480,6 +480,29 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       }
       if (stmts.length) await d.batch(stmts);
       result.stored = stmts.length;
+    } else if (body.kind === 'extra_news') {
+      // Новости не от Valve: Reddit (самое обсуждаемое), файлы игры, киберспорт. Заголовок уже на русском (перевод сборщика).
+      // Первый приём по источнику — только запоминаем (не публикуем старое); ссылки — только с адресов своего источника.
+      const rows = (Array.isArray(body.items) ? body.items : []).slice(0, 5) as Record<string, unknown>[];
+      const stmts: D1PreparedStatement[] = [];
+      const seededBy = new Map<string, boolean>();
+      for (const r of rows) {
+        const src = r?.source === 'reddit' || r?.source === 'datamine' || r?.source === 'esports' ? r.source : null;
+        const gid = typeof r?.gid === 'string' && /^[red]_[A-Za-z0-9]{3,40}$/.test(r.gid) ? r.gid : null;
+        const title = typeof r?.title === 'string' ? r.title.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200) : null;
+        const titleRu = typeof r?.titleRu === 'string' ? r.titleRu.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 240) : null;
+        const urlOk = typeof r?.url === 'string' && (src === 'reddit' ? /^https:\/\/www\.reddit\.com\/r\/[A-Za-z0-9_]+\/comments\//.test(r.url)
+          : src === 'datamine' ? /^https:\/\/github\.com\/SteamDatabase\/GameTracking-CS2\/commit\/[0-9a-f]{7,40}$/.test(r.url) : /^https:\/\/www\.hltv\.org\/news\/\d+/.test(r.url));
+        const date = Number(r?.date);
+        if (!src || !gid || !title || !titleRu || !urlOk || !Number.isInteger(date) || date > now + 3600) continue;
+        if (!seededBy.has(src)) seededBy.set(src, ((await d.prepare('SELECT COUNT(*) AS n FROM news WHERE source = ?').bind(src).first<{ n: number }>())?.n ?? 0) > 0);
+        const seeded = seededBy.get(src)!;
+        const score = Number.isInteger(r.score) ? Number(r.score) : null, comments = Number.isInteger(r.comments) ? Number(r.comments) : null;
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at, title_ru, source, score, comments) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?)')
+          .bind(gid, title, r.url as string, date, seeded ? null : now, seeded ? null : now, titleRu, src, score, comments));
+      }
+      if (stmts.length) await d.batch(stmts);
+      result.stored = stmts.length;
     } else {
       return json({ ok: false, error: 'unknown_kind' }, 400);
     }

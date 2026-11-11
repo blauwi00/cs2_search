@@ -41,7 +41,7 @@ export default {
     if (url.pathname === '/app' && req.method === 'GET') {
       // ETag: при повторном открытии телефон получает «не изменилось» (304) вместо 300 КБ — приложение открывается быстрее.
       if ((req.headers.get('If-None-Match') ?? '').replace(/^W\//, '') === appEtag().replace(/^W\//, '')) return new Response(null, { status: 304, headers: { ETag: appEtag(), 'Cache-Control': 'no-cache' } });
-      return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', ETag: appEtag(), 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
+      return new Response(APP_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'max-age=0, stale-while-revalidate=604800', ETag: appEtag(), 'X-Robots-Tag': 'noindex', 'X-Cenolov': FINGERPRINT } });
     }
     if (url.pathname.startsWith('/app/api/')) return handleAppApi(req, env, nowSec());
     if (url.pathname === '/steam/callback' && req.method === 'GET') return handleSteamCallback(req, env, nowSec());

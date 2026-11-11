@@ -47,7 +47,9 @@ export function pickDatamine(commits, limit = 1) {
   for (const c of commits ?? []) {
     const files = (c.files ?? []).map((f) => String(f.filename ?? '')).filter((f) => DATAMINE_FILES.test(f));
     if (!files.length || !/^[0-9a-f]{7,40}$/.test(String(c.sha ?? ''))) continue;
-    const names = [...new Set(files.map((f) => f.split('/').pop()))].slice(0, 3);
+    // Понятные названия вместо имён файлов.
+    const RU = [[/items_game|loot_lists?/i, 'предметы и выпадение'], [/stickers?/i, 'наклейки'], [/collections?/i, 'коллекции'], [/cases?/i, 'кейсы'], [/operation/i, 'операция'], [/csgo_english/i, 'тексты и названия'], [/econ/i, 'предметы']];
+    const names = [...new Set(files.map((f) => (RU.find(([re]) => re.test(f)) ?? [0, f.split('/').pop()])[1]))].slice(0, 3);
     const date = Math.floor(Date.parse(c.commit?.committer?.date ?? '') / 1000);
     if (!Number.isFinite(date)) continue;
     const it = { gid: 'd_' + c.sha.slice(0, 12), source: 'datamine', title: `В файлах игры нашли изменения: ${names.join(', ')}`, titleRu: `В файлах игры нашли изменения: ${names.join(', ')}`, url: `https://github.com/SteamDatabase/GameTracking-CS2/commit/${c.sha}`, date, files };

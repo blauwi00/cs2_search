@@ -36,23 +36,23 @@ export function pickCaseEV(list: CaseEV[], recent: string[]): CaseEV | null {
 }
 
 export function caseEvPost(c: CaseEV, fx: Map<Currency, FxRate>, now: number): string {
+  void now;
   const usd = fx.get('USD') ?? null;
   const k = (cents: number) => (usd ? toKop(cents, 'USD', usd) : null);
   const cost = c.caseCents + c.keyCents;
   const back = Math.round((c.evNetCents * 100) / cost);
-  const verdict = back >= 100 ? '✅ В среднем окупается — но только в среднем, на большом числе открытий.'
-    : back >= 70 ? '🟡 В среднем не окупается, но теряешь немного.'
-      : '🔴 В среднем открытие — минус. Если нужен скин из кейса, обычно дешевле купить его сразу.';
+  const verdict = back >= 100 ? 'В среднем окупается, но только в среднем, на большом числе открытий.'
+    : back >= 70 ? 'В среднем не окупается, но теряешь немного.'
+      : 'В среднем открытие минус. Если нужен скин из кейса, обычно дешевле купить его сразу.';
+  // Крючок первой строкой с главной цифрой, 4 коротких строки, вывод одной фразой, сноска одной строкой.
   return [
-    header('🎰', 'Окупается ли кейс', now), '',
-    `<b>${esc(c.name)}</b>`,
+    `<b>${esc(c.name)}: в среднем возвращает ${back}% потраченного</b>`, '',
     `Открыть: <b>${money(k(cost))}</b> (кейс ${money(k(c.caseCents))} + ключ ${money(k(c.keyCents))})`,
-    `В среднем выпадает на: <b>${money(k(c.evCents))}</b>`,
-    `После продажи в Steam (−13% комиссии): <b>${money(k(c.evNetCents))}</b> — это <b>${back}%</b> от потраченного`,
-    `Выпадет предмет дороже открытия: примерно <b>${oneIn(c.pWin)}</b>`,
-    `Самый дорогой вариант: ${esc(c.best.name)} — ${money(k(c.best.cents))}, шанс ${oneIn(c.best.p)}`,
+    `В среднем выпадает на: <b>${money(k(c.evNetCents))}</b> после комиссии Steam`,
+    `Предмет дороже открытия: примерно <b>${oneIn(c.pWin)}</b>`,
+    `Рекорд: ${esc(c.best.name)}, шанс ${oneIn(c.best.p)}`,
     '', verdict, '',
-    '<i>Шансы — опубликованные Valve (Mil-Spec 79,92%, Restricted 15,98%, Classified 3,2%, Covert 0,64%, нож/перчатки 0,26%, StatTrak™ 10%). Цены — средние продажи в Steam за неделю; у ножей Doppler фазы на рынке не различаются. Цена ключа — официальная в долларах, в региональной валюте Steam может отличаться.</i>',
+    '<i>Шансы опубликованы Valve, цены — средние продажи Steam.</i>',
   ].join('\n');
 }
 
@@ -93,5 +93,6 @@ export const STORIES: { title: string; text: string }[] = [
 
 export function storyPost(idx: number, now: number): string {
   const s = STORIES[((idx % STORIES.length) + STORIES.length) % STORIES.length];
-  return [header('📜', 'Истории CS2', now), '', `<b>${esc(s.title)}</b>`, '', s.text].join('\n');
+  void now;
+  return [`<b>${esc(s.title)}</b>`, '', s.text].join('\n');
 }

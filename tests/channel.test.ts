@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migratedDb, testEnv, mockFetch, json, fixtureJson, ADMIN } from './helpers.ts';
+import { setMetaStmt } from '../src/core/channel.ts';
 import { buildPost, dueSlot } from '../src/core/channel.ts';
 import { runCycle } from '../src/core/runner.ts';
 import { handleWebhook } from '../src/telegram/webhook.ts';
@@ -185,4 +186,25 @@ test('пост с картинкой: фото с подписью; длинны
   calls.length = 0;
   await tg.sendPost(1, 'без картинки', undefined, null);
   assert.deepEqual(calls.map((c) => c.method), ['sendMessage']);
+});
+
+test('объявление о новых функциях: один раз, только днём по Варшаве и не раньше своей даты', async () => {
+  const d = migratedDb(); const D = d as unknown as D1Database; const env = testEnv(d);
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot')]);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { const b = JSON.parse(String(init?.body)); sent.push({ method: u.split('/').pop()!, body: b }); return json({ ok: true, result: { message_id: 5 } }); } },
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+  ]);
+  const ann = () => sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234 && String(s.body.text).includes('Под каждым скином теперь есть график'));
+  await runCycle(env, { now: Date.parse('2026-11-10T09:30:00Z') / 1000, fetcher });
+  assert.equal(ann().length, 0, 'до своей даты не публикуется');
+  await runCycle(env, { now: Date.parse('2026-11-11T01:30:00Z') / 1000, fetcher });
+  assert.equal(ann().length, 0, 'ночью по Варшаве — нет');
+  await runCycle(env, { now: Date.parse('2026-11-11T09:30:00Z') / 1000, fetcher });
+  assert.equal(ann().length, 1);
+  assert.match(JSON.stringify(ann()[0]!.body.reply_markup), /Открыть Ценолов/);
+  await runCycle(env, { now: Date.parse('2026-11-11T09:40:00Z') / 1000, fetcher });
+  await runCycle(env, { now: Date.parse('2026-11-12T09:30:00Z') / 1000, fetcher });
+  assert.equal(ann().length, 1, 'повторно не уходит');
 });

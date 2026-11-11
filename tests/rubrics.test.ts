@@ -60,13 +60,13 @@ const evItem: CaseEV = { name: 'Kilowatt Case', img: null, caseCents: 51, keyCen
 
 test('пост «Окупается ли кейс»: стоимость, отдача в %, шансы «1 из N», честный вывод', () => {
   const t = caseEvPost(evItem, fx, MON13);
-  assert.match(t, /Окупается ли кейс/);
+  assert.match(t, /^<b>Kilowatt Case: в среднем возвращает 52% потраченного<\/b>/, 'крючок с главной цифрой — первой строкой');
   assert.match(t, /Открыть: <b>⟦12000⟧<\/b> \(кейс ⟦2040⟧ \+ ключ ⟦9960⟧\)/);
-  assert.match(t, /это <b>52%<\/b> от потраченного/);
+  assert.doesNotMatch(t, /[\u{1F300}-\u{1FAFF}]/u, 'без эмодзи');
   assert.match(t, /примерно <b>1 из 24<\/b>/);
-  assert.match(t, /шанс 1 из 42 700/);
-  assert.match(t, /🔴 В среднем открытие — минус/);
-  assert.match(caseEvPost({ ...evItem, evNetCents: 320 }, fx, MON13), /✅ В среднем окупается/);
+  assert.match(t, /Рекорд: .*шанс 1 из 42 700/);
+  assert.match(t, /В среднем открытие минус/);
+  assert.match(caseEvPost({ ...evItem, evNetCents: 320 }, fx, MON13), /В среднем окупается/);
   assert.equal(oneIn(0.5), '1 из 2');
   assert.equal(pickCaseEV([evItem, { ...evItem, name: 'B' }], ['Kilowatt Case'])!.name, 'B');
 });
@@ -94,7 +94,7 @@ test('канал: в понедельник — «Окупается ли кей
   assert.equal(items.needCaseEv, true);
   // Без данных — история
   const p0 = (await composeChannelPost(D, 'rubric', MON13))!;
-  assert.match(p0.text, /Истории CS2/);
+  assert.ok(STORIES.some((x) => p0.text.includes(x.title)), 'без данных — история');
   const bad = { ...evItem, name: '<b>x</b>'.repeat(30) };
   const r = await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'case_ev', fetchedAt: MON13 - 3000, items: [evItem, { ...evItem, name: 'Revolution Case' }, bad, { name: 'x' }] }) }), env, MON13 - 3000);
   assert.equal(((await r.json()) as { stored: number }).stored, 2, 'мусор отброшен');
@@ -113,7 +113,7 @@ test('канал: в понедельник — «Окупается ли кей
   await cycle(MON13 + 600);
   const posts = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
   assert.equal(posts.length, 1, 'один раз в день');
-  assert.match(posts[0].body.text, /Окупается ли кейс[\s\S]*Kilowatt Case[\s\S]*\$/);
+  assert.match(posts[0].body.text, /Kilowatt Case: в среднем возвращает[\s\S]*\$/);
   // Четверг: свежие данные — следующий кейс, без повтора
   const THU = MON13 + 3 * 86400;
   await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'case_ev', fetchedAt: THU - 600, items: [evItem, { ...evItem, name: 'Revolution Case' }] }) }), env, THU - 600);
@@ -124,5 +124,5 @@ test('канал: в понедельник — «Окупается ли кей
   // Следующий понедельник: данные старше 2 суток — история вместо устаревших цифр
   await cycle(MON13 + 7 * 86400);
   const p3 = sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234);
-  assert.match(p3[2].body.text, /Истории CS2/);
+  assert.ok(STORIES.some((x) => p3[2].body.text.includes(x.title)));
 });

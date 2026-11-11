@@ -26,7 +26,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
-import { composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
+import { ANNOUNCEMENTS, composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, newsRuLines, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
 import { parseNbuDisplay } from '../currency/display.ts';
@@ -802,6 +802,9 @@ export const CARD_WAIT_SEC = 25 * 60;
 /** Кнопки под постом об обновлении CS2. */
 export const newsKb = (n: NewsItem, user: string | null): Keyboard => [[{ text: newsRuLines(n) ? '📰 Полный список в Steam' : '📰 Читать в Steam', url: n.url }], ...botButton(user)];
 
+/** Объявления — только днём по Варшаве, чтобы не будить людей ночью. */
+const announceDue = (ctx: Ctx) => warsawHour(ctx.now) >= 10 && warsawHour(ctx.now) < 21 && ANNOUNCEMENTS.some((x) => ctx.now >= x.after);
+
 export async function jobChannel(ctx: Ctx): Promise<void> {
   const chat = await getMeta(ctx.db, 'channel_id');
   if (!chat) return;
@@ -863,6 +866,15 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
     writes.push(ctx.db.prepare('UPDATE news SET posted_at = ? WHERE gid = ?').bind(ctx.now, n.gid));
     const id = await post(newsPost(n), newsKb(n, user), n.image ?? null);
     if (id) writes.push(ctx.db.prepare('UPDATE news SET msg_id = ? WHERE gid = ?').bind(id, n.gid));
+  } else if (announceDue(ctx)) {
+    // 1b. Разовое объявление о новых функциях (один раз, в дневные часы).
+    let done: string[] = [];
+    try { done = JSON.parse((await getMeta(ctx.db, 'announce_done')) ?? '[]'); } catch { done = []; }
+    const a = ANNOUNCEMENTS.find((x) => !done.includes(x.id) && ctx.now >= x.after);
+    if (a) {
+      const id = await post(a.text, botButton(user, a.button), null);
+      if (id) writes.push(setMetaStmt(ctx.db, 'announce_done', JSON.stringify([...done, a.id])));
+    }
   } else {
     // 2. Посты по расписанию.
     const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;

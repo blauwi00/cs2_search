@@ -335,6 +335,19 @@ html.gold #pricebox .kv:nth-child(2){animation-delay:.05s}html.gold #pricebox .k
 html.gold #pricebox .pos{color:var(--gold2);text-shadow:0 0 12px rgba(231,178,76,.5)}
 html.gold #splash{background:#050505;--accent:var(--gold)}
 @media (prefers-reduced-motion:reduce){#fx,.gbest:before,.gbest s,.gbest .pf,.gbest .go,.gsum .n svg{animation:none!important}#fx .fl img,#fx i{animation:none!important}}
+
+/* «Золото» — кнопки: металлическая клавиша с объёмом (нажатие проваливает её), волна от пальца, второстепенные — плитки по две */
+html.gold .btn{position:relative;overflow:hidden;border-radius:16px;min-height:52px;font-size:15.5px;letter-spacing:.1px;transition:transform .09s ease,box-shadow .09s ease,filter .2s}
+html.gold .btn:not(.sec2):not(.danger):not(.link-danger){background:linear-gradient(180deg,#fbe7a8 0%,#efc260 38%,#d89a33 62%,#b97d22 100%);color:#2a1b04;text-shadow:0 1px 0 rgba(255,240,200,.6);box-shadow:inset 0 1px 0 rgba(255,255,255,.75),inset 0 -2px 0 rgba(120,76,14,.45),0 5px 0 #7a5212,0 14px 26px -10px rgba(231,178,76,.75)}
+html.gold .btn:not(.sec2):not(.danger):not(.link-danger):active{transform:translateY(4px);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 0 rgba(120,76,14,.4),0 1px 0 #7a5212,0 6px 14px -8px rgba(231,178,76,.6)}
+html.gold .btn.sec2{display:flex;align-items:center;justify-content:center;text-align:center;width:100%;min-height:58px;margin:10px 0 0;padding:10px 8px;font-size:13.5px;line-height:1.25;font-weight:700;color:#f2e6c8;background:radial-gradient(120% 140% at 50% 0%,rgba(231,178,76,.16),transparent 60%),linear-gradient(180deg,#191712,#0f0e0b);border:1px solid rgba(231,178,76,.32);box-shadow:inset 0 1px 0 rgba(255,236,190,.12),0 4px 0 #050505,0 10px 20px -14px rgba(0,0,0,.9)}
+html.gold .gpair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}html.gold .gpair.one{grid-template-columns:1fr}html.gold .gpair .btn.sec2{margin:0;min-height:64px}html.gold .gpair:not(.one) .btn.sec2:last-child:nth-child(odd){grid-column:1/-1}
+html.gold .btn.sec2:active{transform:translateY(3px);box-shadow:inset 0 1px 0 rgba(255,236,190,.1),0 1px 0 #050505}
+html.gold .btns .btn.sec2{width:auto;margin:10px 0 0;min-height:52px}
+html.gold .btns{gap:10px}
+html.gold .btn.danger{border-radius:16px;box-shadow:0 4px 0 #2a0b0b}
+html.gold .rip{position:absolute;border-radius:50%;pointer-events:none;width:10px;height:10px;margin:-5px 0 0 -5px;background:radial-gradient(circle,rgba(255,240,200,.85),rgba(231,178,76,.35) 45%,transparent 70%);animation:rip .6s ease-out forwards}
+@keyframes rip{from{transform:scale(1);opacity:1}to{transform:scale(46);opacity:0}}
 </style>
 </head>
 <body>
@@ -527,8 +540,19 @@ function fail(e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</d
 var sheetStack = 0;
 function sheet(html) {
   $('#sc').innerHTML = html; $('#sheet').scrollTop = 0;
+  if (THEME === 'gold') pairButtons($('#sc'));
   $('#sheet').classList.add('on'); $('#sbg').classList.add('on'); sheetStack = 1;
   if (tg && tg.BackButton) tg.BackButton.show();
+}
+// «Золото»: соседние второстепенные кнопки — плитками по две в ряд; одиночная — на всю ширину.
+function pairButtons(root) {
+  var kids = Array.prototype.slice.call(root.children), run = [];
+  var flush = function () {
+    if (run.length) { var g = document.createElement('div'); g.className = 'gpair' + (run.length === 1 ? ' one' : ''); run[0].parentNode.insertBefore(g, run[0]); run.forEach(function (b) { g.appendChild(b); }); }
+    run = [];
+  };
+  kids.forEach(function (el) { if (el.tagName === 'BUTTON' && el.classList.contains('sec2')) run.push(el); else flush(); });
+  flush();
 }
 function closeSheet() {
   $('#sheet').classList.remove('on'); $('#sbg').classList.remove('on'); sheetStack = 0;
@@ -860,6 +884,15 @@ function bindHero(s) {
   if ($('#gt-w')) $('#gt-w').onclick = function () { haptic(); go('market'); };
   if ($('#gt-i')) $('#gt-i').onclick = function () { haptic(); go('inv'); };
 }
+// «Золото»: волна от пальца на кнопках и плитках.
+document.addEventListener('pointerdown', function (e) {
+  if (THEME !== 'gold') return;
+  var b = e.target && e.target.closest && e.target.closest('.btn, .gtiles button, .gbest .go'); if (!b) return;
+  var r = b.getBoundingClientRect(), sp = document.createElement('span');
+  sp.className = 'rip'; sp.style.left = (e.clientX - r.left) + 'px'; sp.style.top = (e.clientY - r.top) + 'px';
+  if (getComputedStyle(b).position === 'static') b.style.position = 'relative';
+  b.style.overflow = 'hidden'; b.appendChild(sp); setTimeout(function () { sp.remove(); }, 650);
+});
 // «Золото»: скин в окне можно повернуть пальцем (3D), отпустил — пружинит обратно.
 document.addEventListener('pointerdown', function (e) {
   var im = e.target && e.target.closest && e.target.closest('.hero-img'); if (!im || THEME !== 'gold') return;

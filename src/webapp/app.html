@@ -1818,37 +1818,57 @@ function soldFromSteam(x) {
 }
 function sellForm(l) {
   // Простая продажа: «Продал / Выставил», площадка кнопками, одно поле суммы, прибыль считается сразу. Количество и дата — только если нужны.
+  // l.id == null — предмет без записанной покупки (из инвентаря Steam, со скриншотов, найден по названию): спросим, за сколько брал.
   var SITES = [['steam', 'Steam'], ['skinport', 'Skinport'], ['csfloat', 'CSFloat'], ['csgomarket', 'Market.CSGO'], ['other', 'Другая']];
-  var st = { mode: 'sold', pl: lsGet('last_sell_pl') || 'steam', q: 1 }, unit = l.openQty ? l.costKop / l.openQty : 0;
+  var named = l.id == null, pf = l.prefill || {};
+  var st = { mode: pf.mode || 'sold', pl: pf.pl || lsGet('last_sell_pl') || 'steam', q: 1 }, unit = !named && l.openQty ? l.costKop / l.openQty : 0;
   var nm = splitName(l.name);
-  var h = '<h2>' + esc(nm.base) + '</h2><div class="sub">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + 'куплено по ' + uahShort(Math.round(unit)) + (l.openQty > 1 ? ' · есть ' + l.openQty + ' шт.' : '') + '</div>';
+  var h = (l.img ? '<img class="hero-img" style="height:90px" src="' + esc(l.img) + '" alt="">' : '') + '<h2>' + esc(nm.base) + '</h2><div class="sub">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + (named ? (l.note || 'покупка не записана') : 'куплено по ' + uahShort(Math.round(unit))) + (l.openQty > 1 ? ' · есть ' + l.openQty + ' шт.' : '') + '</div>';
   h += '<div class="seg" id="sf-m"><button data-m="sold" class="on">Продал</button><button data-m="pend">Выставил на продажу</button></div>';
   h += '<div class="flab">Где</div><div class="chips" id="sf-pl" style="flex-wrap:wrap;overflow:visible;padding:0 0 4px">' + SITES.map(function (x) { return '<button class="chip' + (x[0] === st.pl ? ' on' : '') + '" data-p="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
   h += '<div class="flab" id="sf-al"></div><div class="amt"><input id="sf-a" inputmode="decimal" placeholder="0,00">' + curSelect('sf-c', 'steam') + '</div>';
+  if (named) h += '<div class="flab">За сколько покупал 1 шт.</div><div class="amt"><input id="sf-b" inputmode="decimal" placeholder="0,00"><button class="chip" id="sf-b0" style="min-height:52px">Выпал — 0</button></div>';
   if (l.openQty > 1) h += '<div class="qty"><span>Сколько штук</span><div><button id="sf-qm">−</button><b id="sf-q">1</b><button id="sf-qp">+</button></div></div>';
   h += '<div class="pv" id="sf-pv"></div>';
   h += '<details class="more" id="sf-dd"><summary><span class="chev">›</span> Продал не сегодня</summary><input id="sf-d" type="date" value="' + today() + '" max="' + today() + '" style="margin:4px 0 10px"></details>';
   h += '<button class="btn" id="sf-ok"></button>';
   sheet(h);
   var amt = function () { return toKopIn($('#sf-a').value, $('#sf-c').value); };
+  var buy = function () { if (!named) return unit; var v = $('#sf-b').value.trim(); return v === '' ? null : toKopIn(v, CUR.code); };
+  if (pf.cur && FX[pf.cur]) $('#sf-c').value = pf.cur;
+  if (pf.amount) $('#sf-a').value = String(pf.amount).replace('.', ',');
+  if (named) { $('#sf-b0').onclick = function () { haptic(); $('#sf-b').value = '0'; upd(); }; $('#sf-b').oninput = function () { upd(); }; }
   var get1 = function () { var p = amt(); if (!(p > 0)) return null; return st.pl === 'steam' ? Math.floor(p / 1.15) : p; };
   var upd = function () {
     $('#sf-al').textContent = st.pl === 'steam' ? 'Цена в Steam за 1 шт. (сколько платит покупатель)' : 'Сколько пришло за 1 шт. (после комиссии сайта)';
     $('#sf-ok').textContent = st.mode === 'sold' ? 'Записать продажу' : 'Выставил — записать';
-    var g = get1();
+    var g = get1(), u = buy();
     if (g == null) { $('#sf-pv').innerHTML = '<span class="mut">Впиши сумму — посчитаю прибыль</span>'; return; }
+    if (u == null) { $('#sf-pv').innerHTML = '<div><span>Придёт' + (st.pl === 'steam' ? ' на Steam' : '') + '</span><b>≈ ' + uah(g * st.q) + '</b></div><div><span>Прибыль</span><b class="mut">впиши цену покупки</b></div>'; return; }
+    unit = u;
     var pr = (g - unit) * st.q;
     $('#sf-pv').innerHTML = '<div><span>Придёт' + (st.pl === 'steam' ? ' на Steam' : '') + '</span><b>≈ ' + uah(g * st.q) + '</b></div><div><span>' + (st.mode === 'sold' ? 'Прибыль' : 'Будет прибыль') + '</span><b class="' + cls(pr) + '">' + uah(Math.round(pr), true) + (unit ? ' (' + pct(Math.round(pr * 10000 / (unit * st.q))) + ')' : '') + '</b></div>';
   };
   Array.prototype.forEach.call(document.querySelectorAll('#sf-m button'), function (b) { b.onclick = function () { haptic(); st.mode = b.getAttribute('data-m'); Array.prototype.forEach.call(document.querySelectorAll('#sf-m button'), function (x) { x.classList.toggle('on', x === b); }); upd(); }; });
   Array.prototype.forEach.call(document.querySelectorAll('#sf-pl .chip'), function (b) { b.onclick = function () { haptic(); st.pl = b.getAttribute('data-p'); Array.prototype.forEach.call(document.querySelectorAll('#sf-pl .chip'), function (x) { x.classList.toggle('on', x === b); }); var c = lsGet('cur_' + st.pl); if (c && FX[c]) $('#sf-c').value = c; upd(); }; });
-  if ($('#sf-qm')) { $('#sf-qm').onclick = function () { haptic(); st.q = Math.max(1, st.q - 1); $('#sf-q').textContent = st.q; upd(); }; $('#sf-qp').onclick = function () { haptic(); st.q = Math.min(l.openQty, st.q + 1); $('#sf-q').textContent = st.q; upd(); }; }
+  if ($('#sf-qm')) { $('#sf-qm').onclick = function () { haptic(); st.q = Math.max(1, st.q - 1); $('#sf-q').textContent = st.q; upd(); }; $('#sf-qp').onclick = function () { haptic(); st.q = Math.min(l.openQty || 999, st.q + 1); $('#sf-q').textContent = st.q; upd(); }; }
   $('#sf-a').oninput = upd; $('#sf-c').onchange = upd; upd();
   setTimeout(function () { try { $('#sf-a').focus(); } catch (e) {} }, 350);
   $('#sf-ok').onclick = function () {
     var p = amt(), c = $('#sf-c').value;
     if (!(p > 0)) return toast('Впиши сумму');
     lsSet('cur_' + st.pl, c); lsSet('last_sell_pl', st.pl);
+    if (named) {
+      var b = buy(); if (b == null || isNaN(b) || b < 0) return toast('Впиши, за сколько покупал (0 — если выпал)');
+      $('#sf-ok').disabled = true;
+      api('sales/batch', { method: 'POST', body: { rows: [{ name: l.name, qty: st.q, receivedKop: get1(), platform: st.pl, buyKop: b, pending: st.mode === 'pend' }] } }).then(function (r) {
+        if (r.errors && r.errors.length && !r.sold) { $('#sf-ok').disabled = false; return toast(r.errors[0]); }
+        haptic('ok'); if (l.onDone) l.onDone();
+        sheet('<div style="text-align:center;padding:10px 0"><h2>' + (st.mode === 'pend' ? 'Выставлено' : 'Продажа записана') + '</h2><div class="big-num ' + cls(r.resultKop) + '">' + uah(r.resultKop, true) + '</div><div class="sub">' + (st.mode === 'pend' ? 'будет, когда продастся' : 'прибыль после всех комиссий') + '</div></div><button class="btn" id="okb">Готово</button>');
+        $('#okb').onclick = function () { state.invTab = 'sales'; go('trades'); };
+      }).catch(function (e) { $('#sf-ok').disabled = false; toast(e.message); });
+      return;
+    }
     $('#sf-ok').disabled = true;
     api('inventory/' + l.id + '/sell', { method: 'POST', body: { qty: st.q, priceKop: p, receivedKop: st.pl === 'steam' ? null : p * st.q, platform: st.pl, date: $('#sf-d').value || today(), pending: st.mode === 'pend' } })
       .then(function (r) {
@@ -1907,7 +1927,12 @@ function salesTab() {
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-pend]'), function (el) { el.onclick = function () { haptic(); pendingSheet(r.pending.filter(function (x) { return x.id === +el.getAttribute('data-pend'); })[0]); }; });
     Array.prototype.forEach.call(document.querySelectorAll('[data-sp]'), function (el) {
-      el.onclick = function () { haptic(); var x = sp[+el.getAttribute('data-sp')]; lsSet('cur_scan', 'PLN'); lsSet('scan_site', 'skinport'); scanSheet([x], state.spMeta, function () { var l = spSaved(); l.push(x.text); lsSet('sp_saved', JSON.stringify(l)); }); };
+      el.onclick = function () {
+        haptic(); var x = sp[+el.getAttribute('data-sp')];
+        // Со скриншота: Skinport, цена в злотых; «пришло» = цена минус 8% Skinport. Выставлено → «Выставил», продано → «Продал».
+        sellForm({ id: null, name: x.name || x.text, openQty: 1, note: 'со скриншота Skinport', prefill: { pl: 'skinport', cur: x.currency, amount: (Math.floor(x.priceMinor * 0.92) / 100).toFixed(2) },
+          onDone: function () { var l = spSaved(); l.push(x.text); lsSet('sp_saved', JSON.stringify(l)); } });
+      };
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-sale]'), function (el) { el.onclick = function () { haptic(); soldSheet(r.sales.filter(function (x) { return x.id === +el.getAttribute('data-sale'); })[0]); }; });
   }).catch(function (e) { if ($('#salesbox')) $('#salesbox').innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
@@ -1916,18 +1941,30 @@ function plural(n, a, b, c) { var m = n % 10, h = n % 100; return m === 1 && h !
 function dateShort(d) { if (!d) return ''; var x = new Date(d + 'T12:00:00'); return isNaN(x) ? d : x.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }); }
 // «Записать продажу»: выбрать, что продал, — из записанных покупок (там известна цена покупки).
 function sellPicker() {
+  // Что продал: записанные покупки (цена покупки известна), инвентарь Steam, или найти любой предмет по названию.
   sheet('<div class="skel"></div><div class="skel"></div>');
-  api('inventory').then(function (r) {
-    var lots = r.lots.filter(function (l) { return l.openQty > 0; });
-    var h = '<h2>Что продал?</h2>';
-    if (!lots.length) {
-      h += '<div class="note" style="margin:6px 0 4px">Записанных покупок нет. Продал скин из инвентаря Steam — открой его во вкладке «Steam» и нажми «Я продал».</div><button class="btn" id="sp-steam">Открыть инвентарь Steam</button>';
-      sheet(h); $('#sp-steam').onclick = function () { closeSheet(); go('inv'); };
-      return;
-    }
-    h += lots.map(function (l, i) { var nm = splitName(l.name); return '<div class="row" data-pk="' + i + '">' + pic(l.img, '') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + '×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop) + '</div></div><span class="mut">›</span></div>'; }).join('');
+  Promise.all([api('inventory'), api('steam').catch(function () { return null; })]).then(function (res) {
+    var lots = res[0].lots.filter(function (l) { return l.openQty > 0; }), st = res[1];
+    var lotNames = lots.map(function (l) { return l.name; });
+    var inv = st && st.items ? st.items.filter(function (x) { return x.marketable && lotNames.indexOf(x.name) < 0; }) : [];
+    var row = function (attr, img, name, d) { var nm = splitName(name); return '<div class="row" ' + attr + '>' + pic(img, '') + '<div class="m"><div class="n">' + esc(nm.base) + '</div><div class="d">' + (nm.wear ? esc(nm.wear) + ' · ' : '') + d + '</div></div><span class="mut">›</span></div>'; };
+    var h = '<h2>Что продал?</h2><div class="search" style="margin-top:8px"><input id="ps-q" placeholder="Найти по названию, например «грёзы»" autocomplete="off"></div><div id="ps-r"></div>';
+    if (lots.length) h += '<div class="sec">Мои покупки</div>' + lots.map(function (l, i) { return row('data-pk="' + i + '"', l.img, l.name, '×' + l.openQty + ' · куплено по ' + uahShort(l.buyKop)); }).join('');
+    if (inv.length) h += '<div class="sec">Инвентарь Steam</div>' + inv.slice(0, 40).map(function (x, i) { return row('data-pi="' + i + '"', x.img, x.name, '×' + x.qty + (x.priceKop ? ' · ≈ ' + uahShort(x.priceKop) : '')); }).join('');
+    if (!lots.length && !inv.length) h += '<div class="note" style="margin-top:10px">Найди предмет по названию — даже если его уже нет в инвентаре (например, выставлен на Skinport).</div>';
     sheet(h);
     Array.prototype.forEach.call(document.querySelectorAll('[data-pk]'), function (el) { el.onclick = function () { haptic(); sellForm(lots[+el.getAttribute('data-pk')]); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-pi]'), function (el) { el.onclick = function () { haptic(); var x = inv[+el.getAttribute('data-pi')]; sellForm({ id: null, name: x.name, img: x.img, openQty: x.qty, note: 'из инвентаря Steam' }); }; });
+    var t = 0;
+    $('#ps-q').oninput = function () {
+      clearTimeout(t); var q = this.value.trim(); if (q.length < 2) { $('#ps-r').innerHTML = ''; return; }
+      t = setTimeout(function () {
+        api('search?q=' + encodeURIComponent(q)).then(function (r) {
+          $('#ps-r').innerHTML = r.results.length ? r.results.slice(0, 8).map(function (n, i) { return row('data-ps="' + i + '"', (r.images || {})[n], n, 'нажми, чтобы записать продажу'); }).join('') : '<div class="note">Ничего не нашёл — попробуй иначе</div>';
+          Array.prototype.forEach.call(document.querySelectorAll('[data-ps]'), function (el) { el.onclick = function () { haptic(); var n = r.results[+el.getAttribute('data-ps')], li = lotNames.indexOf(n); if (li >= 0) return sellForm(lots[li]); sellForm({ id: null, name: n, img: (r.images || {})[n], openQty: 0, note: 'найден по названию' }); }; });
+        }).catch(function () {});
+      }, 250);
+    };
   }).catch(function (e) { closeSheet(); toast(e.message); });
 }
 // ---------- Скриншоты сайта → продажи ----------

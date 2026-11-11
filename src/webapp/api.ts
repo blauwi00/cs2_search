@@ -955,7 +955,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       ])];
       return json({
         ok: true, known,
-        items: SKINPORT_LISTED.map((x) => ({ text: x.text, name: matchName(x.names, known), priceMinor: x.priceMinor, currency: 'PLN', float: x.float })),
+        items: SKINPORT_LISTED.map((x) => ({ text: x.text, name: matchName(x.names, known) ?? x.names[0] ?? null, priceMinor: x.priceMinor, currency: 'PLN', float: x.float })),
         fees: Object.fromEntries(Object.entries(MARKETS).map(([k, m]) => [k, m.sellFeeBp])),
         lots: Object.fromEntries((await T.openTrades(d, tid)).map((l) => [l.market_hash_name, 1])),
         platforms: PLATFORMS.filter((x) => !BUY_ONLY.includes(x)).map((x) => ({ v: x, t: PLATFORM_RU[x] })),

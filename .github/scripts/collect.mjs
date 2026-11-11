@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { decodeCertificate } from './inspect.mjs';
 import { russianSummary } from './patchnotes.mjs';
 import { collectExtraNews } from './extranews.mjs';
+import { scoreNews } from './newsscore.mjs';
 // caseev.mjs подключается только там, где нужен (не в домашнем агенте: у него этого файла может не быть).
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
@@ -456,10 +457,15 @@ if (!HOME) try {
 
 // 2д. Новости CS2: объявления разработчиков из Steam (открытый API новостей, к рынку Steam не относится).
 if (!HOME) try {
-  const r = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=600&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });
+  const r = await fetch('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=5&maxlength=0&feeds=steam_community_announcements', { headers: { 'User-Agent': UA } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
-  const news = (j?.appnews?.newsitems ?? []).map((n) => ({ gid: String(n.gid), title: n.title, url: n.url, date: n.date, contents: n.contents }));
+  // Важность — по полному тексту (багфиксы отсекаются, кейсы/коллекции/торговля поднимаются); в Worker уходит начало текста и оценка с причинами.
+  const news = (j?.appnews?.newsitems ?? []).map((n) => {
+    const sc = scoreNews({ source: 'valve', title: n.title, text: n.contents });
+    console.log(`Новость Valve [${sc.imp}] ${String(n.title).slice(0, 70)} (${sc.why.join('; ')})`);
+    return { gid: String(n.gid), title: n.title, url: n.url, date: n.date, contents: String(n.contents ?? '').slice(0, 4000), imp: sc.imp, why: sc.why.join('; ') };
+  });
   if (news.length) console.log('Новости CS2:', await toWorker('/ingest', { kind: 'news', fetchedAt: now(), items: news }));
   // Краткое содержание на русском — для новых обновлений, которых ещё нет на русском (Worker говорит, каких именно).
   if (newsNeedRu.length) {

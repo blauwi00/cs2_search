@@ -46,7 +46,7 @@ test('публикация: первые 3 — владельцу в личку,
   const d = migratedDb(); const D = d as unknown as D1Database; const env = testEnv(d);
   const T0 = Date.parse('2026-11-12T09:30:00Z') / 1000; // 10:30 по Варшаве
   await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot'), setMetaStmt(D, 'announce_done', JSON.stringify(['2026-11-chart']))]);
-  const ins = (gid: string, src: string, t: number) => d.db.exec(`INSERT INTO news (gid, title, url, snippet, published_at, title_ru, source, score, comments) VALUES ('${gid}', 'T${gid}', 'https://www.reddit.com/r/GlobalOffensive/comments/${gid}/x/', NULL, ${t}, 'Заголовок ${gid}', '${src}', 3000, 400)`);
+  const ins = (gid: string, src: string, t: number) => d.db.exec(`INSERT INTO news (gid, title, url, snippet, published_at, title_ru, source, score, comments, importance, why) VALUES ('${gid}', 'T${gid}', 'https://www.reddit.com/r/GlobalOffensive/comments/${gid}/x/', NULL, ${t}, 'Заголовок ${gid}', '${src}', 3000, 400, 60, 'тест')`);
   const sent: { method: string; body: Record<string, any> }[] = [];
   const { fetcher } = mockFetch([
     { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
@@ -77,4 +77,27 @@ test('тексты: Reddit — заголовок, оригинал, рейти�
   assert.match(extraPost({ ...base, source: 'datamine' }), /Valve это не подтверждала/);
   assert.equal(valveKind({ ...base, title: 'Counter-Strike 2 Update' }), 'Обновление CS2');
   assert.equal(valveKind({ ...base, title: 'New Operation is here' }), 'Объявление Valve');
+});
+
+test('важность: сверх суточного лимита идёт только очень важное (≥70); багфиксы Valve не публикуются', async () => {
+  const d = migratedDb(); const D = d as unknown as D1Database; const env = testEnv(d);
+  const T0 = Date.parse('2026-11-12T09:30:00Z') / 1000;
+  await D.batch([setMetaStmt(D, 'channel_id', '-1001234'), setMetaStmt(D, 'bot_username', 'cenolow_bot'), setMetaStmt(D, 'announce_done', JSON.stringify(['2026-11-chart'])), setMetaStmt(D, 'extra_preview_n', '3')]);
+  const ins = (gid: string, src: string, imp: number, t: number) => d.db.exec(`INSERT INTO news (gid, title, url, snippet, published_at, title_ru, source, importance, why) VALUES ('${gid}', 'T', 'https://www.hltv.org/news/${gid.replace(/\D/g, '') || 1}/x', NULL, ${t}, 'Заголовок ${gid}', '${src}', ${imp}, 'тест')`);
+  d.db.exec(`INSERT INTO news (gid, title, url, snippet, published_at, source, importance) VALUES ('900', 'Counter-Strike 2 Update', 'https://store.steampowered.com/news/app/730/view/900', NULL, ${T0 - 3600}, 'valve', 10)`);
+  for (const [i, imp] of [60, 60, 60, 60].entries()) ins(`e_10${i}`, 'esports', imp, T0 - 7000 + i);
+  const sent: { method: string; body: Record<string, any> }[] = [];
+  const { fetcher } = mockFetch([
+    { match: (u) => u.startsWith('https://api.telegram.org/'), respond: (u, init) => { sent.push({ method: u.split('/').pop()!, body: JSON.parse(String(init?.body)) }); return json({ ok: true, result: { message_id: 9 } }); } },
+    { match: (u) => u.startsWith('https://bank.gov.ua/'), respond: () => json(fixtureJson('nbu.json')) },
+  ]);
+  for (let i = 0; i < 8; i++) await runCycle(env, { now: T0 + i * 400, fetcher });
+  const chat = () => sent.filter((s) => s.method === 'sendMessage' && s.body.chat_id === -1001234).map((s) => String(s.body.text));
+  assert.ok(!chat().some((t) => /Update/.test(t)), 'багфиксы Valve (важность 10) не публикуются');
+  assert.equal(chat().filter((t) => /Заголовок/.test(t)).length, 3, 'обычное — не больше 3 в сутки');
+  ins('e_999', 'esports', 90, T0 + 3300);
+  for (let i = 0; i < 4; i++) await runCycle(env, { now: T0 + 3400 + i * 400, fetcher });
+  const extra = chat().filter((t) => /Заголовок/.test(t));
+  assert.equal(extra.length, 4, 'очень важное (≥70) выходит сверх лимита');
+  assert.match(extra[3]!, /Заголовок e_999/);
 });

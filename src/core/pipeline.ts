@@ -807,17 +807,20 @@ const announceDue = (ctx: Ctx) => warsawHour(ctx.now) >= 10 && warsawHour(ctx.no
 
 /** Лимиты: не больше 3 новостей не от Valve за сутки и не больше 1 с Reddit; только днём по Варшаве; выключатель — meta extra_news_off=1. */
 export const EXTRA_DAY_LIMIT = 3;
+export const IMP_SKIP = 30, IMP_MIN_EXTRA = 40, IMP_TOP = 70; // те же пороги, что в .github/scripts/newsscore.mjs
 export const EXTRA_PREVIEWS = 3;
 async function extraNewsStep(ctx: Ctx, chat: string, user: string | null, post: (text: string, kb: Keyboard, image: string | null) => Promise<number | false>, writes: D1PreparedStatement[]): Promise<boolean> {
   const h = warsawHour(ctx.now);
   if (h < 9 || h >= 22) return false;
   if ((await getMeta(ctx.db, 'extra_news_off')) === '1') return false;
-  const n = await ctx.db.prepare(`SELECT * FROM news WHERE source != 'valve' AND posted_at IS NULL AND title_ru IS NOT NULL AND published_at >= ? ORDER BY published_at LIMIT 1`)
-    .bind(ctx.now - 2 * 86400).first<NewsItem & { posted_at: number | null }>();
+  const n = await ctx.db.prepare(`SELECT * FROM news WHERE source != 'valve' AND posted_at IS NULL AND title_ru IS NOT NULL AND COALESCE(importance, 0) >= ? AND published_at >= ? ORDER BY importance DESC, published_at LIMIT 1`)
+    .bind(IMP_MIN_EXTRA, ctx.now - 2 * 86400).first<NewsItem & { posted_at: number | null }>();
   if (!n) return false;
   const today = await ctx.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(source = ?), 0) AS same FROM news WHERE source != 'valve' AND posted_at >= ?`)
     .bind(n.source ?? '', ctx.now - 86400).first<{ n: number; same: number }>();
-  if ((today?.n ?? 0) >= EXTRA_DAY_LIMIT || (n.source === 'reddit' && (today?.same ?? 0) >= 1)) return false;
+  // Очень важное (≥70) публикуем сверх обычного лимита, но не больше 6 в сутки; обычное — по лимиту и один пост Reddit в сутки.
+  const top = (n as { importance?: number | null }).importance != null && Number((n as { importance?: number | null }).importance) >= IMP_TOP;
+  if (top ? (today?.n ?? 0) >= EXTRA_DAY_LIMIT * 2 : (today?.n ?? 0) >= EXTRA_DAY_LIMIT || (n.source === 'reddit' && (today?.same ?? 0) >= 1)) return false;
   const text = extraPost(n);
   const kb: Keyboard = [[{ text: EXTRA_BUTTON[n.source ?? ''] ?? 'Читать', url: n.url }], ...botButton(user)];
   const previewed = Number(await getMeta(ctx.db, 'extra_preview_n')) || 0;
@@ -826,7 +829,7 @@ async function extraNewsStep(ctx: Ctx, chat: string, user: string | null, post: 
     // Предпросмотр: пост уходит владельцу, в канал — только после трёх одобренных макетов.
     writes.push(setMetaStmt(ctx.db, 'extra_preview_n', String(previewed + 1)));
     if (spendExternal(ctx)) {
-      try { await ctx.tg.sendMessage(ctx.adminId, `Предпросмотр ${previewed + 1} из ${EXTRA_PREVIEWS} (в канал не ушло):\n\n${text}`, kb, null); } catch (e) { await db.log(ctx.db, 'warn', 'channel', 'extra_preview', (e as Error).message.slice(0, 300), ctx.now); }
+      try { await ctx.tg.sendMessage(ctx.adminId, `Предпросмотр ${previewed + 1} из ${EXTRA_PREVIEWS} (в канал не ушло). Важность ${(n as { importance?: number | null }).importance ?? '—'}: ${esc(String((n as { why?: string | null }).why ?? 'без причин'))}\n\n${text}`, kb, null); } catch (e) { await db.log(ctx.db, 'warn', 'channel', 'extra_preview', (e as Error).message.slice(0, 300), ctx.now); }
     }
     return true;
   }
@@ -880,7 +883,7 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
   }
   // 1. Обновление CS2 — не старше 3 суток, по одному за запуск.
   // Ждём краткое содержание на русском до 45 минут после выхода обновления; дольше — публикуем как есть.
-  const n = await ctx.db.prepare("SELECT * FROM news WHERE source = 'valve' AND posted_at IS NULL AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1")
+  const n = await ctx.db.prepare(`SELECT * FROM news WHERE source = 'valve' AND posted_at IS NULL AND (importance IS NULL OR importance >= ${IMP_SKIP}) AND published_at >= ? AND (summary_ru IS NOT NULL OR published_at < ?) ORDER BY published_at LIMIT 1`)
     .bind(ctx.now - 3 * 86400, ctx.now - 45 * 60).first<NewsItem>();
   // Обновление уже вышло без перевода (по-английски), а перевод пришёл позже — исправляем тот же пост на русский (один раз).
   const late = n ? null : await ctx.db.prepare("SELECT * FROM news WHERE source = 'valve' AND posted_at IS NOT NULL AND posted_at >= ? AND msg_id IS NOT NULL AND summary_ru IS NOT NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 1")

@@ -475,8 +475,10 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         const url2 = typeof r?.url === 'string' && /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net|www\.counter-strike\.net)\//.test(r.url) ? r.url : null;
         const date = Number(r?.date);
         if (!gid || !title || !url2 || !Number.isInteger(date) || date > now + 3600) continue;
-        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now, newsImage(r.contents), seeded ? null : now));
+        const imp = Number.isInteger(r.imp) && Number(r.imp) >= 0 && Number(r.imp) <= 100 ? Number(r.imp) : null;
+        const why = typeof r.why === 'string' ? r.why.slice(0, 300) : null;
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at, importance, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(gid, title, url2, cleanSnippet(r.contents), date, seeded ? null : now, newsImage(r.contents), seeded ? null : now, imp, why));
       }
       if (stmts.length) await d.batch(stmts);
       result.stored = stmts.length;
@@ -498,8 +500,10 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         if (!seededBy.has(src)) seededBy.set(src, ((await d.prepare('SELECT COUNT(*) AS n FROM news WHERE source = ?').bind(src).first<{ n: number }>())?.n ?? 0) > 0);
         const seeded = seededBy.get(src)!;
         const score = Number.isInteger(r.score) ? Number(r.score) : null, comments = Number.isInteger(r.comments) ? Number(r.comments) : null;
-        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at, title_ru, source, score, comments) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?)')
-          .bind(gid, title, r.url as string, date, seeded ? null : now, seeded ? null : now, titleRu, src, score, comments));
+        const imp = Number.isInteger(r.imp) && Number(r.imp) >= 0 && Number(r.imp) <= 100 ? Number(r.imp) : null;
+        const why = typeof r.why === 'string' ? r.why.slice(0, 300) : null;
+        stmts.push(d.prepare('INSERT OR IGNORE INTO news (gid, title, url, snippet, published_at, posted_at, image, ru_posted_at, title_ru, source, score, comments, importance, why) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(gid, title, r.url as string, date, seeded ? null : now, seeded ? null : now, titleRu, src, score, comments, imp, why));
       }
       if (stmts.length) await d.batch(stmts);
       result.stored = stmts.length;

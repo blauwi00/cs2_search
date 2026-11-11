@@ -286,7 +286,7 @@ html.gold #view.enter .row:nth-of-type(2){animation-delay:.06s}html.gold #view.e
 #fx{display:none}
 html.gold #fx{display:block;position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 html.gold #view{position:relative;z-index:1}html.gold .top{position:sticky;z-index:5}
-#fx .fl{position:absolute;opacity:.34;transition:transform .25s ease-out;will-change:transform}
+#fx .fl{position:absolute;opacity:.34;will-change:transform}
 #fx .fl img{width:100%;display:block;animation:flt var(--d,9s) ease-in-out infinite alternate}
 @keyframes flt{from{transform:translateY(-10px) rotate(var(--r0,-8deg))}to{transform:translateY(12px) rotate(var(--r1,6deg))}}
 #fx i{position:absolute;bottom:-10px;width:3px;height:3px;border-radius:50%;background:var(--gold2);opacity:0;animation:dust var(--d,12s) linear infinite;animation-delay:var(--dl,0s)}
@@ -391,7 +391,7 @@ html.gold #fx{opacity:0;transition:opacity .4s}html.gold.at-home #fx{opacity:1}
 
 /* Гироскоп: фон всех вкладок смещается от наклона телефона (свечение + тонкий узор), скины на главной — сильнее (объём) */
 #bgx{display:none}
-html.gold #bgx{display:block;position:fixed;left:-48px;right:-48px;top:-48px;bottom:-48px;z-index:0;pointer-events:none;transition:transform .18s ease-out;will-change:transform;
+html.gold #bgx{display:block;position:fixed;left:-48px;right:-48px;top:-48px;bottom:-48px;z-index:0;pointer-events:none;will-change:transform;
   background:radial-gradient(520px 420px at 78% 12%,rgba(231,178,76,.16),transparent 65%),radial-gradient(460px 400px at 12% 78%,rgba(231,178,76,.09),transparent 65%),
   repeating-linear-gradient(135deg,rgba(231,178,76,.035) 0 1px,transparent 1px 22px)}
 html.gold body{background:#070707}
@@ -883,24 +883,33 @@ function fxDecor(imgs) {
 // Telegram 8.0+: DeviceOrientation без запроса разрешения; иначе — событие браузера; на компьютере — от мыши.
 function initTilt() {
   if (window._tilt || THEME !== 'gold') return; window._tilt = true;
-  var bg = $('#bgx'), gx = 0, gy = 0, tx = 0, ty = 0, raf = 0;
+  // Без дрожи: «ноль» — то, как человек держит телефон (медленно подстраивается), мёртвая зона для шума датчика,
+  // сильное сглаживание и сдвиг на целые пиксели (тонкие линии фона не мерцают). CSS-переходов нет — только этот кадр.
+  var bg = $('#bgx'), gx = 0, gy = 0, tx = 0, ty = 0, raf = 0, bx = null, by = null, lastBg = '';
   var clamp = function (v) { return Math.max(-1, Math.min(1, v)); };
+  var dz = function (v) { return Math.abs(v) < 0.06 ? 0 : v - (v > 0 ? 0.06 : -0.06); };
   var draw = function () {
-    raf = 0; tx += (gx - tx) * 0.25; ty += (gy - ty) * 0.25;
-    if (bg) bg.style.transform = 'translate3d(' + (tx * -30).toFixed(1) + 'px,' + (ty * -30).toFixed(1) + 'px,0)';
-    Array.prototype.forEach.call(document.querySelectorAll('#fx .fl'), function (el) { var k = +el.getAttribute('data-k') * 34; el.style.transform = 'translate3d(' + (tx * k).toFixed(1) + 'px,' + (ty * k).toFixed(1) + 'px,0)'; });
-    if (Math.abs(gx - tx) > 0.002 || Math.abs(gy - ty) > 0.002) raf = requestAnimationFrame(draw);
+    raf = 0; tx += (gx - tx) * 0.09; ty += (gy - ty) * 0.09;
+    var t = 'translate3d(' + Math.round(tx * -28) + 'px,' + Math.round(ty * -28) + 'px,0)';
+    if (bg && t !== lastBg) { bg.style.transform = t; lastBg = t; }
+    Array.prototype.forEach.call(document.querySelectorAll('#fx .fl'), function (el) { var k = +el.getAttribute('data-k') * 32; el.style.transform = 'translate3d(' + Math.round(tx * k) + 'px,' + Math.round(ty * k) + 'px,0)'; });
+    if (Math.abs(gx - tx) > 0.004 || Math.abs(gy - ty) > 0.004) raf = requestAnimationFrame(draw);
   };
-  var set = function (x, y) { gx = clamp(x); gy = clamp(y); if (!raf) raf = requestAnimationFrame(draw); };
+  var feed = function (x, y, span) { // x, y — наклон в своих единицах; span — сколько считать «полным» наклоном
+    if (bx === null) { bx = x; by = y; }
+    bx += (x - bx) * 0.004; by += (y - by) * 0.004; // «ноль» медленно следует за привычным положением руки
+    gx = clamp(dz((x - bx) / span)); gy = clamp(dz((y - by) / span));
+    if (!raf) raf = requestAnimationFrame(draw);
+  };
   var viaTg = false;
   try {
     if (tg && tg.DeviceOrientation && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0')) {
       viaTg = true; tg.DeviceOrientation.start({ refresh_rate: 50 });
-      tg.onEvent('deviceOrientationChanged', function () { set((tg.DeviceOrientation.gamma || 0) / 0.5, ((tg.DeviceOrientation.beta || 0) - 0.75) / 0.5); });
+      tg.onEvent('deviceOrientationChanged', function () { feed(tg.DeviceOrientation.gamma || 0, tg.DeviceOrientation.beta || 0, 0.45); });
     }
   } catch (e) { viaTg = false; }
-  if (!viaTg) window.addEventListener('deviceorientation', function (e) { if (e.gamma != null) set(e.gamma / 28, (e.beta - 45) / 28); });
-  window.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') set(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1); });
+  if (!viaTg) window.addEventListener('deviceorientation', function (e) { if (e.gamma != null) feed(e.gamma, e.beta, 26); });
+  window.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') { gx = clamp(e.clientX / innerWidth * 2 - 1); gy = clamp(e.clientY / innerHeight * 2 - 1); if (!raf) raf = requestAnimationFrame(draw); } });
 }
 // Сводка сверху главной: сколько идей нашёл бот и лучшая из них. Только реальные данные из summary.
 function heroCard(s) {

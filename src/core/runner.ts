@@ -12,6 +12,7 @@ import { moneyResolver } from '../currency/display.ts';
 import { reportCopy } from './origin.ts';
 import { jobHotRecs } from './hotrecs.ts';
 import { jobWeekly, isSunday, WEEKLY_HOUR } from './weekly.ts';
+import { jobHistory, HISTORY_HOUR } from './history.ts';
 import { warsawHour } from '../utils/time.ts';
 
 /** Порядок важен: при нехватке лимита раньше выполняются верхние задачи. */
@@ -29,6 +30,7 @@ export const JOBS: (JobDef & { minD1: number })[] = [
   { name: 'ideas', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 3 * 60 },
   { name: 'weekly', intervalSec: 10 * 60, lockSec: 90, minD1: 6, firstDelaySec: 4 * 60 },
   { name: 'hot_recs', intervalSec: 5 * 60, lockSec: 90, minD1: 4, firstDelaySec: 2 * 60 },
+  { name: 'history', intervalSec: 3600, lockSec: 90, minD1: 3, firstDelaySec: 10 * 60 },
   { name: 'health', intervalSec: 5 * 60, lockSec: 60, minD1: 2, firstDelaySec: 5 * 60 },
   { name: 'quality', intervalSec: 30 * 60, lockSec: 60, minD1: 4, firstDelaySec: 30 * 60 },
   { name: 'daily_report', intervalSec: 5 * 60, lockSec: 60, minD1: 3, firstDelaySec: 3 * 60 },
@@ -79,7 +81,9 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
   const jobs = new Map(jobList.map((j) => [j.name, j]));
   // Воскресная сводка тратит запросы только вечером в воскресенье — в остальное время ничего не резервирует.
   const weeklyNow = isSunday(now) && warsawHour(now) >= WEEKLY_HOUR;
-  const minD1 = (def: (typeof JOBS)[number]) => (def.name === 'csfloat' && !env.CSFLOAT_API_KEY ? 2 : def.name === 'weekly' && !weeklyNow ? 0 : def.minD1);
+  // История пишется раз в сутки вечером — в остальное время задача ничего не резервирует и не трогает базу.
+  const historyNow = warsawHour(now) >= HISTORY_HOUR;
+  const minD1 = (def: (typeof JOBS)[number]) => (def.name === 'csfloat' && !env.CSFLOAT_API_KEY ? 2 : def.name === 'weekly' && !weeklyNow ? 0 : def.name === 'history' && !historyNow ? 0 : def.minD1);
   // Только задачи, которым пора; из «тяжёлых» — не больше одной за вызов.
   const due: (typeof JOBS)[number][] = [];
   let heavyPicked = false;
@@ -92,6 +96,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
     if (!row || row.enabled !== 1) { result.skipped.push(def.name); continue; }
     if (!forced && row.next_run_at > now) continue;
     if (def.name === 'weekly' && !weeklyNow && !forced) continue; // не тратим запросы на блокировку вне воскресного вечера
+    if (def.name === 'history' && !historyNow && !forced) continue;
     if (def.heavy && heavyPicked) { result.skipped.push(def.name); continue; }
     if (def.heavy) heavyPicked = true;
     due.push(def);
@@ -128,6 +133,7 @@ export async function runCycle(env: Env, opts: { now: number; force?: string[]; 
         case 'ideas': await P.jobIdeas(ctx); break;
         case 'hot_recs': await jobHotRecs(ctx); break;
         case 'weekly': await jobWeekly(ctx); break;
+        case 'history': await jobHistory(ctx); break;
         case 'health': await P.jobHealth(ctx); break;
         case 'quality': await P.jobQuality(ctx); break;
         case 'daily_report': await P.jobDailyReport(ctx); break;

@@ -2,6 +2,7 @@
 // Учитывает лимиты бесплатного Worker: ≤ 50 запросов к D1 и ≤ 50 внешних запросов за вызов.
 // Запись идёт пачками (db.batch() = 1 запрос), курсы и счётчики кешируются в пределах вызова.
 
+import { cleanupHistoryStmts } from './history.ts';
 import type { Env } from '../env.ts';
 import { SourceError, type Quote, type Currency } from '../types/market.ts';
 import * as db from '../storage/db.ts';
@@ -586,6 +587,7 @@ export async function jobCleanup(ctx: Ctx): Promise<void> {
     ctx.db.prepare(`DELETE FROM outbox WHERE state IN ('sent', 'dropped') AND created_at < ?`).bind(ctx.now - 7 * 86400),
     // Индекс для «сколько рекомендаций человек получил за сутки» (hot_recs) — без него каждый раз читается вся очередь.
     ctx.db.prepare('CREATE INDEX IF NOT EXISTS idx_outbox_kind_time ON outbox(kind, created_at)'),
+    ...cleanupHistoryStmts(ctx.db, ctx.now),
     ctx.db.prepare('DELETE FROM user_state WHERE expires_at < ?').bind(ctx.now),
     ctx.db.prepare("UPDATE signals SET state = 'expired' WHERE state IN ('confirmed','unconfirmed') AND updated_at < ?").bind(ctx.now - 6 * 3600),
     ctx.db.prepare('DELETE FROM usage_counters WHERE day < ?').bind(utcDay(ctx.now - 60 * 86400)),

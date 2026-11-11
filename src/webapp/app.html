@@ -1285,6 +1285,7 @@ function itemSheet(id, days) {
       stat('Обычно продают за', avg7 ? '≈ ' + uahShort(avg7) : uahShort(q.steamMed && q.steamMed.kop), avg7 ? 'средняя за неделю' : 'медиана за сутки') + '</div>';
     h += '<div class="seg" id="dd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>';
     h += '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>';
+    h += '<div class="note">Steam и Skinport — история с момента запуска. Остальные площадки (Market.CSGO, Waxpeer, LIS-SKINS, CSFloat) — по одной точке в сутки, копятся ' + (r.sitesSince ? 'с ' + r.sitesSince.slice(8) + '.' + r.sitesSince.slice(5, 7) : 'с этого вечера') + ', раньше данных нет.</div>';
     h += pricesBoxHtml();
     // Всё остальное — для тех, кому интересно, под «Подробнее».
     var more = '';
@@ -1326,7 +1327,8 @@ function itemSheet(id, days) {
 }
 function chart(series, days, avg) {
   var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22;
-  var defs = [['steamLow', 'Steam объявление', THEME === 'gold' ? '#e7b24c' : '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b']];
+  var defs = [['steamLow', 'Steam объявление', THEME === 'gold' ? '#e7b24c' : '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b'],
+    ['csgomarket', 'Market.CSGO', '#c06bff'], ['waxpeer', 'Waxpeer', '#ff6b8a'], ['lisskins', 'LIS-SKINS', '#7ddc7a'], ['csfloat', 'CSFloat', '#46c2ff']];
   var all = []; defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
   if (all.length < 2) return '<div class="empty" style="padding:22px">📉 История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен.</span></div>';
   var now = Date.now() / 1000, from = now - days * 86400;
@@ -1447,6 +1449,7 @@ function steamBlock(st) {
   if (st.check) h += '<div class="note">Последняя проверка: ' + esc(ago(st.check.at)) + ' · ' + esc(st.check.src) + ' · ' + esc(st.check.status) + (st.check.diag ? ' · ' + esc(st.check.diag) : '') + '</div>';
   if (st.goneCount) h += '<div class="note" id="st-gone" style="cursor:pointer">📦 Пропало из инвентаря: ' + st.goneCount + ' — записать продажи можно в «Продажи» (вкладка выше) ›</div>';
   if (st.items.length) {
+    h += histCardHtml(st.history);
     h += '<div class="grid2">' + stat('Стоит в Steam', '≈ ' + siteMoney(st.totalKop, 'steam', true), 'по ценам Steam') + stat('Если продать', '≈ ' + siteMoney(st.totalNetKop, 'steam', true), 'на баланс, после 15%') + '</div>';
     h += st.items.slice(0, 60).map(function (x) {
       var nm = splitName(x.name);
@@ -1458,6 +1461,25 @@ function steamBlock(st) {
   } else if (!st.pending && st.status === 'ok' && !(st.locked && st.locked.length)) h += '<div class="card mut">В инвентаре CS2 нет предметов.</div>';
   h += lockedHtml(st.locked || []);
   return h;
+}
+// «За неделю»: изменение оценки инвентаря по суточным точкам (оценка по средним продажам Steam, не прибыль).
+function histCardHtml(hs) {
+  if (!hs) return '';
+  var h = '<div class="card"><div class="mut" style="font-size:13px;margin-bottom:4px">За неделю</div>';
+  if (hs.delta && hs.delta.kop != null) {
+    var d = hs.delta, up = d.kop >= 0, sg = up ? '+' : '−', pc = Math.abs(d.pct).toFixed(1).replace('.', ',');
+    h += '<div class="' + (up ? 'pos' : 'neg') + '" style="font-size:26px;font-weight:800">' + sg + uahShort(Math.abs(d.kop)) + ' <span style="font-size:15px;font-weight:600">(' + sg + pc + '%)</span></div>';
+    if (d.movers && d.movers.length) {
+      h += '<div class="mut" style="font-size:13px;margin:8px 0 2px">Сильнее всего изменились</div>';
+      h += d.movers.map(function (m) { var u = m.kop >= 0; return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0"><span>' + esc(m.name) + '</span><b class="' + (u ? 'pos' : 'neg') + '">' + (u ? '+' : '−') + uahShort(Math.abs(m.kop)) + '</b></div>'; }).join('');
+    }
+    h += '<div class="mut" style="font-size:12px;margin-top:8px">Сравнение ' + d.fromDay.slice(8) + '.' + d.fromDay.slice(5, 7) + ' и ' + d.toDay.slice(8) + '.' + d.toDay.slice(5, 7) + '. Оценка по средним продажам в Steam, не прибыль.</div>';
+  } else {
+    var left = Math.max(1, 8 - (hs.days || 0));
+    h += '<div style="font-weight:700">' + (hs.days ? 'Копим историю: ещё ' + left + ' ' + (left === 1 ? 'день' : left < 5 ? 'дня' : 'дней') + ' до сравнения' : 'Копим историю: первая точка появится сегодня вечером') + '</div>' +
+      '<div class="mut" style="font-size:13px;margin-top:4px">Бот раз в сутки запоминает стоимость инвентаря. Через неделю здесь будет «+/− за неделю» и скины, которые изменились сильнее всего.</div>';
+  }
+  return h + '</div>';
 }
 // Защита обмена Steam (7 дней): такие предметы Steam не показывает в открытом инвентаре — берём из записанных покупок.
 function lockedHtml(list) {

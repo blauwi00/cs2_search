@@ -1,5 +1,6 @@
 // JSON API для Telegram Mini App. Каждый запрос подписан Telegram (initData) и принимается только от администратора.
 
+import { weekDelta, parseTop, type HistRow } from '../core/history.ts';
 import { spendIdeas, SPEND_MIN_KOP, type SpendIdea } from '../core/spend.ts';
 import type { Env } from '../env.ts';
 import * as db from '../storage/db.ts';
@@ -100,6 +101,22 @@ async function rateOn(d: D1Database, code: string, date: string, today: string):
   return day?.[code] ? { per: day[code], exact: true } : fallback;
 }
 
+/** «За неделю» по инвентарю: суточные точки из inv_value_daily; пока истории мало — только счётчик дней. Суммы — по средним продажам Steam, в гривне по текущему курсу. */
+async function invHistory(d: D1Database, tid: number, usd: FxRate | null) {
+  const rows = (await d.prepare('SELECT day, total_usd_c, top FROM inv_value_daily WHERE telegram_id = ? ORDER BY day DESC LIMIT 14').bind(tid)
+    .all<{ day: string; total_usd_c: number; top: string | null }>()).results;
+  const hist: HistRow[] = rows.map((r) => ({ day: r.day, total: r.total_usd_c, top: parseTop(r.top) }));
+  const { delta, days } = weekDelta(hist);
+  const k = (c: number) => (usd ? toKop(Math.abs(c), 'USD', usd) : null);
+  if (!delta || !usd) return { days, delta: null, lastDay: rows[0]?.day ?? null };
+  const ids = delta.movers.map((m) => m.id);
+  const names = ids.length ? (await d.prepare(`SELECT id, market_hash_name AS name FROM items WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<{ id: number; name: string }>()).results : [];
+  const sign = (c: number, kop: number | null) => (kop === null ? null : c < 0 ? -kop : kop);
+  return { days, lastDay: delta.toDay, delta: {
+    kop: sign(delta.deltaUsdC, k(delta.deltaUsdC)), pct: delta.pct, fromDay: delta.fromDay, toDay: delta.toDay,
+    movers: delta.movers.map((m) => ({ name: names.find((n) => n.id === m.id)?.name ?? '', kop: sign(m.deltaUsdC, k(m.deltaUsdC)) })).filter((m) => m.name && m.kop !== null),
+  } };
+}
 /** Рекомендации по всему рынку из последнего сканирования сборщика. Старше суток — не показываем. */
 /**
  * Идеи по всему рынку для человека. Галочка «Подбирать идеи под баланс Steam» (и вписанный баланс): только идеи,
@@ -560,6 +577,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         // Steam отказал (не отдаёт / «закрыт» ещё не подтверждён) — не «загружаю», а честный текст статуса.
         pending: !!(linked && u?.inv_requested_at && (!u.inv_synced_at || u.inv_requested_at > u.inv_synced_at) && !['blocked', 'private', 'not_found'].includes(u.inv_status ?? '')),
         goneCount: linked ? ((await d.prepare(`SELECT COUNT(*) AS n FROM inv_gone WHERE telegram_id = ? AND status = 'new'`).bind(tid).first<{ n: number }>())?.n ?? 0) : 0,
+        history: linked ? await invHistory(d, tid, usd) : null,
         totalKop: total, totalNetKop: totalNet, noDataCount: noData, items, bot: await getMeta(d, 'bot_username'),
         locked: linked ? await lockedLots(d, tid, now) : [],
         ...(await invCheckInfo(d, tid, isAdmin)),
@@ -761,13 +779,25 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
       const conv = (c: number | null) => (c && usd ? toKop(c, 'USD', usd) : null);
       const steamAvg = sa && (sa.d1 || sa.d7 || sa.d30) ? { d1: conv(sa.d1), d7: conv(sa.d7), d30: conv(sa.d30), d90: conv(sa.d90), at: sa.updated_at } : null;
+      // Цены на других площадках — суточные точки с момента, как бот начал их копить (раньше истории нет, не выдумываем).
+      const siteRows = (await d.prepare('SELECT day, json FROM site_price_daily WHERE item_id = ? AND day >= ? ORDER BY day LIMIT 100').bind(itemId, new Date((now - days * 86400) * 1000).toISOString().slice(0, 10)).all<{ day: string; json: string }>()).results;
+      const siteSeries: Record<string, { t: number; v: number }[]> = {};
+      for (const r of siteRows) {
+        let o: Record<string, number> = {};
+        try { o = JSON.parse(r.json); } catch { continue; }
+        for (const key of ['csgomarket', 'waxpeer', 'lisskins', 'csfloat']) {
+          const v = o[key] && usd ? toKop(o[key]!, 'USD', usd) : null;
+          if (v) (siteSeries[key] ??= []).push({ t: Math.floor(Date.parse(r.day + 'T12:00:00Z') / 1000), v });
+        }
+      }
+      const sitesSince = siteRows[0]?.day ?? null;
       const q = (r: db.QuoteRow | null) => (r ? { kop: r.price_kop, minor: r.price_minor, currency: r.currency, qty: r.quantity, volume: r.volume, at: r.fetched_at } : null);
       return json({
         ok: true,
         item: { id: item.id, name: item.market_hash_name, img: (await imagesFor(d, [item.market_hash_name])).get(item.market_hash_name) ?? null, category: p.category, categoryRu: CATEGORY_RU[p.category], stattrak: p.stattrak, souvenir: p.souvenir, uniquePriced: p.uniquePriced },
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
-        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing') },
+        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing'), ...siteSeries }, sitesSince,
         stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7, steamAvg,
         backtest: bt, links: { steam: steamListingUrl(item.market_hash_name), skinport: safeLink(g('skinport', 'lowest_listing')?.url) },
       });

@@ -752,9 +752,16 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
 
     // ---------- Карточка предмета ----------
     if (seg[0] === 'item' && seg[1] && method === 'GET') {
-      const itemId = Number(seg[1]);
-      const item = await db.getItem(d, itemId);
-      if (!item) return bad('not_found', 404);
+      // item/name?n=… — окно любого скина открывается по названию (в рекомендациях, продажах, симуляции id нет).
+      const byName = seg[1] === 'name' ? (url.searchParams.get('n') ?? '').slice(0, 200) : null;
+      const itemId = byName !== null ? ((await d.prepare('SELECT id FROM items WHERE market_hash_name = ?').bind(byName).first<{ id: number }>())?.id ?? 0) : Number(seg[1]);
+      const item = itemId ? await db.getItem(d, itemId) : null;
+      if (!item) {
+        // Предмет бот ещё не отслеживает — истории нет; честный пустой ответ, а не ошибка.
+        if (byName !== null) return json({ ok: true, item: null, series: {}, sitesSince: null, avg7Kop: null, days: 7 });
+        return bad('not_found', 404);
+      }
+      await d.prepare('INSERT INTO item_views (item_id, at) VALUES (?, ?) ON CONFLICT(item_id) DO UPDATE SET at = excluded.at').bind(itemId, now).run();
       const days = [7, 30].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 7;
       const [quotes, rows, s] = await Promise.all([
         db.getQuotes(d, itemId),
@@ -778,6 +785,11 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const sa = (await steamAvgFor(d, [itemId])).get(itemId) ?? null;
       const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
       const conv = (c: number | null) => (c && usd ? toKop(c, 'USD', usd) : null);
+      // Средние продажи Steam за 90/30/7/1 дней есть у любого предмета — даёт линию сразу, даже без накопленной истории (точка — середина периода).
+      const avgPts: { t: number; v: number }[] = [];
+      if (sa) for (const [c, back] of [[sa.d90, 45], [sa.d30, 15], [sa.d7, 3.5], [sa.d1, 0.5]] as [number | null, number][]) {
+        const v = conv(c); if (v && now - back * 86400 >= now - days * 86400) avgPts.push({ t: Math.floor(now - back * 86400), v });
+      }
       const steamAvg = sa && (sa.d1 || sa.d7 || sa.d30) ? { d1: conv(sa.d1), d7: conv(sa.d7), d30: conv(sa.d30), d90: conv(sa.d90), at: sa.updated_at } : null;
       // Цены на других площадках — суточные точки с момента, как бот начал их копить (раньше истории нет, не выдумываем).
       const siteRows = (await d.prepare('SELECT day, json FROM site_price_daily WHERE item_id = ? AND day >= ? ORDER BY day LIMIT 100').bind(itemId, new Date((now - days * 86400) * 1000).toISOString().slice(0, 10)).all<{ day: string; json: string }>()).results;
@@ -797,7 +809,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         item: { id: item.id, name: item.market_hash_name, img: (await imagesFor(d, [item.market_hash_name])).get(item.market_hash_name) ?? null, category: p.category, categoryRu: CATEGORY_RU[p.category], stattrak: p.stattrak, souvenir: p.souvenir, uniquePriced: p.uniquePriced },
         quotes: { steamLow: q(g('steam', 'lowest_listing')), steamMed: q(g('steam', 'median_24h')), skinport: q(g('skinport', 'lowest_listing')), skinportSales7d: q(g('skinport', 'sale_median_7d')), csfloat: q(g('csfloat', 'listing')) },
         liquidity: { cls: liq.cls, ru: LIQUIDITY_RU[liq.cls], perDay: liq.salesPerDay, basis: liq.basis },
-        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing'), ...siteSeries }, sitesSince,
+        series: { steamLow: ser('steam', 'lowest_listing'), steamMed: ser('steam', 'median_24h'), skinport: ser('skinport', 'lowest_listing'), ...siteSeries, ...(avgPts.length ? { steamAvg: avgPts } : {}) }, sitesSince,
         stats: st, days, watchId: watch?.id ?? null, targetKop: watch?.target_buy_kop ?? null, advice, avg7Kop: avg7, steamAvg,
         backtest: bt, links: { steam: steamListingUrl(item.market_hash_name), skinport: safeLink(g('skinport', 'lowest_listing')?.url) },
       });

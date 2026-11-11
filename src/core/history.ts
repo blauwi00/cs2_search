@@ -24,7 +24,7 @@ export async function jobHistory(ctx: Ctx): Promise<{ wrote: boolean }> {
       SELECT t, ?, CAST(SUM(u * q) AS INTEGER), json_group_object(CAST(i AS TEXT), json_array(u, q)) FILTER (WHERE rn <= ${TOP_ITEMS}) FROM r GROUP BY t`).bind(fresh, day),
     d.prepare(`INSERT OR REPLACE INTO site_price_daily (item_id, day, json)
       SELECT i.id, ?, sp.json FROM site_prices sp JOIN items i ON i.market_hash_name = sp.name
-      WHERE sp.updated_at >= ? AND i.id IN (SELECT item_id FROM steam_inventory UNION SELECT item_id FROM watchlist WHERE active = 1 UNION SELECT item_id FROM trades WHERE quantity > sold_quantity)`).bind(day, fresh),
+      WHERE sp.updated_at >= ? AND i.id IN (SELECT item_id FROM steam_inventory UNION SELECT item_id FROM watchlist WHERE active = 1 UNION SELECT item_id FROM trades WHERE quantity > sold_quantity UNION SELECT item_id FROM item_views WHERE at >= ?)`).bind(day, fresh, ctx.now - 30 * 86400),
     setMetaStmt(d, 'hist_day', day),
   ]);
   return { wrote: true };
@@ -32,7 +32,7 @@ export async function jobHistory(ctx: Ctx): Promise<{ wrote: boolean }> {
 
 export function cleanupHistoryStmts(d: D1Database, now: number): D1PreparedStatement[] {
   const cut = warsawDate(now - HISTORY_KEEP_DAYS * 86400);
-  return [d.prepare('DELETE FROM inv_value_daily WHERE day < ?').bind(cut), d.prepare('DELETE FROM site_price_daily WHERE day < ?').bind(cut)];
+  return [d.prepare('DELETE FROM inv_value_daily WHERE day < ?').bind(cut), d.prepare('DELETE FROM site_price_daily WHERE day < ?').bind(cut), d.prepare('DELETE FROM item_views WHERE at < ?').bind(now - 60 * 86400)];
 }
 
 export interface HistRow { day: string; total: number; top: Record<string, [number, number]> | null }

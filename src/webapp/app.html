@@ -1045,6 +1045,7 @@ function heldText(sec) { var m = Math.round(sec / 60); return m < 60 ? m + ' м�
 function recSheet(r) {
   if (!r) return;
   var h = (r.img ? '<img class="hero-img" src="' + esc(r.img) + '" alt="">' : '') + '<h2>' + esc(r.name) + '</h2><div class="sub">' + esc(r.category || '') + (r.sales7 != null ? ' · ' + r.sales7 + ' продаж на Skinport за 7 дней' : '') + '</div>';
+  h += skinTop();
   if (r.kind === 'trend') {
     h += verdict({ action: 'buy', title: 'Растёт в цене', reason: r.reason });
   } else {
@@ -1062,7 +1063,6 @@ function recSheet(r) {
       kv('Куда придут деньги', r.wallet === 'cash' ? 'на ' + esc(r.sellName) + ' — можно вывести' : 'баланс Steam — вывести нельзя') + '</div>';
     if (r.fees && r.fees.length) h += '<div class="note">Учтены комиссии: ' + esc(r.fees.join(', ')) + '. Комиссию при оплате и выводе (банк, карта, крипта) задай в Ещё → Настройки.</div>';
   }
-  h += pricesBoxHtml();
   h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ ' + esc(r.risk) + '</div>';
   h += '<div class="note">Цены — на момент проверки (' + ago(state.cache.recsAt) + '). Перед покупкой проверь цену на сайте. Бот ничего не покупает сам.</div>';
   h += '<div class="btns"><button class="btn" id="r-buy">🛒 Купить на ' + esc(r.buyName) + '</button>' + (r.sellAt !== r.buyAt ? '<button class="btn sec2" id="r-sell">' + esc(r.sellName) + '</button>' : '') + '</div>';
@@ -1071,7 +1071,7 @@ function recSheet(r) {
   h += reportLink();
   sheet(h);
   $('#rep').onclick = function () { reportSheet(r.name, 'рекомендация: ' + r.buyName + ' → ' + r.sellName + ', прибыль ' + money(r.profitKop, true)); };
-  loadPrices(r.name);
+  skinRun(r.name);
   $('#r-buy').onclick = function () { goBuy({ name: r.name, where: r.buyName, priceKop: r.payKop, platform: { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other', url: r.buyUrl }); };
   if (r.sellAt !== r.buyAt) $('#r-sell').onclick = function () { openLink(r.sellUrl); };
   var plat = { steam: 'steam', skinport: 'skinport' }[r.buyAt] || 'other';
@@ -1151,7 +1151,7 @@ function recStatsSheet() {
 function dealSheet(d) {
   if (!d) return;
   var h = '<h2>' + esc(d.name) + '</h2><div class="sub"><span class="badge b-' + d.priority + '">приоритет: ' + (PRI[d.priority] || d.priority) + '</span> · обновлено ' + ago(d.updatedAt) + '</div>';
-  h += '<div id="icbox"><div class="skel" style="height:190px"></div></div>';
+  h += skinTop();
   h += '<div class="card" style="text-align:center"><div class="mut" style="font-size:13px">Разница после комиссий</div><div class="big-num pos">' + uah(d.spreadKop, true) + '</div><div class="mut">' + pct(d.roiBp) + ' к затратам · баланс Steam</div></div>';
   h += '<div class="card">' +
     kv('Покупка, ' + (SRC[d.buySource] || d.buySource), uah(d.buyKop) + (d.buyOriginal ? '<div class="mut" style="font-size:12px">' + (d.buyOriginal.minor / 100).toFixed(2).replace('.', ',') + ' ' + esc(d.buyOriginal.currency) + '</div>' : '')) +
@@ -1170,7 +1170,7 @@ function dealSheet(d) {
   sheet(h);
   if (d.buyUrl) $('#b-buy').onclick = function () { goBuy({ name: d.name, where: SRC[d.buySource] || d.buySource, priceKop: d.buyKop, platform: d.buySource, signalId: d.id, url: d.buyUrl }); };
   $('#b-steam').onclick = function () { openLink(d.steamUrl); };
-  inlineChart(d.itemId, 30);
+  skinRun(d.name);
   $('#b-bought').onclick = function () { buyForm({ name: d.name, priceKop: d.buyKop, platform: d.buySource, signalId: d.id }); };
   $('#b-hide').onclick = function () { api('deals/' + d.id + '/hide', { method: 'POST' }).then(function () { haptic('ok'); toast('Скрыто'); closeSheet(); go(state.tab); }).catch(function (e) { toast(e.message); }); };
 }
@@ -1273,15 +1273,18 @@ function bindSearch(input, out, onPick, mark) {
 
 // ---------- Карточка предмета ----------
 // График цены сразу в окне скина (без отдельной кнопки): 7/30 дней, все площадки, что накопились.
-function inlineChart(itemId, days) {
+// Под названием скина — сразу график и цены на площадках (в любом окне скина, без кнопок).
+function skinTop() { return '<div id="icbox"><div class="skel" style="height:190px"></div></div>' + pricesBoxHtml(); }
+function skinRun(name) { inlineChart(name, 30); loadPrices(name); }
+function inlineChart(name, days) {
   var box = $('#icbox'); if (!box) return;
   days = days || 30;
-  api('item/' + itemId + '?days=' + days).then(function (r) {
+  api('item/name?n=' + encodeURIComponent(name) + '&days=' + days).then(function (r) {
     box = $('#icbox'); if (!box) return;
     box.innerHTML = '<div class="seg" id="icd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>' +
       '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>' +
       '<div class="note">Steam и Skinport — история с момента запуска. Остальные площадки — по одной точке в сутки, копятся ' + (r.sitesSince ? 'с ' + r.sitesSince.slice(8) + '.' + r.sitesSince.slice(5, 7) : 'с этого вечера') + '.</div>';
-    Array.prototype.forEach.call(document.querySelectorAll('#icd button'), function (b) { b.onclick = function () { haptic(); inlineChart(itemId, +b.getAttribute('data-d')); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('#icd button'), function (b) { b.onclick = function () { haptic(); inlineChart(name, +b.getAttribute('data-d')); }; });
   }).catch(function () { var b2 = $('#icbox'); if (b2) b2.innerHTML = '<div class="note">График не загрузился.</div>'; });
 }
 function itemSheet(id, days) {
@@ -1290,16 +1293,13 @@ function itemSheet(id, days) {
   api('item/' + id + '?days=' + days).then(function (r) {
     var q = r.quotes, it = r.item;
     var h = (it.img ? '<img class="hero-img" src="' + esc(it.img) + '" alt="">' : '') + '<h2>' + esc(it.name) + '</h2><div class="sub">' + (ICON[it.category] || '') + ' ' + esc(it.categoryRu) + (it.stattrak ? ' · StatTrak™' : '') + (it.souvenir ? ' · Souvenir' : '') + '</div>';
+    h += skinTop();
     h += verdict(r.advice);
     if (it.uniquePriced) h += '<div class="card" style="color:var(--amber);font-size:14px">⚠️ Цена зависит от экземпляра (паттерн, фаза, float) — общие цены ориентировочные.</div>';
     var avg7 = r.steamAvg && r.steamAvg.d7;
     h += '<div class="grid2">' +
       stat('Steam сейчас', uahShort(q.steamLow && q.steamLow.kop), q.steamLow ? 'самый дешёвый лот · ' + ago(q.steamLow.at) : 'нет данных') +
       stat('Обычно продают за', avg7 ? '≈ ' + uahShort(avg7) : uahShort(q.steamMed && q.steamMed.kop), avg7 ? 'средняя за неделю' : 'медиана за сутки') + '</div>';
-    h += '<div class="seg" id="dd"><button data-d="7" class="' + (days === 7 ? 'on' : '') + '">7 дней</button><button data-d="30" class="' + (days === 30 ? 'on' : '') + '">30 дней</button></div>';
-    h += '<div class="card">' + chart(r.series, days, r.avg7Kop) + '</div>';
-    h += '<div class="note">Steam и Skinport — история с момента запуска. Остальные площадки (Market.CSGO, Waxpeer, LIS-SKINS, CSFloat) — по одной точке в сутки, копятся ' + (r.sitesSince ? 'с ' + r.sitesSince.slice(8) + '.' + r.sitesSince.slice(5, 7) : 'с этого вечера') + ', раньше данных нет.</div>';
-    h += pricesBoxHtml();
     // Всё остальное — для тех, кому интересно, под «Подробнее».
     var more = '';
     more += '<div class="card">' +
@@ -1323,8 +1323,7 @@ function itemSheet(id, days) {
     h += reportLink();
     $('#sc').innerHTML = h;
     $('#rep').onclick = function () { reportSheet(it.name, 'карточка предмета'); };
-    loadPrices(it.name);
-    Array.prototype.forEach.call(document.querySelectorAll('#dd button'), function (b) { b.onclick = function () { itemSheet(id, +b.getAttribute('data-d')); }; });
+    skinRun(it.name);
     $('#i-steam').onclick = function () { openLink(r.links.steam); };
     if (r.links.skinport) $('#i-sp').onclick = function () { openLink(r.links.skinport); };
     $('#i-buy').onclick = function () { buyForm({ name: it.name }); };
@@ -1341,7 +1340,7 @@ function itemSheet(id, days) {
 function chart(series, days, avg) {
   var W = 340, H = 170, L = 44, R = 6, T = 8, B = 22;
   var defs = [['steamLow', 'Steam объявление', THEME === 'gold' ? '#e7b24c' : '#8b6cff'], ['steamMed', 'Steam медиана', '#2fbf71'], ['skinport', 'Skinport', '#f2a93b'],
-    ['csgomarket', 'Market.CSGO', '#c06bff'], ['waxpeer', 'Waxpeer', '#ff6b8a'], ['lisskins', 'LIS-SKINS', '#7ddc7a'], ['csfloat', 'CSFloat', '#46c2ff']];
+    ['steamAvg', 'Steam: средняя продаж', '#9aa3b2'], ['csgomarket', 'Market.CSGO', '#c06bff'], ['waxpeer', 'Waxpeer', '#ff6b8a'], ['lisskins', 'LIS-SKINS', '#7ddc7a'], ['csfloat', 'CSFloat', '#46c2ff']];
   var all = []; defs.forEach(function (d) { (series[d[0]] || []).forEach(function (p) { if (p.v != null) all.push(p.v); }); });
   if (all.length < 2) return '<div class="empty" style="padding:22px">📉 История ещё копится.<br><span style="font-size:13px">Точки появляются при каждом сборе цен.</span></div>';
   var now = Date.now() / 1000, from = now - days * 86400;
@@ -1358,7 +1357,8 @@ function chart(series, days, avg) {
   defs.forEach(function (d) {
     var pts = (series[d[0]] || []).filter(function (p) { return p.v != null && p.t >= from; }), seg = [], last = null;
     function flush() { if (seg.length > 1) s += '<polyline fill="none" stroke="' + d[2] + '" stroke-width="2" stroke-linejoin="round" points="' + seg.join(' ') + '"/>'; else if (seg.length === 1) { var c = seg[0].split(','); s += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="2.2" fill="' + d[2] + '"/>'; } seg = []; }
-    pts.forEach(function (p) { if (last != null && p.t - last > gap) flush(); seg.push(x(p.t).toFixed(1) + ',' + y(p.v).toFixed(1)); last = p.t; });
+    var gp = d[0] === 'steamAvg' ? 1e9 : /^(csgomarket|waxpeer|lisskins|csfloat)$/.test(d[0]) ? 2 * 86400 : gap;
+    pts.forEach(function (p) { if (last != null && p.t - last > gp) flush(); seg.push(x(p.t).toFixed(1) + ',' + y(p.v).toFixed(1)); last = p.t; });
     flush();
   });
   s += '</svg><div class="legend">' + defs.filter(function (d) { return (series[d[0]] || []).length; }).map(function (d) { return '<span><i style="background:' + d[2] + '"></i>' + d[1] + '</span>'; }).join('') + '</div>';
@@ -1544,23 +1544,21 @@ function bindSteamBlock(st) {
     el.onclick = function () {
       haptic(); var id = +el.getAttribute('data-sinv'); var x = st.items.filter(function (i) { return i.itemId === id; })[0];
       var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + '</h2><div class="sub">×' + x.qty + ' в инвентаре Steam</div>';
-      h += '<div id="icbox"><div class="skel" style="height:190px"></div></div>';
+      h += skinTop();
       if (x.advice) h += verdict(x.advice);
       h += valueCard(x);
       if (x.marketable) h += sellBoxHtml() + '<div id="tgtbox"></div>';
-      h += pricesBoxHtml();
       h += assetDetails(x);
       h += '<button class="btn sec2" id="si-steam">Steam Market</button>';
       h += '<button class="btn" id="si-sold">💸 Я продал</button>';
       h += '<button class="btn sec2" id="si-buy">✍️ Записать цену покупки</button>';
       sheet(h);
       $('#si-sold').onclick = function () { haptic(); soldFromSteam(x); };
-      inlineChart(id, 30);
+      skinRun(x.name);
       $('#si-steam').onclick = function () { openLink('https://steamcommunity.com/market/listings/730/' + encodeURIComponent(x.name)); };
       $('#si-buy').onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); };
       Array.prototype.forEach.call(document.querySelectorAll('.si-cost'), function (a) { a.onclick = function () { buyForm({ name: x.name, priceKop: null, platform: 'steam' }); }; });
       if (x.marketable) { loadSellBox(id, null, function (k) { saveTarget(x, k); }); targetBox(x); }
-      loadPrices(x.name);
     };
   });
 }
@@ -1738,7 +1736,7 @@ function buyForm(pre) {
 }
 function lotSheet(l) {
   if (!l) return;
-  var h = '<h2>' + esc(l.name) + '</h2><div class="sub">Куплено ' + esc(l.date) + ' · ' + esc(l.platformRu) + '</div>' + '<div id="icbox"><div class="skel" style="height:190px"></div></div>' + verdict(l.advice);
+  var h = '<h2>' + esc(l.name) + '</h2><div class="sub">Куплено ' + esc(l.date) + ' · ' + esc(l.platformRu) + '</div>' + skinTop() + verdict(l.advice);
   h += '<div class="card">' + kv('Количество', l.openQty + (l.sold ? ' (продано ' + l.sold + ')' : '')) + kv('Цена покупки', uah(l.buyKop) + ' / шт.') + (l.feeKop ? kv('Комиссия покупки', uah(l.feeKop)) : '') +
     kv('Себестоимость остатка', uah(l.costKop)) + kv('Придёт в Steam сейчас', l.steamUnitKop == null ? 'нет цены' : uah(l.steamUnitKop) + ' / шт.') +
     kv('Skinport, объявление', l.externalUnitKop == null ? '—' : uah(l.externalUnitKop) + ' / шт.') +
@@ -1754,7 +1752,7 @@ function lotSheet(l) {
   loadSellBox(l.itemId, l.openQty ? l.costKop / l.openQty : null, function (k) {
     api('inventory/' + l.id + '/target', { method: 'POST', body: { kop: k } }).then(function () { haptic('ok'); $('#ltg').value = units(k); toast('Цель сохранена'); });
   });
-  inlineChart(l.itemId, 30);
+  skinRun(l.name);
   $('#lsell').onclick = function () { sellForm(l); };
   if ($('#lplat')) $('#lplat').onchange = function () {
     var v = $('#lplat').value;
@@ -2096,11 +2094,12 @@ function scanSheet(items, m, onDone) {
 }
 function pendingSheet(x) {
   var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</h2><div class="sub">На продаже · ' + esc(x.platform) + ' · выставлено ' + ago(x.since) + '</div>';
+  h += skinTop();
   h += '<div class="pv"><div><span>Придёт</span><b>' + uah(x.receivedKop) + '</b></div><div><span>Прибыль</span><b class="' + cls(x.resultKop) + '">' + uah(x.resultKop, true) + '</b></div></div>';
   h += '<button class="btn" id="pok">Продано — пришло ' + uah(x.receivedKop) + '</button>';
   h += '<details class="more"><summary><span class="chev">›</span> Пришло другое</summary><div class="amt"><input id="pcv" inputmode="decimal" placeholder="' + esc(unitsIn(x.receivedKop, CUR.code)) + '">' + curSelect('pcur', 'last_site_cur') + '</div><button class="btn" id="pok2">Продано — записать эту сумму</button></details>';
   h += '<button class="btn sec2" id="pno">Снял с продажи</button>';
-  sheet(h);
+  sheet(h); skinRun(x.name);
   var done = function (k) {
     api('sales/pending/' + x.id + '/confirm', { method: 'POST', body: { receivedKop: k } }).then(function (r) { haptic('ok'); toast('Продано: ' + uah(r.resultKop, true)); closeSheet(); state.invTab = 'sales'; go('trades'); }).catch(function (e) { toast(e.message); });
   };
@@ -2112,9 +2111,10 @@ function pendingSheet(x) {
 }
 function soldSheet(x) {
   var h = (x.img ? '<img class="hero-img" src="' + esc(x.img) + '" alt="">' : '') + '<h2>' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</h2><div class="sub">✅ Продано ' + esc(x.date) + ' · ' + esc(x.platform || '') + '</div>';
+  h += skinTop();
   h += '<div class="card">' + kv('Получено', uah(x.receivedKop)) + kv('Себестоимость', x.costKop ? uah(x.costKop) : 'выпал (0)') + kv('Результат', '<span class="' + cls(x.resultKop) + '">' + uah(x.resultKop, true) + '</span>') + kv('Куда пришли деньги', x.wallet === 'steam_wallet' ? 'кошелёк Steam' : 'реальные деньги') + '</div>';
   h += '<button class="btn danger" id="sdel">🗑 Удалить запись о продаже</button><div class="note">Если записал по ошибке: предмет вернётся в «Покупки».</div>';
-  sheet(h);
+  sheet(h); skinRun(x.name);
   $('#sdel').onclick = function () {
     var del = function () { api('sales/' + x.id, { method: 'DELETE' }).then(function () { haptic('ok'); toast('Удалено'); closeSheet(); trades(); }).catch(function (e) { toast(e.message); }); };
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о продаже?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
@@ -2411,12 +2411,13 @@ function rallyBuyForm(pre, mode) {
 function rallyPosSheet(p) {
   var locked = p.unlock_at * 1000 > Date.now();
   var h = '<h2>' + esc(p.name) + (p.qty > 1 ? ' ×' + p.qty : '') + '</h2><div class="sub">' + (p.mode === 'sim' ? '🧪 симуляция' : '💰 реальная сделка') + ' · ' + (locked ? '🔒 продать можно ≈ ' + dateRu(p.unlock_at) : '🔓 можно продавать') + '</div>' +
+    skinTop() +
     '<div class="card">' + kv('Куплено', uah(p.buy_kop) + ' × ' + p.qty) + kv('План продажи', p.target_kop ? uah(p.target_kop) : '—') + kv('Прогноз: придёт', p.predicted_net_kop ? uah(p.predicted_net_kop * p.qty) : '—') + kv('Риск при покупке', p.risk ? riskTag(p.risk) : '—') + '</div>';
   if (p.mode === 'real' || !locked) h += '<div class="sec">Отметить продажу</div><label class="f"><span>Цена покупателя за 1 шт., ' + esc(CUR.sign) + '</span><input id="rsp" inputmode="decimal" value="' + (p.target_kop ? units(p.target_kop) : '') + '"></label>' +
     '<label class="f"><span>Сколько продал (из ' + p.qty + ')</span><input id="rsq" inputmode="numeric" value="' + p.qty + '"></label><div class="mut" id="rsn" style="font-size:13px;margin:-4px 2px 8px"></div><button class="btn" id="rsok">✅ Продано</button>';
   h += '<div class="sec">Изменить</div><div style="display:flex;gap:8px"><input id="rtg" inputmode="decimal" placeholder="новый план, ' + esc(CUR.sign) + '" style="flex:1"><input id="rud" type="date" style="flex:1" value="' + new Date(p.unlock_at * 1000).toISOString().slice(0, 10) + '"></div><button class="btn sec2" id="rsave">Сохранить план и дату</button>';
   h += '<div class="btns"><button class="btn sec2" id="rst">Открыть в Steam</button><button class="btn danger" id="rcan">Отменить запись</button></div>';
-  sheet(h);
+  sheet(h); skinRun(p.name);
   var upd = function () { var k = toKop($('#rsp').value), q = +$('#rsq').value || 1; if (!(k >= 3)) { $('#rsn').textContent = ''; return; } api('calc?kop=' + k + '&mode=sell').then(function (c) { var st = c.rows.filter(function (x) { return x.key === 'steam'; })[0]; if (st && $('#rsn')) $('#rsn').innerHTML = 'Придёт ≈ ' + uah(st.getKop * q) + ' · итог ' + uah(st.getKop * q - p.buy_kop * q, true); }).catch(function () {}); };
   if ($('#rsp')) { $('#rsp').oninput = upd; $('#rsq').oninput = upd; upd(); }
   if ($('#rsok')) $('#rsok').onclick = function () { api('rally/sell', { method: 'POST', body: { id: p.id, qty: +$('#rsq').value || p.qty, priceKop: toKop($('#rsp').value) } }).then(function (x) { haptic('ok'); closeSheet(); toast('Продажа записана: ' + uah(x.profitKop, true)); rally(); }).catch(function (e) { toast(e.message); }); };

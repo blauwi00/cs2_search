@@ -8,6 +8,7 @@ import { decodeCertificate } from './inspect.mjs';
 import { russianSummary } from './patchnotes.mjs';
 import { collectExtraNews } from './extranews.mjs';
 import { scoreNews } from './newsscore.mjs';
+import { reelLog } from './reellog.mjs';
 // caseev.mjs подключается только там, где нужен (не в домашнем агенте: у него этого файла может не быть).
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/$/, '');
@@ -374,6 +375,7 @@ if (!HOME) try {
     if (bestNet > buy.uah * 1.04 && bestNet < buy.uah * 1.6 && (sp.get(n)?.quantity ?? 0) >= 10) scored.push({ n, r: bestNet / buy.uah });
   }
   scored.sort((a, b) => b.r - a.r);
+  try { reelLog({ steamAvg, sp, markets, scored, fx }); } catch (e) { console.error('REEL:', e.message); }
   // Вчерашние идеи бота — всегда в сканировании: по ним считается честный итог «сработало / нет».
   const picked = new Set([...trackNames.filter((n) => typeof n === 'string'), ...scored.slice(0, 50).map((x) => x.n)]);
   const base = [...sp.values()].filter((x) => x.min_price >= 0.3 && x.quantity >= 3 && !UNIQUE.test(x.market_hash_name));

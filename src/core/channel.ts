@@ -14,7 +14,7 @@ import { CHECK_AFTER, ensureTodayIdeas, ideasPost, weeklyPost, type CaseStat, ty
 import { formatUah, formatSignedUah, renderMoney } from '../utils/money.ts';
 import { loadRates, curFor } from '../currency/display.ts';
 import { rubricFor, pickCaseEV, caseEvPost, caseEvCard, trackedPost, storyPost, storyAt, storyQuote, TRACKED_MIN_USERS, type RubricKind, type CaseEV } from './rubrics.ts';
-import { hook, dealBlock, moveLine, FOOT_DEALS, pct, plus, ruDate } from './postfmt.ts';
+import { hook, dealBlock, dealLines, moveLine, FOOT_DEALS, pct, plus, ruDate } from './postfmt.ts';
 
 export type Slot = 'ideas' | 'rubric' | 'trends' | 'cases' | 'weekly';
 /** weekday: 0 = воскресенье (по Варшаве); без него — каждый день. */
@@ -73,7 +73,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
     const top = deals.slice(0, 3);
     if (!top.length) return null;
     const lines = [hook(`Идея дня: ${esc(top[0].name)}, чистыми ${plus(top[0].profitKop!)}`), ''];
-    top.forEach((d, i) => lines.push(...dealBlock(i + 1, { name: d.name, buyName: MARKETS[d.buyAt].name, sellName: MARKETS[d.sellAt].name, payKop: d.payKop, sellKop: d.sellKop, getKop: d.getKop!, profitKop: d.profitKop!, roiBp: d.roiBp ?? 0, cash: d.wallet === 'cash' }), ''));
+    top.forEach((d, i) => lines.push(...dealLines(i + 1, { name: d.name, buyName: MARKETS[d.buyAt].name, sellName: MARKETS[d.sellAt].name, payKop: d.payKop, sellKop: d.sellKop, getKop: d.getKop!, profitKop: d.profitKop!, roiBp: d.roiBp ?? 0, cash: d.wallet === 'cash' }), ''));
     lines.push(FOOT_DEALS);
     return { text: lines.join('\n'), lead: top[0].name };
   }

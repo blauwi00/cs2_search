@@ -5,7 +5,7 @@ import type { FxRate } from '../currency/nbu.ts';
 import type { Currency } from '../types/market.ts';
 import { warsawDate } from '../utils/time.ts';
 import { formatUah, formatSignedUah } from '../utils/money.ts';
-import { header, hook, plus, ruDate, dealBlock, moveLine, pct, esc } from './postfmt.ts';
+import { header, hook, plus, ruDate, dealBlock, dealLines, moveLine, pct, esc } from './postfmt.ts';
 
 export const IDEA_SETTINGS = { minProfitKop: 2000, minRoiBp: 800, depositFeeBp: 0, withdrawFeeBp: 0 };
 export const IDEAS_PER_DAY = 4;
@@ -104,7 +104,7 @@ export function ideasPost(rows: IdeaRow[], yesterday: IdeaRow[], now: number): s
     lines.push(`Сегодня выгодных сделок нет: нигде после всех комиссий не остаётся хотя бы ${fmt(IDEA_SETTINGS.minProfitKop)} и ${IDEA_SETTINGS.minRoiBp / 100}%. Бот ничего не придумывает, когда выгоды нет.`, '');
   }
   rows.forEach((r, i) => {
-    lines.push(...dealBlock(i + 1, { name: r.name, buyName: MARKETS[r.buy_at].name, sellName: MARKETS[r.sell_at].name, payKop: r.pay_kop, sellKop: r.sell_kop, getKop: r.get_kop, profitKop: r.profit_kop, roiBp: r.roi_bp, cash: r.wallet === 'cash' }), '');
+    lines.push(...dealLines(i + 1, { name: r.name, buyName: MARKETS[r.buy_at].name, sellName: MARKETS[r.sell_at].name, payKop: r.pay_kop, sellKop: r.sell_kop, getKop: r.get_kop, profitKop: r.profit_kop, roiBp: r.roi_bp, cash: r.wallet === 'cash' }), '');
   });
   if (y) lines.push(`<blockquote>${y}</blockquote>`, '');
   lines.push(rows.length ? '<i>Цены на момент публикации, комиссии учтены. Не финансовый совет. Купленное нельзя продать 7 дней — через неделю, когда продажа станет возможной, покажем честный итог этих рекомендаций.</i>' : '<i>Завтра — снова проверка рынка.</i>');

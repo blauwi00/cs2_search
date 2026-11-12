@@ -22,7 +22,7 @@ test('посты: «Рекомендации дня» с полной цепоч
   const p = renderMoney(buildPost('ideas', [deal], FX, AT10)!, UAH_CUR);
   assert.match(p, /^<b>Идея дня: .+, чистыми /, "крючок первой строкой");
   assert.doesNotMatch(p, /[\u{1F300}-\u{1FAFF}]/u, "без эмодзи");
-  assert.match(p, /Купить: Skinport — <b>450,00 ₴<\/b>\nПродать: Skinport — 585,00 ₴\nЧистыми: <b>\+/);
+  assert.match(p, /Skinport 450,00 ₴ → Skinport 585,00 ₴ · чистыми <b>\+/);
   assert.match(p, /Не финансовый совет/);
   assert.equal(buildPost('ideas', [], FX, AT10), null);
   const c = buildPost('cases', [kase('Kilowatt Case', 120, 100), kase('Gallery Case', 80, 100), kase('Fever Case', 100, 100)], FX, AT10)!;

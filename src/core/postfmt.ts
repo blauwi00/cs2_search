@@ -33,6 +33,14 @@ export function dealBlock(i: number, d: { name: string; buyName: string; sellNam
   ];
 }
 
+/** Компактный блок сделки: две строки (название; где купить → где продать, чистыми). Подробности — на картинке-карточке. */
+export function dealLines(i: number, d: { name: string; buyName: string; sellName: string; payKop: number; sellKop: number | null; getKop?: number; profitKop: number; roiBp: number; cash: boolean }): string[] {
+  return [
+    `<b>${i}. ${esc(d.name)}</b>`,
+    `${esc(d.buyName)} ${money(d.payKop)} → ${esc(d.sellName)} ${money(d.sellKop)} · чистыми <b>${plus(d.profitKop)}</b> (${pct(d.roiBp)}), ${d.cash ? 'деньгами' : 'на баланс Steam'}`,
+  ];
+}
+
 /** Строка изменения цены: «Kilowatt Case — +20% · 1,20 $». */
 export function moveLine(name: string, bp: number, kop: number | null): string {
   return `${bp >= 0 ? '▲' : '▼'} ${esc(name)} — <b>${pct(bp)}</b>${kop ? ` · ${money(kop)}` : ''}`;

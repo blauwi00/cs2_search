@@ -69,7 +69,11 @@ export async function postPreview(h: H, arg: string): Promise<void> {
   if (!p) return say(h, `Для «${SLOT_RU[slot]}» сейчас нечего публиковать — нет подходящих данных. Другие: <code>/post ideas</code>, <code>/post rubric</code>, <code>/post trends</code>, <code>/post cases</code>, <code>/post weekly</code>`);
   const channel = await getMeta(h.d, 'channel_id');
   await say(h, '👀 <b>Предпросмотр</b> — так пост будет выглядеть в канале:');
-  await h.tg.sendMessage(h.uid, p.text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])], p.image);
+  // Как в канале: настоящее фото (готовая карточка, если её уже нарисовал сборщик, иначе картинка предмета), а не ссылка с превью.
+  const origin = await getMeta(h.d, 'public_origin');
+  const card = p.card && origin ? await h.d.prepare('SELECT created_at FROM cards WHERE id = ?').bind(p.card.id).first<{ created_at: number }>() : null;
+  const image = card && origin && p.card ? `${origin}/card/${p.card.id}.jpg?v=${card.created_at}` : p.image;
+  await h.tg.sendPost(h.uid, p.text, [...botButton(await botUsername(h.d, h.tg)), ...(channel ? [[{ text: '📣 Опубликовать сейчас', callback_data: `chpost:${slot}` }]] : [])], image);
 }
 
 export async function publishNow(h: H, slot: string): Promise<void> {
@@ -81,7 +85,9 @@ export async function publishNow(h: H, slot: string): Promise<void> {
   if (!p) return say(h, 'Сейчас нечего публиковать.');
   if (p.meta?.length) await h.d.batch(p.meta.map(([k, v]) => setMetaStmt(h.d, k, v)));
   try {
-    await h.tg.sendMessage(Number(channel), p.text, botButton(await botUsername(h.d, h.tg)), p.image);
+    const origin = await getMeta(h.d, 'public_origin');
+    const card = p.card && origin ? await h.d.prepare('SELECT created_at FROM cards WHERE id = ?').bind(p.card.id).first<{ created_at: number }>() : null;
+    await h.tg.sendPost(Number(channel), p.text, botButton(await botUsername(h.d, h.tg)), card && origin && p.card ? `${origin}/card/${p.card.id}.jpg?v=${card.created_at}` : p.image);
     return say(h, '✅ Опубликовано.');
   } catch (e) {
     return say(h, `❌ ${esc((e as Error).message).slice(0, 200)}`);

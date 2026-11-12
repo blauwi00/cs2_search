@@ -173,14 +173,14 @@ REELS.chat = () => {
   ${endHtml('Проверь цену заранее')}`, js, sfx });
 };
 
-// ---------- 4б. То же с озвучкой (Yevhen — Друг и финал, Sofiia — Я): времена по склеенной дорожке voice.mp3 ----------
+// ---------- 4б. То же с озвучкой (София — Друг, Евгений — Я и финал): времена по склеенной дорожке voice.mp3 ----------
 REELS.chatv = () => {
   const msgs = [
     [0.4, 'l', 'Друг', 'Ты кейс Dreams &amp; Nightmares по 2,34 $ взял?'],
-    [2.95, 'r', 'Я', 'Он же дорожал...'],
-    [4.75, 'l', 'Друг', 'Три месяца назад. Сейчас он 1,84 $'],
-    [8.2, 'r', 'Я', '...'],
-    [9.3, 'l', 'Друг', '−21%'],
+    [2.83, 'r', 'Я', 'Но он же дорожал...'],
+    [4.95, 'l', 'Друг', 'Три месяца назад. Сейчас он 1,84 $'],
+    [8.3, 'r', 'Я', '...'],
+    [9.05, 'l', 'Друг', '−21%'],
   ];
   let js = `  tl.fromTo("#h1", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.3 }, 0.1);\n`;
   const sfx = [['pop', 0.1, 0.4]];
@@ -190,12 +190,12 @@ REELS.chatv = () => {
     sfx.push(['pop', tt, 0.25]);
   });
   js += `  tl.fromTo("#cs", { opacity: 0, scale: 0.5, rotation: -12 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.4, ease: "back.out(2)" }, 1.4);\n`;
-  js += `  tl.fromTo("#m4 b", { scale: 1 }, { scale: 1.5, duration: 0.2, ease: "back.out(3)", yoyo: true, repeat: 1 }, 9.45);\n  tl.fromTo("#flash", { opacity: 0.5 }, { opacity: 0, duration: 0.3, immediateRender: false }, 9.35);\n`;
+  js += `  tl.fromTo("#m4 b", { scale: 1 }, { scale: 1.5, duration: 0.2, ease: "back.out(3)", yoyo: true, repeat: 1 }, 9.2);\n  tl.fromTo("#flash", { opacity: 0.5 }, { opacity: 0, duration: 0.3, immediateRender: false }, 9.1);\n`;
   js += `  tl.fromTo("#bot", { opacity: 0, y: 80 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 10.0);\n  tl.to("#msgs, #cs", { opacity: 0.18, duration: 0.3 }, 10.0);\n  tl.to("#bot, #msgs, #cs, #h1", { opacity: 0, duration: 0.25 }, 13.1);\n`;
   js += endJs(13.3);
-  sfx.push(['slam', 9.4, 0.5], ['chime', 10.95, 0.35], ...endSfx(15.05));
+  sfx.push(['slam', 9.1, 0.5], ['chime', 10.7, 0.35], ...endSfx(14.85));
   const bub = msgs.map(([, s, who, tx], i) => `<div class="m ${s}" id="m${i}" style="top:${i * 190}px"><div class="who">${who}</div><b>${tx}</b></div>`).join('');
-  return wrap({ dur: 17.0, title: 'Купил кейс на пике (озвучка)', bg: 'radial-gradient(900px 800px at 50% 20%, rgba(80,120,255,.14), transparent 70%), #0a0d14',
+  return wrap({ dur: 16.8, title: 'Купил кейс на пике (озвучка)', bg: 'radial-gradient(900px 800px at 50% 20%, rgba(80,120,255,.14), transparent 70%), #0a0d14',
     css: `#flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 30; } #msgs { position: absolute; left: 60px; right: 60px; top: 380px; height: 1000px; } .m { position: absolute; max-width: 700px; padding: 26px 34px; border-radius: 40px; font: 600 44px/1.25 Inter, sans-serif; opacity: 0; } .m b { display: inline-block; font-weight: 700; } .m .who { font: 600 26px/1 Inter, sans-serif; color: #8fa3cc; margin-bottom: 8px; } .m.l { left: 0; background: #1b2433; border-bottom-left-radius: 8px; } .m.r { right: 0; background: #2b5278; border-bottom-right-radius: 8px; text-align: right; }
   #cs { position: absolute; left: 360px; top: 1230px; width: 360px; height: 360px; object-fit: contain; filter: drop-shadow(0 20px 30px rgba(0,0,0,.6)); opacity: 0; }
   #bot { position: absolute; left: 50px; right: 50px; top: 600px; z-index: 12; opacity: 0; background: #182533; border-radius: 44px 44px 44px 12px; padding: 40px 46px; font: 500 40px/1.3 Inter, sans-serif; box-shadow: 0 30px 80px rgba(0,0,0,.7); } #bot .who { display: flex; align-items: center; gap: 18px; font-size: 34px; color: #8fa3cc; margin-bottom: 14px; } #bot .who img { width: 64px; height: 64px; border-radius: 16px; } #bot h3 { margin: 0 0 12px; font-size: 54px; color: #ffd66b; } #bot i { display: block; margin-top: 14px; font-size: 28px; color: #8d97aa; font-style: normal; }`,

@@ -1684,7 +1684,10 @@ function loadPrices(name) {
   api('prices?name=' + encodeURIComponent(name)).then(function (r) {
     var el = $('#pricebox'); if (!el) return;
     var all = r.sites.slice();
-    if (!all.length && !r.steam) { el.innerHTML = ''; return; }
+    if (!all.length && !r.steam) {
+      el.innerHTML = '<div class="sec">Цены на площадках</div><div class="card mut" style="font-size:14px">' + (r.requested ? 'Цен площадок по этому предмету пока нет. Я запросил их вне очереди: загляни сюда через 10–15 минут.' : 'Этот предмет не найден на площадках по точному названию.') + '</div>';
+      return;
+    }
     var min = all.length && all[0].kind !== 'reference' ? all[0].kop : null;
     var h = '<div class="sec">Цены на площадках</div><div class="card" style="padding:2px 14px">';
     var line = function (x, icon, label, price, extra) {

@@ -35,7 +35,7 @@ import { TERMS_VERSION, TERMS_SHORT, TERMS_SECTIONS, PRIVACY_SECTIONS } from '..
 import { sitesFor, loadRefLinks } from '../core/sites.ts';
 import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
-import { sha256Hex } from '../ingest.ts';
+import { sha256Hex, requestedSiteNames } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { loadCollections, collViews } from '../core/collections.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
@@ -1158,6 +1158,13 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       let srcAt: Record<string, number> = {};
       try { srcAt = row ? JSON.parse((await getMeta(d, 'site_src_at')) ?? '{}') : Object.fromEntries(Object.keys(cents).map((k) => [k, at ?? now])); } catch { srcAt = {}; }
       const list = sitePriceList(name, cents, toK, links, await loadSkinportPages(d, [name]), srcAt, now);
+      // Цен площадок нет (предмет не успел попасть в общий проход): ставим в очередь, сборщик обновит его в ближайшие минуты.
+      let requested = false;
+      if (!list.length) {
+        const q = await requestedSiteNames(d);
+        if (!q.includes(name)) await setMetaStmt(d, 'site_price_req', JSON.stringify([...q, name].slice(-60))).run();
+        requested = true;
+      }
       let steam: { kop: number; live: boolean; basis: string; prices: unknown; status: string } | null = null;
       let steamStatus = 'no_data';
       if (item) {
@@ -1167,7 +1174,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
         steamStatus = ev.status;
         if (mv) steam = { kop: mv.kop, live: mv.basis === 'listing' || mv.basis === 'median24h', basis: mv.basis, status: ev.status, prices: { listing: ev.listing, buyOrder: ev.buyOrder, median24h: ev.median24h, avg: ev.avg } };
       }
-      return json({ ok: true, at, sites: list, steamStatus, pattern: parseMarketHashName(name).uniquePriced, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
+      return json({ ok: true, at, requested, sites: list, steamStatus, pattern: parseMarketHashName(name).uniquePriced, steam: steam ? { ...steam, url: `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}` } : null });
     }
     // #2: картинка «Мой инвентарь стоит X» — рисует приложение, сервер только хранит (одна на человека, 30 дней).
     if (path === 'sharecard' && method === 'POST') {

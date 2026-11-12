@@ -49,7 +49,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false, collVol = [] } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false, collVol = [], sitePricePartial = false } = await toWorker('/ingest/items');
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
@@ -469,10 +469,10 @@ if (sitePriceNames.length && !HOME) {
       if (Object.keys(p).length) out.push({ name: n, p });
     }
     for (let i = 0; i < out.length; i += 400) {
-      const r = await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), srcAt, items: out.slice(i, i + 400), done: i + 400 >= out.length });
+      const r = await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), srcAt, items: out.slice(i, i + 400), done: i + 400 >= out.length, partial: sitePricePartial });
       console.log(`Цены всех площадок: ${Math.min(i + 400, out.length)}/${out.length}`, r);
     }
-    if (!out.length) await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: [], done: true });
+    if (!out.length) await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: [], done: true, partial: sitePricePartial });
   } catch (e) {
     console.error('Цены всех площадок:', e.message);
   }

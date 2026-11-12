@@ -100,7 +100,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Картинка для поста канала, которую нужно нарисовать (null — ничего не нужно).
       card: await pendingCard(d),
       // Цены со всех площадок — раз в 6 часов для предметов из списков, инвентарей и идей.
-      sitePriceNames: await sitePriceNames(d, now),
+      ...(await (async () => { const r = await sitePriceNames(d, now); return { sitePriceNames: r.names, sitePricePartial: r.partial }; })()),
       // «Разгон баланса»: нужен ли проход по дешёвым предметам Steam и какие проверить первыми.
       rally: await rallyInfo(d),
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
@@ -473,7 +473,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         for (const [k, v] of Object.entries(src as Record<string, unknown>)) if (SITE_PRICE_KEYS.has(k) && typeof v === 'number' && v > 1.6e9 && v <= now + 300) clean[k] = Math.floor(v);
         stmts.push(setMetaStmt(d, 'site_src_at', JSON.stringify(clean)));
       }
-      if (body.done === true) stmts.push(setMetaStmt(d, 'site_prices_at', String(now)), d.prepare('DELETE FROM site_prices WHERE updated_at < ?').bind(now - 3 * 86400));
+      if ((body as { partial?: unknown }).partial === true) stmts.push(setMetaStmt(d, 'site_price_req', '[]')); // вне очереди: общий график (раз в 6 часов) не трогаем
+      else if (body.done === true) stmts.push(setMetaStmt(d, 'site_prices_at', String(now)), d.prepare('DELETE FROM site_prices WHERE updated_at < ?').bind(now - 3 * 86400), setMetaStmt(d, 'site_price_req', '[]'));
       for (let i = 0; i < stmts.length; i += 90) await d.batch(stmts.slice(i, i + 90));
       result.stored = stmts.length;
     } else if (body.kind === 'fx_usd') {
@@ -556,13 +557,17 @@ const SITE_PRICE_KEYS = new Set(['skinport', 'csgomarket', 'waxpeer', 'lisskins'
 export const SITE_PRICES_EVERY_SEC = 6 * 3600;
 
 /** Какие предметы сборщику оценить на всех площадках (пусто — ещё рано). */
-async function sitePriceNames(d: D1Database, now: number): Promise<string[]> {
+/** Предметы, по которым человек открыл карточку, а цен площадок ещё нет: обновляем их вне очереди (≤60 имён). */
+export async function requestedSiteNames(d: D1Database): Promise<string[]> {
+  try { const a = JSON.parse((await getMeta(d, 'site_price_req')) ?? '[]'); return Array.isArray(a) ? a.filter((x) => typeof x === 'string').slice(0, 60) : []; } catch { return []; }
+}
+async function sitePriceNames(d: D1Database, now: number): Promise<{ names: string[]; partial: boolean }> {
   const at = Number(await getMeta(d, 'site_prices_at')) || 0;
-  if (now - at < SITE_PRICES_EVERY_SEC) return [];
+  if (now - at < SITE_PRICES_EVERY_SEC) { const r = await requestedSiteNames(d); return { names: r, partial: r.length > 0 }; }
   const own = (await d.prepare(`SELECT DISTINCT i.market_hash_name AS n FROM items i WHERE
       EXISTS (SELECT 1 FROM watchlist w WHERE w.item_id = i.id AND w.active = 1)
       OR EXISTS (SELECT 1 FROM steam_inventory v WHERE v.item_id = i.id)
       OR EXISTS (SELECT 1 FROM trades t WHERE t.item_id = i.id AND t.status = 'open') LIMIT 1500`).all<{ n: string }>()).results.map((r) => r.n);
   const scan = await loadScan(d);
-  return [...new Set([...own, ...(scan?.entries ?? []).map((e) => e.name)])].slice(0, 2000);
+  return { names: [...new Set([...own, ...(scan?.entries ?? []).map((e) => e.name)])].slice(0, 2000), partial: false };
 }

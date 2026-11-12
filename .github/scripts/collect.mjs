@@ -200,6 +200,8 @@ try {
       const { buildCollections } = await import('./collections.mjs');
       const list = buildCollections(await r.json(), steamAvg);
       console.log('Коллекции:', list.length, await toWorker('/ingest', { kind: 'collections_stats', fetchedAt: now(), items: list }));
+      // Для анализа: сводка по коллекциям с ценами (m7 — неделя к месяцу, m30 — месяц к трём, в % от 100), без секретов и личных данных.
+      for (const c of list.filter((x) => x.k >= 5).sort((x, y) => (y.m30 ?? 0) - (x.m30 ?? 0))) console.log(`REEL коллекция | ${c.name} | выход ${c.rel ?? '?'} | скинов ${c.n}, с ценой ${c.k} | m7=${c.m7} m30=${c.m30} up=${c.up} | кейсы: ${c.crates.map((x) => `${x.name} d1=${x.d1} d7=${x.d7} d30=${x.d30} d90=${x.d90}`).join('; ') || '-'}`);
     } catch (e) {
       console.error('Коллекции:', e.message);
     }

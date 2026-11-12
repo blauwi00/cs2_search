@@ -41,7 +41,7 @@ const BASE_CSS = `
   .cap { position: absolute; left: 60px; right: 60px; text-align: center; font: 800 64px/1.15 Montserrat, sans-serif; opacity: 0; z-index: 5; }
   .sm { position: absolute; left: 60px; right: 60px; text-align: center; font: 500 30px/1.3 Inter, sans-serif; color: #8d97aa; opacity: 0; z-index: 5; }
   .pic { position: absolute; object-fit: contain; filter: drop-shadow(0 24px 34px rgba(0,0,0,.7)); opacity: 0; }` + END_CSS;
-const wrap = ({ dur, bg, css = '', body, js, sfx, title }) => `<!doctype html>
+const wrap = ({ dur, bg, css = '', body, js, sfx, title, voice }) => `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -58,7 +58,7 @@ ${css}
   <div id="bg"></div>
 ${body}
  </div>
-${audio(sfx)}
+${voice ? `  <audio id="voice" class="clip" src="assets/voice.mp3" data-start="0" data-duration="${dur}" data-track-index="6" data-volume="1"></audio>\n` : ''}${audio(sfx)}
 </div>
 <script>
   window.__timelines = window.__timelines || {};
@@ -171,6 +171,40 @@ REELS.chat = () => {
   <img id="cs" src="assets/Dreams___Nightmares_Case.png" alt="">
   <div id="bot"><div class="who"><img src="assets/logo.png" alt="">Ценолов</div><h3>Dreams &amp; Nightmares Case</h3>Сейчас $1,84. Средняя цена продаж за 90 дней — $2,34. Ниже на <b>21%</b>.<i>Дешевле не значит выгодно: рост цены не гарантирован.</i></div>
   ${endHtml('Проверь цену заранее')}`, js, sfx });
+};
+
+// ---------- 4б. То же с озвучкой (Yevhen — Друг и финал, Sofiia — Я): времена по склеенной дорожке voice.mp3 ----------
+REELS.chatv = () => {
+  const msgs = [
+    [0.4, 'l', 'Друг', 'Ты кейс Dreams &amp; Nightmares по 2,34 $ взял?'],
+    [2.95, 'r', 'Я', 'Он же дорожал...'],
+    [4.75, 'l', 'Друг', 'Три месяца назад. Сейчас он 1,84 $'],
+    [8.2, 'r', 'Я', '...'],
+    [9.3, 'l', 'Друг', '−21%'],
+  ];
+  let js = `  tl.fromTo("#h1", { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.3 }, 0.1);\n`;
+  const sfx = [['pop', 0.1, 0.4]];
+  msgs.forEach(([t, side, , ], i) => {
+    const tt = t;
+    js += `  tl.fromTo("#m${i}", { opacity: 0, y: 50, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.25, ease: "back.out(2)" }, ${r2(tt)});\n`;
+    sfx.push(['pop', tt, 0.25]);
+  });
+  js += `  tl.fromTo("#cs", { opacity: 0, scale: 0.5, rotation: -12 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.4, ease: "back.out(2)" }, 1.4);\n`;
+  js += `  tl.fromTo("#m4 b", { scale: 1 }, { scale: 1.5, duration: 0.2, ease: "back.out(3)", yoyo: true, repeat: 1 }, 9.45);\n  tl.fromTo("#flash", { opacity: 0.5 }, { opacity: 0, duration: 0.3, immediateRender: false }, 9.35);\n`;
+  js += `  tl.fromTo("#bot", { opacity: 0, y: 80 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 10.0);\n  tl.to("#msgs, #cs", { opacity: 0.18, duration: 0.3 }, 10.0);\n  tl.to("#bot, #msgs, #cs, #h1", { opacity: 0, duration: 0.25 }, 13.1);\n`;
+  js += endJs(13.3);
+  sfx.push(['slam', 9.4, 0.5], ['chime', 10.95, 0.35], ...endSfx(15.05));
+  const bub = msgs.map(([, s, who, tx], i) => `<div class="m ${s}" id="m${i}" style="top:${i * 190}px"><div class="who">${who}</div><b>${tx}</b></div>`).join('');
+  return wrap({ dur: 17.0, title: 'Купил кейс на пике (озвучка)', bg: 'radial-gradient(900px 800px at 50% 20%, rgba(80,120,255,.14), transparent 70%), #0a0d14',
+    css: `#flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 30; } #msgs { position: absolute; left: 60px; right: 60px; top: 380px; height: 1000px; } .m { position: absolute; max-width: 700px; padding: 26px 34px; border-radius: 40px; font: 600 44px/1.25 Inter, sans-serif; opacity: 0; } .m b { display: inline-block; font-weight: 700; } .m .who { font: 600 26px/1 Inter, sans-serif; color: #8fa3cc; margin-bottom: 8px; } .m.l { left: 0; background: #1b2433; border-bottom-left-radius: 8px; } .m.r { right: 0; background: #2b5278; border-bottom-right-radius: 8px; text-align: right; }
+  #cs { position: absolute; left: 360px; top: 1230px; width: 360px; height: 360px; object-fit: contain; filter: drop-shadow(0 20px 30px rgba(0,0,0,.6)); opacity: 0; }
+  #bot { position: absolute; left: 50px; right: 50px; top: 600px; z-index: 12; opacity: 0; background: #182533; border-radius: 44px 44px 44px 12px; padding: 40px 46px; font: 500 40px/1.3 Inter, sans-serif; box-shadow: 0 30px 80px rgba(0,0,0,.7); } #bot .who { display: flex; align-items: center; gap: 18px; font-size: 34px; color: #8fa3cc; margin-bottom: 14px; } #bot .who img { width: 64px; height: 64px; border-radius: 16px; } #bot h3 { margin: 0 0 12px; font-size: 54px; color: #ffd66b; } #bot i { display: block; margin-top: 14px; font-size: 28px; color: #8d97aa; font-style: normal; }`,
+    body: `  <div id="flash"></div>
+  <div class="hook" id="h1" style="top:130px;font-size:100px;opacity:0">Купил кейс на пике</div>
+  <div id="msgs">${bub}</div>
+  <img id="cs" src="assets/Dreams___Nightmares_Case.png" alt="">
+  <div id="bot"><div class="who"><img src="assets/logo.png" alt="">Ценолов</div><h3>Dreams &amp; Nightmares Case</h3>Сейчас $1,84. Средняя цена продаж за 90 дней — $2,34. Ниже на <b>21%</b>.<i>Дешевле не значит выгодно: рост цены не гарантирован.</i></div>
+  ${endHtml('Проверь цену заранее')}`, js, sfx, voice: true });
 };
 
 // ---------- 5. Steam дороже? А деньги твои? ----------

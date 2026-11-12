@@ -206,7 +206,7 @@ REELS.chatv = () => {
   <div id="msgs">${bub}</div>
   <div id="cw"><canvas id="c3" width="1080" height="1500"></canvas></div>
     <div id="bot"><div class="who"><img src="assets/logo.png" alt="">Ценолов</div><h3>Dreams &amp; Nightmares Case</h3>Сейчас $1,84. Средняя цена продаж за 90 дней — $2,34. Ниже на <b>21%</b>.<i>Дешевле не значит выгодно: рост цены не гарантирован.</i></div>
-  ${endHtml('Проверь цену заранее')}`, js, sfx, voice: true, module: `<script type="module">import './assets/case3d.js'; window.__case3d.setup(window.__timelines['main'], { fly: 0.8, openAt: 4.95, slamAt: 9.02, end: 15 });</script>` });
+  ${endHtml('Проверь цену заранее')}`, js, sfx, voice: true, module: `<script type="module">import './assets/case3d.js'; window.__case3d.setup(window.__timelines['main'], { fly: 0.8, openAt: 4.95, slamAt: 9.02, end: 15, lookY: 1.45 });</script>` });
 };
 
 // ---------- 5. Steam дороже? А деньги твои? ----------

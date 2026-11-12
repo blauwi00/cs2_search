@@ -2376,7 +2376,7 @@ function collCard(c) {
   for (var i = 0; i < c.crates.length; i++) {
     var x = c.crates[i];
     if (x.priceKop == null) continue;
-    h += '<div style="margin-top:8px;font-size:14px"><b>' + esc(x.name) + '</b> · ' + uahShort(x.priceKop) + (x.trend7 != null ? ' · ' + sgn(x.trend7) + ' за неделю' : '') + '</div>';
+    h += '<div style="margin-top:8px;font-size:14px"><b>' + esc(x.name) + '</b> · ' + uahShort(x.priceKop) + (x.trend7 != null ? ' · ' + sgn(x.trend7) + ' за неделю' : '') + (x.trend90 != null ? ', ' + sgn(x.trend90) + ' за 3 месяца' : '') + '</div>';
     h += '<div class="mut" style="font-size:13px">' + (x.vol != null ? 'Продаж в Steam за сутки: ' + x.vol + (x.liq ? ' (ликвидность ' + LIQ_RU[x.liq] + ')' : '') : 'Объём продаж: нет данных') +
       (x.needKop != null ? '<br>Чтобы после комиссии Steam вернуть потраченное, цена в Steam должна быть около ' + uahShort(x.needKop) + ' (' + sgn(x.needPct) + ')' : '') + '</div>';
   }

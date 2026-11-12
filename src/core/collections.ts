@@ -91,7 +91,7 @@ export interface CollView {
   n: number; k: number; m7: number | null; m30: number | null; up: number; rotation: boolean;
   ups: { name: string; priceKop: number | null; r7: number }[];
   cov: number; fuelKop: number | null; fuelName: string | null;
-  crates: { name: string; priceKop: number | null; trend7: number | null; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needKop: number | null; needPct: number | null; at: number | null }[];
+  crates: { name: string; priceKop: number | null; trend7: number | null; trend90: number | null; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needKop: number | null; needPct: number | null; at: number | null }[];
 }
 /** kop: цены прайса (центы USD) → копейки. Выход в плюс — цена Steam, при которой после комиссии вернутся потраченные деньги. */
 export function collViews(stats: CollStat[], vols: Record<string, CaseVol>, kop: (usdCents: number) => number | null): CollView[] {
@@ -101,7 +101,8 @@ export function collViews(stats: CollStat[], vols: Record<string, CaseVol>, kop:
       const priceKop = v?.low ?? (x.d7 ? kop(x.d7) : null);
       const need = priceKop ? steamBuyerPriceForReceived(priceKop).buyerPays : null;
       const trend7 = x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null;
-      return { name: x.name, priceKop, trend7, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needKop: need, needPct: need && priceKop ? Math.round(((need - priceKop) * 100) / priceKop) : null, at: v?.at ?? null };
+      const trend90 = x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null;
+      return { name: x.name, priceKop, trend7, trend90, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needKop: need, needPct: need && priceKop ? Math.round(((need - priceKop) * 100) / priceKop) : null, at: v?.at ?? null };
     });
     return {
       id: c.id, name: c.name, rel: c.rel, status: COLLECTION_STATUS[c.id] ?? null, n: c.n, k: c.k,

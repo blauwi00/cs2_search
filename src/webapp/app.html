@@ -618,7 +618,7 @@ function go(t) {
   var bt = t === 'rally' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
   // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
-  // Бегущая строка идей — только на главной; строка «Топ поддержки» переехала в «Ещё» → «Связь с автором».
+  // Бегущая строка идей — только на главной; строка «Топ поддержки» переехала в «Ещё».
   ['#ticker', '#ticker2'].forEach(function (id) { var el = $(id); if (el) el.style.display = t === 'home' && id === '#ticker' ? '' : 'none'; });
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
@@ -692,7 +692,7 @@ function renderTicker(s) {
 function renderDonors(s) {
   var el = $('#ticker2'), ds = s.donors || [];
   var items = ds.length ? '<span>💛 Топ поддержки:</span>' + ds.map(function (x, i) { return '<span>' + (['🥇', '🥈', '🥉'][i] || (i + 1) + '.') + ' <b class="gold">' + esc(x.name) + '</b> <b>' + x.stars + ' ⭐</b></span>'; }).join('')
-    : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Связь с автором» → «Поддержать»</span>';
+    : '<span>💛 Топ поддержки пока пуст — стань первым: Ещё → «Поддержать проект»</span>';
   el.innerHTML = '<div class="tk-in">' + items + items + '</div>';
   var w = el.firstChild.scrollWidth / 2; el.firstChild.style.setProperty('--tk-dur', Math.max(20, Math.round(w / 35)) + 's');
 }
@@ -2778,7 +2778,8 @@ function more() {
     row('m-bal', '💳', 'Баланс Steam', state.bal ? 'Сейчас ' + uahShort(state.bal.kop) + ' — бот подбирает идеи под него' : 'Впиши — бот покажет идеи, на которые хватит') +
     row('m-sites', '🛒', 'Площадки', 'Где покупать и продавать, рейтинг сайтов') +
     row('m-help', '❓', 'Помощь и правила', 'Как часто обновляется, что знает бот, условия') +
-    row('m-talk', '✉️', 'Связь с автором', 'Канал, предложить пост, сообщить об ошибке, поддержать') + '</div>' +
+    row('m-talk', '✉️', 'Связь с автором', 'Канал, предложить пост, сообщить об ошибке') +
+    row('m-support', '💛', 'Поддержать проект', 'Звёздами Telegram или скином в подарок') + '</div>' +
     (state.isAdmin ? '<div class="grp">' + row('m-people', '', 'Люди', 'Кто пользуется, что у них в инвентаре, что делают') + row('m-own', '🛠', 'Для владельца', 'Состояние системы, сбор цен, ошибки') + '</div>' : '') +
     '<div class="note" style="margin-top:14px">Бот анализирует рынок и ничего не покупает сам. Суммы — в твоей валюте, пересчёт по курсу НБУ.</div>';
   var menu = function (items) {
@@ -2799,13 +2800,13 @@ function more() {
       ['📄', 'Условия и риски', 'Бот — сборник информации, сделки на свой риск', termsSheet],
     ]);
   };
+  $('#m-support').onclick = function () { haptic(); donateSheet(); };
   $('#m-talk').onclick = function () {
     haptic();
     var open = function () {
       var items = [
         ['💡', 'Предложить пост в канал', 'Новость, находка, идея', suggestSheet],
         ['📮', 'Сообщить об ошибке', 'Неверная цена, битая ссылка, идея', function () { reportSheet(null, 'раздел «Ещё»'); }],
-        ['💛', 'Поддержать проект', 'Звёздами Telegram, добровольно · топ поддержки', donateSheet],
       ];
       // Ссылка на канал — из сводки (сервер берёт её из своей памяти, без запроса к Telegram).
       if (state.channelUrl) items.unshift(['📣', 'Канал', 'Рекомендации дня, кейсы, итоги недели', function () { openLink(state.channelUrl); }]);

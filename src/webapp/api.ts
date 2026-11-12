@@ -324,6 +324,9 @@ async function adviceFor(d: D1Database, tid: number, now: number, items: { id: n
   return out;
 }
 
+/** Трейд-ссылка Steam: только адрес steamcommunity.com, партнёр и токен — иначе не принимаем. */
+export const TRADE_URL_RE = /^https:\/\/steamcommunity\.com\/tradeoffer\/new\/\?partner=\d{1,12}&token=[A-Za-z0-9_-]{4,16}$/;
+const TRADE_URL_HELP = 'https://steamcommunity.com/my/tradeoffers/privacy#trade_offer_access_url';
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
 });
@@ -1323,6 +1326,16 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     if (path === 'suggest' && method === 'POST') {
       const err = await submitSuggestion(d, new TelegramClient(env.TELEGRAM_BOT_TOKEN), Number(env.ADMIN_TELEGRAM_ID), tid, body.text, null, now, tid === Number(env.ADMIN_TELEGRAM_ID));
       return err ? bad(err) : json({ ok: true });
+    }
+    // Трейд-ссылка владельца для подарков скинами (розыгрыш подписчикам / подарок автору): видят все, меняет только владелец.
+    if (path === 'tradeurl' && method === 'GET') return json({ ok: true, url: (await getMeta(d, 'trade_url')) || null, getUrl: TRADE_URL_HELP });
+    if (path === 'owner/tradeurl' && method === 'POST') {
+      if (!isAdmin) return bad('admin_only', 403);
+      const raw = typeof body.url === 'string' ? body.url.trim() : '';
+      if (!raw) { await d.prepare("DELETE FROM meta WHERE key = 'trade_url'").run(); return json({ ok: true, url: null }); }
+      if (!TRADE_URL_RE.test(raw)) return bad('Это не трейд-ссылка Steam. Она выглядит так: https://steamcommunity.com/tradeoffer/new/?partner=…&token=…');
+      await setMetaStmt(d, 'trade_url', raw).run();
+      return json({ ok: true, url: raw });
     }
     if (path === 'donate' && method === 'POST') {
       const stars = Number(body.stars);

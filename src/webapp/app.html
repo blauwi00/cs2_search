@@ -2721,11 +2721,46 @@ function suggestSheet() {
       .catch(function (e) { $('#sgs').disabled = false; toast(e.message); });
   };
 }
+// Подарок скином: трейд-ссылка владельца. Все видят выбор («для розыгрыша» / «подарок автору») и ссылку; вставлять и менять её может только владелец.
+function copyText(t) {
+  var fb = function () { var a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); toast('Скопировано'); } catch (e) { toast('Не удалось скопировать'); } document.body.removeChild(a); };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(function () { toast('Скопировано'); }, fb); return; } } catch (e) {}
+  fb();
+}
+function tradeBox(r) {
+  var box = $('#tradebox'); if (!box) return;
+  var h = '';
+  if (r.url) {
+    h += '<div class="sec">Подарить скином</div><div class="note">Выбери, зачем отправляешь обмен, и напиши это в сообщении к обмену.</div>' +
+      '<div class="seg" id="tseg"><button data-k="raffle" class="on">Для розыгрыша подписчикам</button><button data-k="gift">Подарок автору</button></div>' +
+      '<div class="note" id="tnote"></div>' +
+      '<div class="btns"><button class="btn" id="t-open">Открыть обмен в Steam</button><button class="btn sec2" id="t-copy">Скопировать ссылку</button></div>';
+  }
+  if (state.isAdmin) {
+    h += '<div class="sec">Трейд-ссылка (только для владельца)</div><div class="card"><input id="t-in" placeholder="https://steamcommunity.com/tradeoffer/new/?partner=…&token=…" autocomplete="off" value="' + esc(r.url || '') + '" style="width:100%;box-sizing:border-box">' +
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="t-save" style="margin:0">Сохранить</button>' + (r.url ? '<button class="btn sec2" id="t-del" style="margin:0">Убрать</button>' : '') + '</div>' +
+      '<div class="note" style="margin-top:10px"><a id="t-get" style="color:var(--link);cursor:pointer">Где взять трейд-ссылку</a>: Steam → Инвентарь → Предложения обмена → «Кто может отправлять мне предложения обмена» → внизу «Ссылка для обмена».</div></div>';
+  }
+  box.innerHTML = h;
+  var NOTE = { raffle: 'В сообщении к обмену напиши: «Розыгрыш». Предметы пойдут в розыгрыш среди подписчиков.', gift: 'В сообщении к обмену напиши: «Подарок автору». Спасибо за поддержку.' };
+  var kind = 'raffle', note = function () { if ($('#tnote')) $('#tnote').textContent = NOTE[kind]; };
+  note();
+  Array.prototype.forEach.call(document.querySelectorAll('#tseg button'), function (b) { b.onclick = function () { haptic(); kind = b.getAttribute('data-k'); Array.prototype.forEach.call(document.querySelectorAll('#tseg button'), function (x) { x.className = x === b ? 'on' : ''; }); note(); }; });
+  if ($('#t-open')) $('#t-open').onclick = function () { haptic(); openLink(r.url); };
+  if ($('#t-copy')) $('#t-copy').onclick = function () { haptic(); copyText(r.url); };
+  if ($('#t-get')) $('#t-get').onclick = function () { openLink(r.getUrl); };
+  var save = function (v) { api('owner/tradeurl', { method: 'POST', body: { url: v } }).then(function (x) { haptic('ok'); toast(x.url ? 'Трейд-ссылка сохранена' : 'Ссылка убрана'); r.url = x.url; tradeBox(r); }).catch(function (e) { toast(e.message); }); };
+  if ($('#t-save')) $('#t-save').onclick = function () { save($('#t-in').value); };
+  if ($('#t-del')) $('#t-del').onclick = function () { save(''); };
+  deEmoji(box);
+}
 function donateSheet() {
   var h = '<h2>💛 Поддержать Ценолова</h2><div class="sub">Бот бесплатный и работает круглосуточно. Если он помог — можно отправить звёзды Telegram. Это добровольно и ничего не открывает: бот остаётся бесплатным для всех.<br><br>Поддержавшие попадают во вторую бегущую строку «💛 Топ поддержки» — с именем из Telegram. Скрыть себя: /donate в боте → «Скрыть меня».</div>';
   h += '<div class="grid2" id="dons">' + [25, 50, 100, 250, 500].map(function (n) { return '<button class="btn sec2" data-n="' + n + '" style="margin:0">⭐ ' + n + '</button>'; }).join('') + '</div>';
   h += '<div class="note">Оплата проходит внутри Telegram. Вопросы по оплате — команда /paysupport в боте.</div>';
+  h += '<div id="tradebox"></div>';
   sheet(h);
+  api('tradeurl').then(function (r) { tradeBox(r); }).catch(function () {});
   Array.prototype.forEach.call(document.querySelectorAll('#dons button'), function (b) {
     b.onclick = function () {
       var n = +b.getAttribute('data-n');

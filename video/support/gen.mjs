@@ -28,9 +28,9 @@ await pg.evaluate(() => { document.querySelector('#sheet').scrollTop = 99999; })
 await grab('skin');
 
 const slides = [
-  { img: 'menu', kick: 'ЦЕНОЛОВ', h: 'Бесплатный.<br><span>Навсегда.</span>', p: 'Без подписок и рекламы. Помочь проекту можно по желанию.', chips: [['top:625px;right:70px', 'Ещё → Поддержать проект ↓']] },
-  { img: 'stars', kick: 'СПОСОБ 1', h: 'Звёзды<br><span>Telegram</span>', p: 'Один тап. Оплата внутри Telegram.', shift: 250, chips: [['top:625px;left:70px', 'добровольно']] },
-  { img: 'skin', kick: 'СПОСОБ 2', h: 'Скин<br><span>в подарок</span>', p: 'Бот сам скажет автору, для чего скин. Писать ничего не нужно.', shift: 330, chips: [['top:610px;left:70px;font-size:30px;padding:18px 28px', '1 · выбери цель'], ['top:610px;left:372px;font-size:30px;padding:18px 28px', '2 · отправь обмен'], ['top:610px;left:700px;font-size:30px;padding:18px 28px', '3 · «Я отправил»']] },
+  { img: 'menu', kick: 'ЦЕНОЛОВ', h: 'Поддержи<br><span>Ценолов</span>', p: 'Бот бесплатный и таким останется. Если он тебе помог, можно поддержать автора. Только по желанию.', chips: [['top:625px;right:70px', 'Ещё → Поддержать проект ↓']] },
+  { img: 'stars', kick: 'СПОСОБ 1', h: 'Отправь<br><span>звёзды</span>', p: 'Звёзды Telegram автору. Один тап, оплата внутри Telegram.', shift: 250, chips: [['top:625px;left:70px', 'добровольно']] },
+  { img: 'skin', kick: 'СПОСОБ 2', h: 'Подари<br><span>скин</span>', p: 'Отправь автору или в розыгрыш подписчикам. Бот сам сообщит, для чего он. Писать ничего не нужно.', shift: 330, chips: [['top:610px;left:70px;font-size:30px;padding:18px 28px', '1 · выбери цель'], ['top:610px;left:372px;font-size:30px;padding:18px 28px', '2 · отправь обмен'], ['top:610px;left:700px;font-size:30px;padding:18px 28px', '3 · «Я отправил»']] },
 ];
 const page = (x) => `<!doctype html><meta charset=utf-8><style>
 *{box-sizing:border-box;margin:0}

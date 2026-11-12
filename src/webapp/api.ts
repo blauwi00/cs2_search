@@ -37,6 +37,7 @@ import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { sha256Hex } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
+import { loadCollections, collViews } from '../core/collections.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
 import { matchName } from '../core/screenread.ts';
@@ -1336,6 +1337,12 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       if (!TRADE_URL_RE.test(raw)) return bad('Это не трейд-ссылка Steam. Она выглядит так: https://steamcommunity.com/tradeoffer/new/?partner=…&token=…');
       await setMetaStmt(d, 'trade_url', raw).run();
       return json({ ok: true, url: raw });
+    }
+    // «Коллекции»: общий для всех справочный экран (динамика цен, статусы ротаций, выход в плюс после комиссии Steam).
+    if (path === 'collections' && method === 'GET') {
+      const [c, fx] = await Promise.all([loadCollections(d), db.loadLatestFx(d)]);
+      const usd = fx.get('USD') ?? null;
+      return json({ ok: true, at: c.at, list: collViews(c.stats, c.vols, (x) => (usd ? toKop(x, 'USD', usd) : null)).filter((v) => v.k > 0) });
     }
     // «Я отправил обмен»: человек ничего не пишет, одно нажатие. Бот сразу сообщает владельцу, для чего этот трейд.
     if (path === 'tradesent' && method === 'POST') {

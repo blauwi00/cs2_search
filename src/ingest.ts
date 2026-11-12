@@ -18,6 +18,7 @@ import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
+import { parseCollStats, parseCaseVols, loadCollections, collVolNames } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
@@ -105,6 +106,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
       // Записи в D1 за сегодня по источникам (выборочный учёт, ≈). Бесплатный лимит — 100 000 строк в сутки.
       writes: Object.fromEntries(Object.entries(await db.counters(d, now)).filter(([k]) => k.startsWith('w:'))),
+      collVol: await (async () => { try { const c = await loadCollections(d); return collVolNames(c.stats, c.vols, now); } catch { return []; } })(),
       needCaseEv: await (async () => { try { return now - (JSON.parse((await getMeta(d, 'case_ev')) ?? '{}').at ?? 0) > 20 * 3600; } catch { return true; } })(),
       newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
@@ -429,6 +431,21 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         .map((r) => ({ name: r.name as string, d1: c(r.d1), d7: c(r.d7), d30: c(r.d30) }));
       if (list.length) await setMetaStmt(d, 'cases_stats', JSON.stringify(list)).run();
       result.stored = list.length;
+    } else if (body.kind === 'collections_stats') {
+      // Динамика цен по коллекциям (считает сборщик из открытых файлов): одна запись в meta, не чаще раза в час.
+      const list = parseCollStats(body.items);
+      const json = JSON.stringify(list);
+      if (list.length && (await getMeta(d, 'collections_stats')) !== json) await d.batch([setMetaStmt(d, 'collections_stats', json), setMetaStmt(d, 'collections_stats_at', String(now))]);
+      result.stored = list.length;
+    } else if (body.kind === 'collections_vol') {
+      // Живые цена и объём Steam по нескольким кейсам: копим по именам, старые записи не теряем.
+      const fresh = parseCaseVols(body.items, now);
+      if (Object.keys(fresh).length) {
+        let old: Record<string, unknown> = {};
+        try { old = JSON.parse((await getMeta(d, 'collections_vol')) ?? '{}'); } catch { /* пусто */ }
+        await setMetaStmt(d, 'collections_vol', JSON.stringify({ ...old, ...fresh })).run();
+      }
+      result.stored = Object.keys(fresh).length;
     } else if (body.kind === 'card') {
       // Картинка поста канала (JPEG, base64). Адрес Worker запоминаем: по нему Telegram возьмёт картинку.
       const id = typeof body.id === 'string' && /^(ideas|trends|cases|weekly|rally|caseev|news|story)-\d{4}-\d{2}-\d{2}$/.test(body.id) ? body.id : null;

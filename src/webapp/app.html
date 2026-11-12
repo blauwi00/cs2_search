@@ -596,7 +596,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { rally: 'Разгон баланса', home: 'Ценолов', deals: 'Идеи', market: 'Цены', inv: 'Мои скины', trades: 'Мои скины', more: 'Ещё' };
+var TITLES = { collections: 'Коллекции', rally: 'Разгон баланса', home: 'Ценолов', deals: 'Идеи', market: 'Цены', inv: 'Мои скины', trades: 'Мои скины', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -615,7 +615,7 @@ function go(t) {
   setMenu(null);
   state.tab = t; closeSheet();
   document.documentElement.classList.toggle('at-home', t === 'home'); // парящие скины — только на главной
-  var bt = t === 'rally' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
+  var bt = t === 'rally' || t === 'collections' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
   // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
   // Бегущая строка идей — только на главной; строка «Топ поддержки» переехала в «Ещё».
@@ -623,7 +623,7 @@ function go(t) {
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
   view.classList.remove('enter'); view._fresh = true;
-  ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally })[t]();
+  ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally, collections: collections })[t]();
 }
 
 // Набегание сумм [data-cnt] и ползунок под выбранным пунктом переключателя — после каждой отрисовки раздела.
@@ -1080,11 +1080,12 @@ function recSheet(r) {
 }
 // Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
 function recSwitch(on) {
-  if (!state.isAdmin && !state.rallyOk) return ''; // «Разгон» скрыт, пока бот не подтвердил схему
-  return '<div class="seg" id="recsw"><button data-v="recs" class="' + (on === 'recs' ? 'on' : '') + '">💡 Идеи</button><button data-v="rally" class="' + (on === 'rally' ? 'on' : '') + '">🚀 Разгон баланса</button></div>';
+  var b = [['recs', 'Идеи'], ['coll', 'Коллекции']];
+  if (state.isAdmin || state.rallyOk) b.push(['rally', 'Разгон баланса']); // «Разгон» скрыт, пока бот не подтвердил схему
+  return '<div class="seg" id="recsw">' + b.map(function (x) { return '<button data-v="' + x[0] + '" class="' + (on === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
 }
 function bindRecSwitch() {
-  Array.prototype.forEach.call(document.querySelectorAll('#recsw button'), function (b) { b.onclick = function () { haptic(); go(b.getAttribute('data-v') === 'rally' ? 'rally' : 'deals'); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('#recsw button'), function (b) { b.onclick = function () { haptic(); var v = b.getAttribute('data-v'); go(v === 'rally' ? 'rally' : v === 'coll' ? 'collections' : 'deals'); }; });
 }
 function deals() {
   loading(6);
@@ -2357,6 +2358,55 @@ function termsSheet() {
 var RISK_RU = { low: 'низкий риск', medium: 'средний риск', high: 'высокий риск', unknown: 'недостаточно данных' };
 function riskTag(r) { return '<span class="risk ' + esc(r) + '">' + (RISK_RU[r] || r) + '</span>'; }
 function dateRu(t) { return t ? new Date(t * 1000).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—'; }
+// «Коллекции»: что дорожает и сколько роста нужно, чтобы после комиссии Steam вернуть потраченное. Справка, не совет покупать.
+var COLL_STATUS_RU = { active: 'В дропе', removed: 'Убрана из дропа', none: 'Статус не известен' };
+function sgn(n) { return n == null ? '—' : (n > 0 ? '+' : '') + n + '%'; }
+function ymRu(d) { if (!d) return ''; var m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(d); if (!m) return ''; return (m[3] ? m[3] + '.' : '') + m[2] + '.' + m[1]; }
+var LIQ_RU = { high: 'высокая', mid: 'средняя', low: 'низкая' };
+function collCard(c) {
+  var st = c.status ? c.status.s : 'none';
+  var chip = '<span class="act ' + (st === 'removed' ? 'a-sell' : 'a-buy') + '" style="white-space:nowrap">' + COLL_STATUS_RU[st] + (c.status && c.status.date ? ' · ' + ymRu(c.status.date) : '') + '</span>';
+  var h = '<div class="rc"><div class="hd"><div class="n">' + esc(c.name.replace(/^The /, '').replace(/ Collection$/, '')) + '<div class="c">' + c.n + ' скинов</div></div>' + chip + '</div>';
+  h += '<div class="mut" style="font-size:13px">Цены есть у ' + c.k + ' из ' + c.n + (c.rel ? ' · вышла ' + ymRu(c.rel) : '') + '</div>';
+  if (c.m7 != null) h += '<div class="mut" style="font-size:13px">Средняя цена скинов: ' + sgn(c.m7) + ' за неделю к месяцу' + (c.m30 != null ? ', ' + sgn(c.m30) + ' за месяц к трём' : '') + '</div>';
+  if (c.rotation) {
+    h += '<div class="card" style="margin:8px 0 0;font-size:13px"><b>Возможная ротация:</b> ' + c.up + ' из ' + c.k + ' скинов подорожали на 15% и больше за неделю. Это гипотеза по ценам, а не новость от Valve.' +
+      (c.ups && c.ups.length ? '<div class="mut" style="margin-top:4px">' + c.ups.map(function (u) { return esc(u.name) + ' ' + sgn(u.r7); }).join(' · ') + '</div>' : '') + '</div>';
+  }
+  for (var i = 0; i < c.crates.length; i++) {
+    var x = c.crates[i];
+    if (x.priceKop == null) continue;
+    h += '<div style="margin-top:8px;font-size:14px"><b>' + esc(x.name) + '</b> · ' + uahShort(x.priceKop) + (x.trend7 != null ? ' · ' + sgn(x.trend7) + ' за неделю' : '') + '</div>';
+    h += '<div class="mut" style="font-size:13px">' + (x.vol != null ? 'Продаж в Steam за сутки: ' + x.vol + (x.liq ? ' (ликвидность ' + LIQ_RU[x.liq] + ')' : '') : 'Объём продаж: нет данных') +
+      (x.needKop != null ? '<br>Чтобы после комиссии Steam вернуть потраченное, цена в Steam должна быть около ' + uahShort(x.needKop) + ' (' + sgn(x.needPct) + ')' : '') + '</div>';
+  }
+  if (c.fuelKop != null) h += '<div class="mut" style="font-size:13px;margin-top:6px">Пять красных скинов для контракта: от ' + uahShort(c.fuelKop) + ' (самый дешёвый: ' + esc(c.fuelName) + ')</div>';
+  if (c.status) h += '<div class="mut" style="font-size:12px;margin-top:6px">Статус: ' + esc(c.status.src) + '</div>';
+  return h + '</div>';
+}
+function collections() {
+  loading(5);
+  api('collections').then(function (r) {
+    var h = recSwitch('coll');
+    h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Справка, а не совет покупать. Цены: средние продажи Steam. Статусы «в дропе» и «убрана» собраны вручную по обзорам и трекерам: Valve о них не пишет.' + (r.at ? ' Обновлено ' + ago(r.at) + '.' : '') + '</div>';
+    if (!r.list.length) {
+      h += '<div class="empty"><div class="e">⏳</div>Данные по коллекциям появятся после ближайшей проверки рынка.</div>';
+    } else {
+      var sig = [], rem = [], act = [], rest = [];
+      r.list.forEach(function (c) { if (c.rotation) sig.push(c); else if (c.status && c.status.s === 'removed') rem.push(c); else if (c.status) act.push(c); else rest.push(c); });
+      rest.sort(function (a, b) { return (b.m7 == null ? -999 : b.m7) - (a.m7 == null ? -999 : a.m7); });
+      var sect = function (t, list, note) { return list.length ? '<div class="sec">' + t + '</div>' + (note ? '<div class="mut" style="font-size:13px;margin:0 2px 8px">' + note + '</div>' : '') + list.map(collCard).join('') : ''; };
+      h += sect('Возможная ротация', sig, 'Сразу у нескольких скинов подорожала цена. Это может быть ротация, а может быть и вброс.');
+      h += sect('Убраны из дропа', rem, 'Новые копии больше не появляются. Рост цены не гарантирован: после первого скачка цена нередко стоит месяцами.');
+      h += sect('Сейчас в дропе', act, null);
+      if (rest.length) h += '<details class="more"><summary><span class="chev">›</span> Остальные коллекции (' + rest.length + '), статус не известен</summary>' + rest.slice(0, 30).map(collCard).join('') + '</details>';
+    }
+    view.innerHTML = h;
+    bindRecSwitch();
+    deEmoji(view);
+  }).catch(function (e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</div>' + esc(e.message) + '</div>'; });
+}
+
 function rally() {
   loading(4);
   state.rallyTab = state.rallyTab || 'opps';

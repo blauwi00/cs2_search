@@ -49,7 +49,7 @@ async function toWorker(path, body) {
   return JSON.parse(text);
 }
 
-const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false } = await toWorker('/ingest/items');
+const { items, needCatalog, fx = {}, imgCursor = 0, rally = null, steamPauseUntil = 0, newsNeedRu = [], missingImages = [], needSteamAvg = [], steamAvgAt = 0, inventorySync = [], trackNames = [], card = null, sitePriceNames = [], needCaseEv = false, collVol = [] } = await toWorker('/ingest/items');
 
 // Бережём Steam: не больше STEAM_MAX_REQ запросов за запуск (раньше было до ~140 — Steam отвечал 429 почти каждый запуск).
 // После 429 — сразу стоп и пауза на несколько запусков (её держит Worker: steamPauseUntil, растёт 30 мин → 3 ч).
@@ -192,6 +192,34 @@ try {
   // Все кейсы — для «индекса кейсов» и вечернего поста в канале.
   const cases = [...steamAvg.entries()].filter(([n]) => / Case$/.test(n)).map(([name, v]) => ({ name, ...v }));
   if (cases.length && !HOME) console.log('Кейсы для канала:', await toWorker('/ingest', { kind: 'cases_stats', fetchedAt: now(), items: cases.slice(0, 200) }));
+  // «Коллекции»: динамика цен по каждой коллекции из тех же двух файлов (Steam-прайс + состав ByMykel), без запросов к Steam.
+  if (!HOME && steamAvg.size) {
+    try {
+      const r = await fetch('https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/collections.json', { headers: { 'User-Agent': UA } });
+      if (!r.ok) throw new Error(`collections.json: HTTP ${r.status}`);
+      const { buildCollections } = await import('./collections.mjs');
+      const list = buildCollections(await r.json(), steamAvg);
+      console.log('Коллекции:', list.length, await toWorker('/ingest', { kind: 'collections_stats', fetchedAt: now(), items: list }));
+    } catch (e) {
+      console.error('Коллекции:', e.message);
+    }
+  }
+  // Живые цена и объём Steam по нескольким кейсам (Worker сам выбирает самые давние, не больше 4 за запуск).
+  if (!HOME && collVol.length) {
+    const got = [];
+    for (const name of collVol.slice(0, 4)) {
+      if (!steamCan(12)) break;
+      try {
+        const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
+        const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
+        steamReq++;
+        if (res.status === 429) { steamLimited = true; console.log('Steam 429 при ценах кейсов — стоп'); break; }
+        if (res.ok) { const b = await readJson(res); if (b?.success) got.push({ name, lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }); }
+      } catch { /* пропускаем кейс */ }
+      await sleep(STEAM_GAP_MS);
+    }
+    if (got.length) console.log('Кейсы коллекций:', await toWorker('/ingest', { kind: 'collections_vol', fetchedAt: now(), items: got }));
+  }
   // «Окупается ли кейс» — раз в сутки (по запросу Worker): состав кейсов из открытого набора ByMykel/CSGO-API.
   if (needCaseEv && !HOME) {
     try {

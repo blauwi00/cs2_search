@@ -2,8 +2,7 @@
 //   price5   «Один скин — пять цен» (AK-47 | Slate)      stop     «СТОП» (Five-SeveN | Triumvirate)
 //   chat     «Купил кейс на пике» (мем-переписка)         wallet   «Steam дороже? А деньги твои?» (Desert Eagle | Printstream)
 //   cases    «Кейсы дешевеют за 3 месяца»
-// node gen.mjs <reel> <папка проекта>  (assets/: logo.png, sfx/, gsap.min.js, картинки предметов;
-// для chatv ещё case3d.js + three.module.js и RoundedBoxGeometry.js из npm-пакета three@0.160.0: build/ и examples/jsm/geometries/)
+// node gen.mjs <reel> <папка проекта>  (assets/: logo.png, sfx/, gsap.min.js, картинки предметов)
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -42,7 +41,7 @@ const BASE_CSS = `
   .cap { position: absolute; left: 60px; right: 60px; text-align: center; font: 800 64px/1.15 Montserrat, sans-serif; opacity: 0; z-index: 5; }
   .sm { position: absolute; left: 60px; right: 60px; text-align: center; font: 500 30px/1.3 Inter, sans-serif; color: #8d97aa; opacity: 0; z-index: 5; }
   .pic { position: absolute; object-fit: contain; filter: drop-shadow(0 24px 34px rgba(0,0,0,.7)); opacity: 0; }` + END_CSS;
-const wrap = ({ dur, bg, css = '', body, js, sfx, title, voice, module }) => `<!doctype html>
+const wrap = ({ dur, bg, css = '', body, js, sfx, title, voice }) => `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -67,7 +66,6 @@ ${voice ? `  <audio id="voice" class="clip" src="assets/voice.mp3" data-start="0
 ${js}
   window.__timelines["main"] = tl;
 </script>
-${module || ''}
 </body>
 </html>
 `;
@@ -192,21 +190,34 @@ REELS.chatv = () => {
     sfx.push(['pop', tt, 0.25]);
   });
   // Кейс: влетает и крутится, потом приоткрывается со свечением, а на «−21%» резко захлопывается.
+  js += `  tl.fromTo("#cw", { opacity: 0, scale: 0.4, y: -500, rotationY: 0 }, { opacity: 1, scale: 1, y: 0, rotationY: 720, duration: 1.5, ease: "power3.out" }, 0.8);\n`;
+  js += `  tl.to("#cw", { rotationY: 744, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 1 }, 2.4);\n`;
+  js += `  tl.to("#case", { rotationX: -16, y: -26, duration: 0.5, ease: "back.out(2)" }, 4.95);\n  tl.fromTo("#seam", { opacity: 0, scaleX: 0.2 }, { opacity: 1, scaleX: 1, duration: 0.4, ease: "power2.out" }, 5.0);\n  tl.fromTo("#rays", { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.7, ease: "power2.out" }, 5.0);\n  tl.to("#rays", { rotation: 120, duration: 4.0, ease: "none" }, 5.0);\n`;
+  js += `  tl.fromTo("#glow", { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power2.out" }, 5.0);\n`;
+  js += `  tl.to("#glow", { scale: 1.3, opacity: 0.75, duration: 0.45, ease: "sine.inOut", yoyo: true, repeat: 7 }, 5.6);\n  tl.to("#seam", { opacity: 0.7, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 9 }, 5.6);\n`;
+  for (let k = 0; k < 14; k++) js += `  tl.fromTo("#sp${k}", { opacity: 0, y: 0, scale: 1 }, { opacity: 1, y: -${260 + (k * 53) % 240}, scale: 0.3, duration: 1.3, ease: "power1.out", repeat: 2, repeatDelay: 0.1 }, ${r2(5.2 + (k % 7) * 0.18)});\n`;
+  js += `  tl.set("#cw .sp", { opacity: 0 }, 9.0);\n`;
+  js += `  tl.to("#case", { rotationX: 0, y: 0, scaleY: 0.84, scaleX: 1.06, duration: 0.07, ease: "power4.in" }, 9.02);\n  tl.to("#case", { scaleY: 1, scaleX: 1, duration: 0.35, ease: "elastic.out(1.2,0.4)" }, 9.1);\n  tl.set("#glow, #seam, #rays", { opacity: 0 }, 9.06);\n  tl.fromTo("#stage", { x: 0 }, { x: 18, duration: 0.05, yoyo: true, repeat: 5, ease: "power1.inOut", immediateRender: false }, 9.06);\n`;
   js += `  tl.fromTo("#m4 b", { scale: 1 }, { scale: 1.5, duration: 0.2, ease: "back.out(3)", yoyo: true, repeat: 1 }, 9.2);\n  tl.fromTo("#flash", { opacity: 0.5 }, { opacity: 0, duration: 0.3, immediateRender: false }, 9.1);\n`;
   js += `  tl.fromTo("#bot", { opacity: 0, y: 80 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, 10.0);\n  tl.to("#msgs, #cs", { opacity: 0.18, duration: 0.3 }, 10.0);\n  tl.to("#bot, #msgs, #cs, #h1", { opacity: 0, duration: 0.25 }, 13.1);\n`;
   js += endJs(13.3);
   sfx.push(['whoosh', 0.8, 0.35], ['whoosh', 2.4, 0.2], ['chime', 5.0, 0.5], ['glitch', 5.1, 0.15], ['slam', 9.03, 0.8], ['click', 9.08, 0.5], ['chime', 10.7, 0.35], ...endSfx(14.85));
-  const bub = msgs.map(([, s, who, tx], i) => `<div class="m ${s}" id="m${i}" style="top:${i * 150}px"><div class="who">${who}</div><b>${tx}</b></div>`).join('');
+  const bub = msgs.map(([, s, who, tx], i) => `<div class="m ${s}" id="m${i}" style="top:${i * 190}px"><div class="who">${who}</div><b>${tx}</b></div>`).join('');
   return wrap({ dur: 16.8, title: 'Купил кейс на пике (озвучка)', bg: 'radial-gradient(900px 800px at 50% 20%, rgba(80,120,255,.14), transparent 70%), #0a0d14',
     css: `#flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 30; } #msgs { position: absolute; left: 60px; right: 60px; top: 380px; height: 1000px; } .m { position: absolute; max-width: 700px; padding: 26px 34px; border-radius: 40px; font: 600 44px/1.25 Inter, sans-serif; opacity: 0; } .m b { display: inline-block; font-weight: 700; } .m .who { font: 600 26px/1 Inter, sans-serif; color: #8fa3cc; margin-bottom: 8px; } .m.l { left: 0; background: #1b2433; border-bottom-left-radius: 8px; } .m.r { right: 0; background: #2b5278; border-bottom-right-radius: 8px; text-align: right; }
-  #cw { position: absolute; left: 0; top: 420px; width: 1080px; height: 1500px; z-index: 3; } #c3 { width: 1080px; height: 1500px; }
+  #cw { position: absolute; left: 160px; top: 1180px; width: 760px; height: 760px; perspective: 1100px; opacity: 0; z-index: 3; }
+  #case { position: absolute; inset: 0; width: 760px; height: 760px; object-fit: contain; filter: drop-shadow(0 28px 34px rgba(0,0,0,.65)); transform-origin: 50% 90%; }
+  #rays { position: absolute; left: -140px; top: -140px; width: 1040px; height: 1040px; border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(255,214,107,.34) 0 7deg, rgba(255,214,107,0) 7deg 26deg); -webkit-mask-image: radial-gradient(closest-side, #000 15%, transparent 72%); mask-image: radial-gradient(closest-side, #000 15%, transparent 72%); opacity: 0; }
+  #seam { position: absolute; left: 150px; top: 372px; width: 460px; height: 16px; border-radius: 8px; background: linear-gradient(90deg, transparent, #fff3c9 20%, #fff3c9 80%, transparent); box-shadow: 0 0 40px 14px rgba(255,200,80,.9); opacity: 0; filter: blur(2px); }
+  #cw .sp { position: absolute; top: 330px; width: 12px; height: 12px; border-radius: 50%; background: #ffe08a; box-shadow: 0 0 18px #ffb52e; opacity: 0; }
+  #glow { position: absolute; left: 70px; top: 230px; width: 620px; height: 360px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,214,107,.95), rgba(255,160,40,.45) 55%, transparent 75%); filter: blur(26px); opacity: 0; }
   #bot { position: absolute; left: 50px; right: 50px; top: 600px; z-index: 12; opacity: 0; background: #182533; border-radius: 44px 44px 44px 12px; padding: 40px 46px; font: 500 40px/1.3 Inter, sans-serif; box-shadow: 0 30px 80px rgba(0,0,0,.7); } #bot .who { display: flex; align-items: center; gap: 18px; font-size: 34px; color: #8fa3cc; margin-bottom: 14px; } #bot .who img { width: 64px; height: 64px; border-radius: 16px; } #bot h3 { margin: 0 0 12px; font-size: 54px; color: #ffd66b; } #bot i { display: block; margin-top: 14px; font-size: 28px; color: #8d97aa; font-style: normal; }`,
     body: `  <div id="flash"></div>
   <div class="hook" id="h1" style="top:130px;font-size:100px;opacity:0">Купил кейс на пике</div>
   <div id="msgs">${bub}</div>
-  <div id="cw"><canvas id="c3" width="1080" height="1500"></canvas></div>
-    <div id="bot"><div class="who"><img src="assets/logo.png" alt="">Ценолов</div><h3>Dreams &amp; Nightmares Case</h3>Сейчас $1,84. Средняя цена продаж за 90 дней — $2,34. Ниже на <b>21%</b>.<i>Дешевле не значит выгодно: рост цены не гарантирован.</i></div>
-  ${endHtml('Проверь цену заранее')}`, js, sfx, voice: true, module: `<script type="module">import './assets/case3d.js'; window.__case3d.setup(window.__timelines['main'], { fly: 0.8, openAt: 4.95, slamAt: 9.02, end: 15, lookY: 1.45 });</script>` });
+  <div id="cw"><div id="rays"></div><div id="glow"></div><img id="case" src="assets/Dreams___Nightmares_Case.png" alt=""><div id="seam"></div>${Array.from({ length: 14 }, (_, k) => `<i class="sp" id="sp${k}" style="left:${200 + (k * 37) % 360}px"></i>`).join('')}</div>
+  <div id="bot"><div class="who"><img src="assets/logo.png" alt="">Ценолов</div><h3>Dreams &amp; Nightmares Case</h3>Сейчас $1,84. Средняя цена продаж за 90 дней — $2,34. Ниже на <b>21%</b>.<i>Дешевле не значит выгодно: рост цены не гарантирован.</i></div>
+  ${endHtml('Проверь цену заранее')}`, js, sfx, voice: true });
 };
 
 // ---------- 5. Steam дороже? А деньги твои? ----------

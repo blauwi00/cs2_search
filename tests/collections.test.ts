@@ -46,8 +46,8 @@ test('ликвидность и признак ротации: пороги', ()
 });
 
 test('выход в плюс: цена Steam, при которой после комиссии 15% возвращаются потраченные деньги; статусы только из списка', () => {
-  const stats: CollStat[] = [{ id: 'collection-set-community-34', name: 'Gallery', rel: null, n: 17, k: 10, m7: 100, m30: 100, up: 0, ups: [], cov: 1, cheapCov: null, crates: [{ name: 'Gallery Case', d1: null, d7: 80, d30: 80, d90: 80 }], crateNames: ['Gallery Case'] },
-    { id: 'collection-set-unknown', name: 'U', rel: null, n: 5, k: 5, m7: 100, m30: 100, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: [] }];
+  const stats: CollStat[] = [{ id: 'collection-set-community-34', name: 'Gallery', rel: null, n: 17, k: 10, m7: 100, m30: 100, up: 0, ups: [], cov: 1, cheapCov: null, crates: [{ name: 'Gallery Case', d1: null, d7: 80, d30: 80, d90: 80 }], crateNames: ['Gallery Case'], skins: [] },
+    { id: 'collection-set-unknown', name: 'U', rel: null, n: 5, k: 5, m7: 100, m30: 100, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: [], skins: [] }];
   const vols = parseCaseVols([{ name: 'Gallery Case', lowest_price: '33₴', median_price: '32,79₴', volume: '4,127' }], NOW);
   assert.equal(vols['Gallery Case'].vol, 4127);
   const v = collViews(stats, vols, (c) => c * 40);
@@ -60,7 +60,7 @@ test('выход в плюс: цена Steam, при которой после �
 });
 
 test('какие кейсы обновить: только у коллекций со статусом, без сувенирных наборов, давние первыми, не больше 4', () => {
-  const mk = (id: string, names: string[]): CollStat => ({ id, name: id, rel: null, n: 1, k: 1, m7: null, m30: null, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: names });
+  const mk = (id: string, names: string[]): CollStat => ({ id, name: id, rel: null, n: 1, k: 1, m7: null, m30: null, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: names, skins: [] });
   const stats = [mk('collection-set-community-34', ['Gallery Case']), mk('collection-set-dust-2', ['Berlin 2019 Dust II Souvenir Package']), mk('collection-set-unknown', ['Hidden Case'])];
   assert.deepEqual(collVolNames(stats, {}, NOW), ['Gallery Case']);
   assert.deepEqual(collVolNames(stats, { 'Gallery Case': { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW), [], 'свежее 6 часов — не трогаем');
@@ -69,7 +69,7 @@ test('какие кейсы обновить: только у коллекций
 test('приём и API: сборщик шлёт статистику, приложение её видит; мусор отбрасывается; повтор не пишет заново', async () => {
   const d = migratedDb(); const env = testEnv(d, { INGEST_SECRET: SECRET, COLLECTOR: 'github' });
   const post = (body: unknown) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env, NOW);
-  const item = { id: 'collection-set-community-34', name: 'The Gallery Collection', rel: '2024-10-02', n: 17, k: 10, m7: 110, m30: 100, up: 3, ups: [{ name: 'A | One', p7: 120, r7: 130 }], cov: 1, cheapCov: { name: 'A | Red', d7: 3000 }, crates: [{ name: 'Gallery Case', d1: null, d7: 80, d30: 70, d90: null }], crateNames: ['Gallery Case'] };
+  const item = { id: 'collection-set-community-34', name: 'The Gallery Collection', rel: '2024-10-02', n: 17, k: 10, m7: 110, m30: 100, up: 3, ups: [{ name: 'A | One', p7: 120, r7: 130 }], cov: 1, cheapCov: { name: 'A | Red', d7: 3000 }, crates: [{ name: 'Gallery Case', d1: null, d7: 80, d30: 70, d90: null }], crateNames: ['Gallery Case'], skins: [{ n: 'A | Red (Field-Tested)', rar: 5, d7: 3000, d30: 2500, d90: 2000 }, { n: 'A | One (Minimal Wear)', rar: 2, d7: 100, d30: 100, d90: null }] };
   const r = await post({ kind: 'collections_stats', fetchedAt: NOW, items: [item, { id: 5 }, null, { id: 'x'.repeat(200), name: 'bad' }] });
   assert.equal((await r.json() as any).stored, 1);
   await post({ kind: 'collections_vol', fetchedAt: NOW, items: [{ name: 'Gallery Case', lowest_price: '33₴', median_price: '32,79₴', volume: '4,127' }] });
@@ -79,4 +79,9 @@ test('приём и API: сборщик шлёт статистику, прил�
   const j = await res.json() as any;
   assert.equal(j.ok, true); assert.equal(j.list.length, 1);
   assert.equal(j.list[0].status.s, 'removed'); assert.equal(j.list[0].crates[0].vol, 4127);
+  await post({ kind: 'steam_avg', fetchedAt: NOW, items: [] });
+  const det = await handleAppApi(new Request('https://w/app/api/collections/collection-set-community-34', { headers: { 'X-Init-Data': init } }), env, NOW);
+  const dj = await det.json() as any;
+  assert.equal(dj.ok, true); assert.deepEqual(dj.crateNames, ['Gallery Case']); assert.equal(dj.skins.length, 2); assert.equal(dj.skins[0].rar, 5); assert.equal(dj.skins[0].trend7, 20);
+  assert.equal((await handleAppApi(new Request('https://w/app/api/collections/nope-nope', { headers: { 'X-Init-Data': init } }), env, NOW)).status, 404);
 });

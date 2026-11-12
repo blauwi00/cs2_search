@@ -14,6 +14,7 @@ export interface CollStat {
   cov: number; cheapCov: { name: string; d7: number } | null;
   crates: { name: string; d1: number | null; d7: number | null; d30: number | null; d90: number | null }[];
   crateNames: string[];
+  skins: { n: string; rar: number; d7: number | null; d30: number | null; d90: number | null }[];
 }
 export interface CaseVol { low: number | null; med: number | null; vol: number | null; at: number }
 
@@ -67,6 +68,7 @@ export function parseCollStats(items: unknown): CollStat[] {
       cov: int(r.cov, 100) ?? 0,
       cheapCov: r.cheapCov && str(r.cheapCov.name, 120) && int(r.cheapCov.d7) ? { name: r.cheapCov.name, d7: int(r.cheapCov.d7)! } : null,
       crates: (Array.isArray(r.crates) ? r.crates : []).slice(0, 14).flatMap((x: any) => { const nm = str(x?.name, 120); return nm ? [{ name: nm, d1: int(x.d1), d7: int(x.d7), d30: int(x.d30), d90: int(x.d90) }] : []; }),
+      skins: (Array.isArray(r.skins) ? r.skins : []).slice(0, 40).flatMap((x: any) => { const nm = str(x?.n, 160); return nm ? [{ n: nm, rar: int(x.rar, 10) ?? 0, d7: int(x.d7), d30: int(x.d30), d90: int(x.d90) }] : []; }),
       crateNames: (Array.isArray(r.crateNames) ? r.crateNames : []).slice(0, 14).flatMap((x: unknown) => { const nm = str(x, 120); return nm ? [nm] : []; }),
     });
   }
@@ -128,4 +130,13 @@ export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[
   try { stats = parseCollStats(JSON.parse(s ?? '[]')); } catch { /* пусто */ }
   try { vols = JSON.parse(v ?? '{}'); } catch { /* пусто */ }
   return { stats, vols, at: Number(at) || 0 };
+}
+
+export interface SkinView { name: string; rar: number; priceKop: number | null; trend7: number | null; trend90: number | null }
+/** Скины одной коллекции для окна «Состав»: цена за неделю (средняя продажа Steam) и изменение. Только то, что есть в прайсе. */
+export function skinViews(c: CollStat, kop: (usdCents: number) => number | null): SkinView[] {
+  return c.skins.map((x) => {
+    const p = x.d7 ?? x.d30;
+    return { name: x.n, rar: x.rar, priceKop: p ? kop(p) : null, trend7: x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null, trend90: x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null };
+  });
 }

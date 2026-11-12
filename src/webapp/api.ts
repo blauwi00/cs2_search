@@ -37,7 +37,7 @@ import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { sha256Hex, requestedSiteNames } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
-import { loadCollections, collViews } from '../core/collections.ts';
+import { loadCollections, collViews, skinViews } from '../core/collections.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
 import { matchName } from '../core/screenread.ts';
@@ -1350,6 +1350,14 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const [c, fx] = await Promise.all([loadCollections(d), db.loadLatestFx(d)]);
       const usd = fx.get('USD') ?? null;
       return json({ ok: true, at: c.at, list: collViews(c.stats, c.vols, (x) => (usd ? toKop(x, 'USD', usd) : null)).filter((v) => v.k > 0) });
+    }
+    const collM = /^collections\/([a-z0-9-]{3,80})$/.exec(path);
+    if (collM && method === 'GET') {
+      const [c, fx] = await Promise.all([loadCollections(d), db.loadLatestFx(d)]);
+      const usd = fx.get('USD') ?? null;
+      const hit = c.stats.find((x) => x.id === collM[1]);
+      if (!hit) return bad('Коллекция не найдена', 404);
+      return json({ ok: true, id: hit.id, name: hit.name, crateNames: hit.crateNames.filter((n) => !/Souvenir/i.test(n)), skins: skinViews(hit, (x) => (usd ? toKop(x, 'USD', usd) : null)) });
     }
     // «Я отправил обмен»: человек ничего не пишет, одно нажатие. Бот сразу сообщает владельцу, для чего этот трейд.
     if (path === 'tradesent' && method === 'POST') {

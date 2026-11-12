@@ -2395,6 +2395,7 @@ function collCard(c) {
     h += '<div class="card" style="margin:10px 0 0;font-size:13px"><b>Возможная ротация:</b> ' + c.up + ' из ' + c.k + ' скинов выросли на 15%+ за неделю. Гипотеза по ценам, а не новость от Valve.' +
       (c.ups && c.ups.length ? '<div class="mut" style="margin-top:4px">' + c.ups.map(function (u) { return esc(u.name) + ' ' + sgn(u.r7); }).join(' · ') + '</div>' : '') + '</div>';
   }
+  h += '<div style="display:flex;gap:8px;margin-top:10px">' + (main ? '<button class="btn sec2" style="margin:0;flex:1" data-open="' + esc(main.name) + '">Кейс: график</button>' : '') + '<button class="btn sec2" style="margin:0;flex:1" data-coll="' + esc(c.id) + '" data-cn="' + esc(c.name) + '">Состав</button></div>';
   var more = '';
   more += '<div>Цены есть у ' + c.k + ' из ' + c.n + (c.rel ? ' · вышла ' + ymRu(c.rel) : '') + '</div>';
   if (main && c.m7 != null) more += '<div>Средний скин коллекции: ' + sgn(c.m7) + ' за неделю, ' + sgn(c.m30) + ' месяц к трём</div>';
@@ -2403,6 +2404,28 @@ function collCard(c) {
   if (c.status) more += '<div>Статус «' + COLL_STATUS_RU[st] + '»: ' + esc(c.status.src) + '</div>';
   h += '<details class="more" style="margin:10px 0 0"><summary><span class="chev">›</span> Подробнее</summary><div class="mut" style="font-size:13px;line-height:1.5;padding:4px 0 2px">' + more + '</div></details>';
   return h + '</div>';
+}
+var RAR_RU = { 5: 'Красные (Covert)', 4: 'Розовые (Classified)', 3: 'Фиолетовые (Restricted)', 2: 'Синие (Mil-Spec)', 1: 'Светло-синие', 0: 'Белые' };
+// Состав коллекции: кейс и все скины с ценой Steam; нажатие — окно предмета (график и цены на всех площадках).
+function collSheet(id, name) {
+  sheet('<div class="skel"></div><div class="skel" style="height:180px"></div>');
+  api('collections/' + encodeURIComponent(id)).then(function (r) {
+    var h = '<h2>' + esc(String(r.name).replace(/^The /, '').replace(/ Collection$/, '')) + '</h2><div class="sub">Нажми на предмет: график цены и цены на всех площадках. Цена скина: средняя продажа в Steam за неделю.</div>';
+    if (r.crateNames.length) {
+      h += '<div class="sec">Кейс</div><div class="card" style="padding:2px 14px">' + r.crateNames.map(function (n) { return '<div class="kv" style="cursor:pointer" data-nm="' + esc(n) + '"><span>' + esc(n) + '</span><span class="v">›</span></div>'; }).join('') + '</div>';
+    }
+    var last = -1;
+    r.skins.forEach(function (x, i) {
+      if (x.rar !== last) { if (last !== -1) h += '</div>'; h += '<div class="sec">' + RAR_RU[x.rar] + '</div><div class="card" style="padding:2px 14px">'; last = x.rar; }
+      var sp = splitName(x.name);
+      h += '<div class="kv" style="cursor:pointer;align-items:center" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + (sp.wear ? '<div class="mut" style="font-size:11px">' + esc(sp.wear) + '</div>' : '') + '</span><span class="v" style="white-space:nowrap">' + (x.priceKop != null ? uahShort(x.priceKop) : '—') + (x.trend7 != null ? ' <span class="' + dcls(x.trend7) + '" style="font-size:12px">' + sgn(x.trend7) + '</span>' : '') + '</span></div>';
+    });
+    if (last !== -1) h += '</div>';
+    if (!r.skins.length) h += '<div class="card mut">Цен на скины этой коллекции пока нет.</div>';
+    sheet(h);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nm]'), function (el) { el.onclick = function () { haptic(); openByName(el.getAttribute('data-nm')); }; });
+    deEmoji($('#sc'));
+  }).catch(function (e) { closeSheet(); toast(e.message); });
 }
 function collections() {
   loading(5);
@@ -2428,6 +2451,8 @@ function collections() {
     h += '<div class="note">Справка, а не совет покупать. Цены: средние продажи Steam' + (r.at ? ', обновлено ' + ago(r.at) : '') + '. Статусы «В дропе» и «Убрана» собраны вручную по обзорам: Valve о них не пишет.</div>';
     view.innerHTML = h;
     bindRecSwitch();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-open]'), function (b) { b.onclick = function () { haptic(); openByName(b.getAttribute('data-open')); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-coll]'), function (b) { b.onclick = function () { haptic(); collSheet(b.getAttribute('data-coll'), b.getAttribute('data-cn')); }; });
     Array.prototype.forEach.call(document.querySelectorAll('#cf button'), function (b) { b.onclick = function () { haptic(); state.collF = b.getAttribute('data-f'); collections(); }; });
     deEmoji(view);
   }).catch(function (e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</div>' + esc(e.message) + '</div>'; });

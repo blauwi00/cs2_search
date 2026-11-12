@@ -267,6 +267,35 @@ REELS.cases = () => {
   ${endHtml('Следи за ценами в боте')}`, js, sfx });
 };
 
+
+// ---------- 7. Пополни Steam дешевле (схема трейдера, реальный пример из бота 12.11) ----------
+REELS.topup = () => {
+  // Operation Breakout Weapon Case: купить Skinport 289,77 ₴ → продать Steam 529,36 ₴ → после комиссии Steam 15% на баланс 460,31 ₴ (+170,54 ₴, скидка 37%).
+  const steps = [['1', 'Покупаешь на Skinport', '289,77 ₴', '#35d07f'], ['2', 'Ждёшь до 7 дней', 'защита обмена', '#ffd66b'], ['3', 'Продаёшь в Steam', '529,36 ₴', '#e7b24c'], ['4', 'Steam берёт 15%', '→ 460,31 ₴ на баланс', '#35d07f']];
+  let js = `  tl.fromTo("#h1", { opacity: 0, scale: 2.6, rotation: -6 }, { opacity: 1, scale: 1, rotation: -2, duration: 0.22, ease: "power4.in" }, 0.1);\n  tl.fromTo("#h2", { opacity: 0, scale: 2.2 }, { opacity: 1, scale: 1, duration: 0.2, ease: "power4.in" }, 0.7);\n  tl.to("#h1, #h2", { opacity: 0, y: -60, duration: 0.25 }, 2.0);\n`;
+  js += `  tl.fromTo("#pic", { opacity: 0, y: -400, scale: 0.7, rotation: -10 }, { opacity: 1, y: 0, scale: 1, rotation: 0, duration: 0.5, ease: "back.out(1.6)" }, 2.1);\n  tl.to("#pic", { y: -14, rotation: 2, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 5 }, 2.7);\n  tl.fromTo("#nm", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.3 }, 2.4);\n`;
+  const sfx = [['slam', 0.12, 0.8], ['slam', 0.72, 0.6], ['whoosh', 2.0, 0.3], ['pop', 2.15, 0.5]];
+  steps.forEach((_, i) => { const t = 3.0 + i * 1.6; js += `  tl.fromTo("#s${i}", { opacity: 0, x: -200 }, { opacity: 1, x: 0, duration: 0.35, ease: "power3.out" }, ${r2(t)});\n`; sfx.push(['whoosh', t - 0.1, 0.2], [i === 3 ? 'coin' : 'pop', t + 0.15, 0.5]); });
+  js += `  tl.fromTo("#big", { opacity: 0, scale: 2.6, rotation: -8 }, { opacity: 1, scale: 1, rotation: -3, duration: 0.22, ease: "power4.in" }, 9.6);\n`;
+  js += `  tl.to("#pic, #nm, #steps, #big", { opacity: 0, duration: 0.25 }, 11.7);\n`;
+  js += `  tl.fromTo("#c1", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.3, ease: "back.out(2)" }, 12.0);\n  tl.fromTo("#c2", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.3 }, 13.4);\n  tl.to("#c1, #c2", { opacity: 0, duration: 0.2 }, 15.2);\n`;
+  js += endJs(15.4);
+  sfx.push(['slam', 9.65, 0.8], ['coin', 9.7, 0.5], ['whoosh', 11.95, 0.25], ['pop', 12.1, 0.5], ['wrong', 13.45, 0.3], ...endSfx(15.4));
+  const rows = steps.map(([n, a, b, c], i) => `<div class="stp" id="s${i}" style="top:${i * 190}px"><i style="background:${c}">${n}</i><div class="t1">${a}</div><div class="t2" style="color:${c}">${b}</div></div>`).join('');
+  return wrap({ dur: 17.2, title: 'Пополни Steam дешевле', bg: 'radial-gradient(900px 700px at 50% 25%, rgba(53,208,127,.16), transparent 70%), #0a0d14',
+    css: `#steps { position: absolute; left: 60px; right: 60px; top: 760px; height: 800px; } .stp { position: absolute; left: 0; right: 0; height: 160px; border-radius: 30px; background: #121722; opacity: 0; } .stp i { position: absolute; left: 24px; top: 40px; width: 80px; height: 80px; border-radius: 50%; color: #07110b; font: 900 44px/80px Montserrat, sans-serif; text-align: center; font-style: normal; } .stp .t1 { position: absolute; left: 130px; top: 26px; font: 800 42px/1 Montserrat, sans-serif; } .stp .t2 { position: absolute; left: 130px; top: 88px; font: 800 46px/1 "IBM Plex Mono", monospace; }`,
+    body: `  <div class="hook" id="h1" style="top:560px;font-size:210px;color:#35d07f;text-shadow:0 0 70px rgba(53,208,127,.5)">460 ₴</div>
+  <div class="hook" id="h2" style="top:830px;font-size:96px;color:#fff">в Steam за <span style="color:#ffd66b">290 ₴</span></div>
+  <img class="pic" id="pic" src="assets/Operation_Breakout_Weapon_Case.png" style="left:260px;top:60px;width:560px;height:560px" alt="">
+  <div class="cap" id="nm" style="top:610px;font-size:40px;color:#cfd6e4">Operation Breakout Weapon Case</div>
+  <div id="steps">${rows}</div>
+  <div class="hook" id="big" style="top:1560px;font-size:104px;color:#35d07f;text-shadow:0 0 50px rgba(53,208,127,.5)">скидка 37%</div>
+  <div class="cap" id="c1" style="top:700px">Так трейдеры пополняют Steam дешевле</div>
+  <div class="cap" id="c2" style="top:1040px;color:#ffd66b;font-size:52px">но цена за 7 дней может упасть, а деньги остаются в Steam</div>
+  <div class="sm" id="foot" style="bottom:110px;opacity:1">Пример из бота, 12.11: Skinport 289,77 ₴ → Steam 529,36 ₴. После комиссии Steam 15% — 460,31 ₴. Не совет, цены меняются</div>
+  ${endHtml('Бот ищет такие сделки сам')}`, js, sfx });
+};
+
 if (!REELS[REEL]) throw new Error('reel: ' + Object.keys(REELS).join(', '));
 writeFileSync(join(DIR, 'index.html'), REELS[REEL]());
 console.log('ok', REEL);

@@ -2731,10 +2731,11 @@ function tradeBox(r) {
   var box = $('#tradebox'); if (!box) return;
   var h = '';
   if (r.url) {
-    h += '<div class="sec">Подарить скином</div><div class="note">Выбери, зачем отправляешь обмен, и напиши это в сообщении к обмену.</div>' +
+    h += '<div class="sec">Подарить скином</div><div class="note">Выбери, зачем отправляешь скин. После отправки нажми «Я отправил обмен» — бот сам сообщит автору, для чего он.</div>' +
       '<div class="seg" id="tseg"><button data-k="raffle" class="on">Для розыгрыша подписчикам</button><button data-k="gift">Подарок автору</button></div>' +
       '<div class="note" id="tnote"></div>' +
-      '<div class="btns"><button class="btn" id="t-open">Открыть обмен в Steam</button><button class="btn sec2" id="t-copy">Скопировать ссылку</button></div>';
+      '<div class="btns"><button class="btn" id="t-open">Открыть обмен в Steam</button><button class="btn sec2" id="t-copy">Скопировать ссылку</button></div>' +
+      '<button class="btn sec2" id="t-sent">Я отправил обмен</button>';
   }
   if (state.isAdmin) {
     h += '<div class="sec">Трейд-ссылка (только для владельца)</div><div class="card"><input id="t-in" placeholder="https://steamcommunity.com/tradeoffer/new/?partner=…&token=…" autocomplete="off" value="' + esc(r.url || '') + '" style="width:100%;box-sizing:border-box">' +
@@ -2742,11 +2743,12 @@ function tradeBox(r) {
       '<div class="note" style="margin-top:10px"><a id="t-get" style="color:var(--link);cursor:pointer">Где взять трейд-ссылку</a>: Steam → Инвентарь → Предложения обмена → «Кто может отправлять мне предложения обмена» → внизу «Ссылка для обмена».</div></div>';
   }
   box.innerHTML = h;
-  var NOTE = { raffle: 'В сообщении к обмену напиши: «Розыгрыш». Предметы пойдут в розыгрыш среди подписчиков.', gift: 'В сообщении к обмену напиши: «Подарок автору». Спасибо за поддержку.' };
+  var NOTE = { raffle: 'Скины пойдут в розыгрыш среди подписчиков.', gift: 'Скин получит автор проекта. Спасибо за поддержку.' };
   var kind = 'raffle', note = function () { if ($('#tnote')) $('#tnote').textContent = NOTE[kind]; };
   note();
   Array.prototype.forEach.call(document.querySelectorAll('#tseg button'), function (b) { b.onclick = function () { haptic(); kind = b.getAttribute('data-k'); Array.prototype.forEach.call(document.querySelectorAll('#tseg button'), function (x) { x.className = x === b ? 'on' : ''; }); note(); }; });
   if ($('#t-open')) $('#t-open').onclick = function () { haptic(); openLink(r.url); };
+  if ($('#t-sent')) $('#t-sent').onclick = function () { haptic(); api('tradesent', { method: 'POST', body: { kind: kind } }).then(function () { haptic('ok'); toast('Спасибо! Автор получил уведомление 💛'); }).catch(function (e) { toast(e.message); }); };
   if ($('#t-copy')) $('#t-copy').onclick = function () { haptic(); copyText(r.url); };
   if ($('#t-get')) $('#t-get').onclick = function () { openLink(r.getUrl); };
   var save = function (v) { api('owner/tradeurl', { method: 'POST', body: { url: v } }).then(function (x) { haptic('ok'); toast(x.url ? 'Трейд-ссылка сохранена' : 'Ссылка убрана'); r.url = x.url; tradeBox(r); }).catch(function (e) { toast(e.message); }); };

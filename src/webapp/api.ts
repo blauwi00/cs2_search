@@ -1337,6 +1337,23 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       await setMetaStmt(d, 'trade_url', raw).run();
       return json({ ok: true, url: raw });
     }
+    // «Я отправил обмен»: человек ничего не пишет, одно нажатие. Бот сразу сообщает владельцу, для чего этот трейд.
+    if (path === 'tradesent' && method === 'POST') {
+      const kind = body.kind === 'gift' ? 'gift' : body.kind === 'raffle' ? 'raffle' : null;
+      if (!kind) return bad('bad_kind');
+      if (!(await getMeta(d, 'trade_url'))) return bad('Скины сейчас не принимаются');
+      const last = Number(await getMeta(d, `tradesent:${tid}`)) || 0;
+      if (now - last < 600) return bad('Уже отправлено, подожди несколько минут');
+      await setMetaStmt(d, `tradesent:${tid}`, String(now)).run();
+      const purpose = kind === 'raffle' ? '🎁 для розыгрыша подписчикам' : '💛 подарок автору';
+      await new TelegramClient(env.TELEGRAM_BOT_TOKEN).sendMessage(Number(env.ADMIN_TELEGRAM_ID), [
+        '📦 <b>Скоро придёт обмен в Steam</b>',
+        `Цель: <b>${purpose}</b>`,
+        `От: <a href="tg://user?id=${tid}">${tid}</a>`,
+        '<i>Человек сам нажал «Я отправил обмен». Проверь предложения обмена в Steam.</i>',
+      ].join('\n')).catch(() => undefined);
+      return json({ ok: true });
+    }
     if (path === 'donate' && method === 'POST') {
       const stars = Number(body.stars);
       if (!DONATE_AMOUNTS.includes(stars)) return bad('bad_amount');

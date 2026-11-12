@@ -25,3 +25,12 @@ test('трейд-ссылка: по умолчанию пусто; сохран�
   assert.equal((await call(env, 'owner/tradeurl', ADMIN, { url: '' })).body.url, null);
   assert.equal((await call(env, 'tradeurl', 111)).body.url, null);
 });
+
+test('«Я отправил обмен»: только при включённой ссылке, только raffle/gift, не чаще раза в 10 минут', async () => {
+  const env = testEnv(migratedDb());
+  assert.equal((await call(env, 'tradesent', 111, { kind: 'gift' })).status, 400, 'ссылки нет');
+  await call(env, 'owner/tradeurl', ADMIN, { url: 'https://steamcommunity.com/tradeoffer/new/?partner=123456789&token=AbCd_12-x' });
+  assert.equal((await call(env, 'tradesent', 111, { kind: 'x' })).status, 400);
+  assert.equal((await call(env, 'tradesent', 111, { kind: 'raffle' })).body.ok, true);
+  assert.equal((await call(env, 'tradesent', 111, { kind: 'raffle' })).status, 400, 'повтор сразу');
+});

@@ -138,6 +138,12 @@ export function mergeScan(fresh: ScanEntry[], old: ScanEntry[], now: number, at:
 }
 
 /** minHeldSec — брать объявление для покупки, только если оно держится по цене не меньше стольких секунд (для рассылок и канала). */
+/**
+ * Комиссия вывода денег по умолчанию, если человек не задал свою в настройках: по официальным FAQ площадок (проверено 13.11.2026).
+ * Skinport — 0% (только банк); Market.CSGO — 5%; Waxpeer — 1,5% + комиссия сети (сеть не учитываем). LIS-SKINS, CSFloat: не подтверждено — 0%.
+ * Без этого прибыль в идеях была завышена: вывод считался бесплатным.
+ */
+export const SITE_WITHDRAW_BP: Partial<Record<Market, number>> = { skinport: 0, csgomarket: 500, waxpeer: 150 };
 export interface RecSettings { minProfitKop: number; minRoiBp: number; depositFeeBp: number; withdrawFeeBp: number; minHeldSec?: number }
 export const HELD_SEC = 5 * 60;
 
@@ -179,7 +185,8 @@ interface SellSide { m: Market; listKop: number; netKop: number; basis: string; 
 /** Где купить и где продать один предмет (все проверки здравого смысла). Общая часть для идей и проверки идей через сутки. */
 export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSettings) {
   const kop = (minor: number, cur: Currency) => toKop(minor, cur, fx.get(cur) ?? null);
-  const afterWithdraw = (k: number) => Math.floor((k * (10000 - s.withdrawFeeBp)) / 10000);
+  const wBp = (m: Market) => s.withdrawFeeBp || (SITE_WITHDRAW_BP[m] ?? 0);
+  const afterWithdraw = (k: number, m: Market) => Math.floor((k * (10000 - wBp(m))) / 10000);
   const sales7 = e.s7?.volume ?? null;
   // Реальная цена продаж — без неё сделки не предлагаем.
   const refKop = e.s7?.median && sales7 !== null && sales7 >= MIN_SALES_7D ? kop(e.s7.median, 'EUR') : null;
@@ -193,7 +200,7 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
   if (e.steam?.lowestKop) buys.push({ m: 'steam', listKop: e.steam.lowestKop, payKop: e.steam.lowestKop, qty: null, heldSec: null });
   // ---- Где продать: реалистичная цена − комиссия площадки − комиссия вывода.
   const sells: SellSide[] = [];
-  const wFee = s.withdrawFeeBp ? [`вывод ${pct(s.withdrawFeeBp)}`] : [];
+  const wFee = (m: Market) => (wBp(m) ? [`вывод ${pct(wBp(m))}`] : []);
   if (e.steam?.lowestKop && (e.steam.volume24h ?? 0) >= 5) {
     const list = e.steam.lowestKop - 1;
     const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
@@ -205,8 +212,8 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
     const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;
     // Комиссия Skinport не меньше 1 евроцента: на копеечных продажах это не 8%, а до 30% (продажа за 0,13 PLN — комиссия 0,04).
     const minFee = kop(SKINPORT_MIN_FEE_EUR_CENTS, 'EUR') ?? 0;
-    if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(list - Math.max(Math.ceil((list * feeBp) / 10000), minFee)),
-      basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}${minFee && (list * feeBp) / 10000 < minFee ? ' (минимум 1 евроцент)' : ''}`, ...wFee] });
+    if (list) sells.push({ m: 'skinport', listKop: list, netKop: afterWithdraw(list - Math.max(Math.ceil((list * feeBp) / 10000), minFee), 'skinport'),
+      basis: `средняя цена реальных продаж за 7 дней (${sales7} шт.)`, fees: [`Skinport ${pct(feeBp)}${minFee && (list * feeBp) / 10000 < minFee ? ' (минимум 1 евроцент)' : ''}`, ...wFee('skinport')] });
   }
   // Остальные сайты: истории продаж нет — ориентир «на 1% дешевле самого дешёвого», только если объявлений много.
   const offerKops = buys.filter((b) => b.m !== 'steam').map((b) => b.listKop).sort((a, b) => a - b);
@@ -217,8 +224,8 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
     if (!refKop || b.listKop > refKop * MAX_SELL_OVER_REF) continue; // дороже, чем реально покупают
     const list = Math.floor(b.listKop * 0.99);
     const fee = MARKETS[b.m].sellFeeBp;
-    sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000)),
-      basis: `на 1% дешевле самого дешёвого (${b.qty} объявлений)`, fees: [`${MARKETS[b.m].name} ${pct(fee)}`, ...wFee] });
+    sells.push({ m: b.m, listKop: list, netKop: afterWithdraw(Math.floor((list * (10000 - fee)) / 10000), b.m),
+      basis: `на 1% дешевле самого дешёвого (${b.qty} объявлений)`, fees: [`${MARKETS[b.m].name} ${pct(fee)}`, ...wFee(b.m)] });
   }
   return { sales7, refKop, buys, sells };
 }

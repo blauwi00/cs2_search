@@ -80,7 +80,8 @@ test('рекомендации: между сайтами — купить на 
   assert.equal(d.buyAt, 'waxpeer'); assert.equal(d.sellAt, 'csgomarket');
   assert.equal(d.payKop, 40000);
   assert.equal(d.sellKop, Math.floor(52000 * 0.99));
-  assert.equal(d.getKop, Math.floor(Math.floor(52000 * 0.99) * 0.95));
+  // Комиссия продажи Market.CSGO 5% и вывод 5% (официальный FAQ, проверено 13.11.2026; у человека своя комиссия вывода не задана).
+  assert.equal(d.getKop, Math.floor(Math.floor(Math.floor(52000 * 0.99) * 0.95) * 0.95));
   // Одинокая завышенная цена не считается ориентиром.
   assert.equal(buildRecs([entry({ offers: [{ m: 'waxpeer', cur: 'USD', minor: 1000, qty: 20 }, { m: 'lisskins', cur: 'USD', minor: 1020, qty: 20 }, { m: 'csgomarket', cur: 'USD', minor: 3000, qty: 30 }], s7: null })], FX, S).deals.length, 0);
 });

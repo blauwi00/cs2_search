@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migratedDb } from './helpers.ts';
-import { jobWeekly, isSunday } from '../src/core/weekly.ts';
+import { jobWeekly, isSunday, WEEKLY_PAUSED } from '../src/core/weekly.ts';
 import * as db from '../src/storage/db.ts';
 
 const SUN = Date.parse('2026-11-08T18:30:00Z') / 1000;  // воскресенье, 19:30 Варшава
@@ -18,6 +18,10 @@ test('воскресная сводка: первый раз — оценка, �
   d.db.exec(`INSERT INTO steam_inventory (telegram_id, item_id, qty) VALUES (1, 1, 10), (1, 2, 1), (2, 1, 5)`);
   d.db.exec(`INSERT INTO steam_avg (item_id, d1, d7, d30, d90, updated_at) VALUES (1, 100, 100, 100, 100, ${SUN}), (2, 2000, 2000, 2000, 2000, ${SUN})`);
 
+  if (WEEKLY_PAUSED) {
+    assert.equal((await jobWeekly({ db: D, now: SUN })).queued, 0, 'отчёт приостановлен: суммы по завышенным средним Steam не шлём');
+    return;
+  }
   assert.equal((await jobWeekly({ db: D, now: WED })).queued, 0, 'не воскресенье');
   assert.equal((await jobWeekly({ db: D, now: SUN })).queued, 1);
   let row = d.db.prepare("SELECT text FROM outbox WHERE kind='weekly' AND telegram_id=1").get() as { text: string };

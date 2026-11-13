@@ -48,8 +48,10 @@ export function weeklyKeyboard(origin: string | null): Keyboard {
   ];
 }
 
+/** Недельный отчёт по инвентарю приостановлен 13.11.2026: суммы считались по завышенным средним Steam. Вернуть false после перехода на живые цены. */
+export const WEEKLY_PAUSED = true;
 export async function jobWeekly(ctx: Ctx): Promise<{ queued: number }> {
-  if (!isSunday(ctx.now) || warsawHour(ctx.now) < WEEKLY_HOUR) return { queued: 0 };
+  if (WEEKLY_PAUSED || !isSunday(ctx.now) || warsawHour(ctx.now) < WEEKLY_HOUR) return { queued: 0 };
   const d = ctx.db;
   const today = warsawDate(ctx.now);
   const cands = (await d.prepare(`SELECT DISTINCT v.telegram_id AS tid FROM steam_inventory v

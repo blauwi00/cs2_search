@@ -11,8 +11,10 @@ import { header, hook, esc, money } from './postfmt.ts';
 export type RubricKind = 'caseev' | 'story' | 'tracked';
 
 /** 0 = воскресенье (Варшава). */
+/** Рубрика «Окупается ли кейс» приостановлена 13.11.2026: цены в ней считались по завышенным средним Steam (файл CSGO Trader, до ×2). Вернуть false после перехода на живые цены. */
+export const CASEEV_PAUSED = true;
 export function rubricFor(weekday: number): RubricKind {
-  return weekday === 1 || weekday === 4 ? 'caseev' : weekday === 6 ? 'tracked' : 'story';
+  return weekday === 1 || weekday === 4 ? (CASEEV_PAUSED ? 'story' : 'caseev') : weekday === 6 ? 'tracked' : 'story';
 }
 
 // ---------- «Окупается ли кейс» ----------

@@ -1546,12 +1546,12 @@ function histCardHtml(hs) {
   var h = '<div class="card"><div class="mut" style="font-size:13px;margin-bottom:4px">За неделю</div>';
   if (hs.delta && hs.delta.kop != null) {
     var d = hs.delta, up = d.kop >= 0, sg = up ? '+' : '−', pc = Math.abs(d.pct).toFixed(1).replace('.', ',');
-    h += '<div class="' + (up ? 'pos' : 'neg') + '" style="font-size:26px;font-weight:800">' + sg + uahShort(Math.abs(d.kop)) + ' <span style="font-size:15px;font-weight:600">(' + sg + pc + '%)</span></div>';
+    h += '<div class="' + (up ? 'pos' : 'neg') + '" style="font-size:26px;font-weight:800">' + sg + pc + '%</div>';
     if (d.movers && d.movers.length) {
       h += '<div class="mut" style="font-size:13px;margin:8px 0 2px">Сильнее всего изменились</div>';
-      h += d.movers.map(function (m) { var u = m.kop >= 0; return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0"><span>' + esc(m.name) + '</span><b class="' + (u ? 'pos' : 'neg') + '">' + (u ? '+' : '−') + uahShort(Math.abs(m.kop)) + '</b></div>'; }).join('');
+      h += d.movers.map(function (m) { var u = m.kop >= 0; return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0"><span>' + esc(m.name) + '</span><b class="' + (u ? 'pos' : 'neg') + '">' + (u ? '▲' : '▼') + '</b></div>'; }).join('');
     }
-    h += '<div class="mut" style="font-size:12px;margin-top:8px">Сравнение ' + d.fromDay.slice(8) + '.' + d.fromDay.slice(5, 7) + ' и ' + d.toDay.slice(8) + '.' + d.toDay.slice(5, 7) + '. Оценка по средним продажам в Steam, не прибыль.</div>';
+    h += '<div class="mut" style="font-size:12px;margin-top:8px">Сравнение ' + d.fromDay.slice(8) + '.' + d.fromDay.slice(5, 7) + ' и ' + d.toDay.slice(8) + '.' + d.toDay.slice(5, 7) + '. Только изменение в процентах: суммы по средним ценам не показываем, они завышены. Это не прибыль.</div>';
   } else {
     var left = Math.max(1, 8 - (hs.days || 0));
     h += '<div style="font-weight:700">' + (hs.days ? 'Копим историю: ещё ' + left + ' ' + (left === 1 ? 'день' : left < 5 ? 'дня' : 'дней') + ' до сравнения' : 'Копим историю: первая точка появится сегодня вечером') + '</div>' +

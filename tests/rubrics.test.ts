@@ -6,7 +6,7 @@ import * as db from '../src/storage/db.ts';
 import { runCycle } from '../src/core/runner.ts';
 import { handleIngest } from '../src/ingest.ts';
 import { setMetaStmt, dueSlot, composeChannelPost } from '../src/core/channel.ts';
-import { rubricFor, caseEvPost, oneIn, trackedPost, storyPost, STORIES, pickCaseEV, type CaseEV } from '../src/core/rubrics.ts';
+import { CASEEV_PAUSED, rubricFor, caseEvPost, oneIn, trackedPost, storyPost, STORIES, pickCaseEV, type CaseEV } from '../src/core/rubrics.ts';
 // @ts-expect-error — модуль сборщика на JS
 import { computeCaseEV, wearOdds, variants, TIER_ODDS } from '../.github/scripts/caseev.mjs';
 
@@ -17,7 +17,7 @@ const MON13 = Date.parse('2026-11-02T12:05:00Z') / 1000; // понедельни
 const SECRET = 'ingest_secret_test_123';
 
 test('рубрика по дню недели; слот 13:00 в расписании', () => {
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map(rubricFor), ['story', 'caseev', 'story', 'story', 'caseev', 'story', 'tracked']);
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map(rubricFor), ['story', CASEEV_PAUSED ? 'story' : 'caseev', 'story', 'story', CASEEV_PAUSED ? 'story' : 'caseev', 'story', 'tracked']);
   assert.equal(dueSlot(MON13, {}), 'rubric');
 });
 
@@ -95,6 +95,7 @@ test('канал: в понедельник — «Окупается ли кей
   // Без данных — история
   const p0 = (await composeChannelPost(D, 'rubric', MON13))!;
   assert.ok(STORIES.some((x) => p0.text.includes(x.title)), 'без данных — история');
+  if (CASEEV_PAUSED) return; // рубрика приостановлена (завышенные средние Steam) — дальше проверять нечего
   const bad = { ...evItem, name: '<b>x</b>'.repeat(30) };
   const r = await handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET }, body: JSON.stringify({ kind: 'case_ev', fetchedAt: MON13 - 3000, items: [evItem, { ...evItem, name: 'Revolution Case' }, bad, { name: 'x' }] }) }), env, MON13 - 3000);
   assert.equal(((await r.json()) as { stored: number }).stored, 2, 'мусор отброшен');

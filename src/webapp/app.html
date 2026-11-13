@@ -1843,14 +1843,15 @@ function goneSheet() {
     if (!r.items.length) { closeSheet(); return toast('Всё уже записано'); }
     var site = r.lastSite || lsGet('last_site') || 'other';
     var h = '<h2>📦 Пропало из инвентаря</h2><div class="sub">Бот сравнил инвентарь с прошлым обновлением. Отметь, что продал, — остальное «не продавал».</div>';
-    h += '<div class="grid2"><label class="f" style="margin:0"><span>Где продал</span><select id="gsite">' + r.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === site ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join('') + '</select></label>' +
-      '<label class="f" style="margin:0"><span>Валюта на сайте</span>' + curSelect('gcur', site) + '</label></div>';
+    var siteOpts = function (sel) { return r.platforms.map(function (p) { return '<option value="' + p.v + '"' + (p.v === sel ? ' selected' : '') + '>' + esc(p.t) + '</option>'; }).join(''); };
+    h += '<div class="grid2"><label class="f" style="margin:0"><span>Площадка для всех</span><select id="gsite">' + siteOpts(site) + '</select></label>' +
+      '<label class="f" style="margin:0"><span>Валюта для всех</span>' + curSelect('gcur', site) + '</label></div><div class="mut" style="font-size:12px;margin:-4px 2px 8px">Продавал на разных площадках — поменяй площадку у нужного предмета ниже.</div>';
     h += '<div class="note">«Продал»: сколько пришло на баланс после комиссии. «Выставил»: предмет лежит на торговой площадке и ещё не продан — впиши цену объявления, бот сам вычтет комиссию; в прибыль это попадёт, только когда отметишь продажу в «Продажах». Бот подставил текущую цену на выбранном сайте — поправь на свою.</div>';
     h += r.items.map(function (x) {
       var needBuy = x.lotQty < x.qty;
       return '<div class="card" data-g="' + x.id + '"><div style="display:flex;gap:10px;align-items:center">' + pic(x.img, '🎒') + '<div style="flex:1;font-weight:600">' + esc(x.name) + (x.qty > 1 ? ' ×' + x.qty : '') + '</div></div>' +
         '<div class="seg g-act" style="margin:8px 0"><button data-v="sold" class="on">💸 Продал</button><button data-v="listed">🏷 Выставил</button><button data-v="skip">Не продавал</button></div>' +
-        '<div class="g-f"><div class="grid2">' + (x.qty > 1 ? '<label class="f" style="margin:0"><span>Сколько продал</span><input class="g-q" inputmode="numeric" value="' + x.qty + '"></label>' : '') +
+        '<div class="g-f"><div class="grid2" style="margin-bottom:8px"><label class="f" style="margin:0"><span>Где</span><select class="g-site" id="gs-' + x.id + '">' + siteOpts(site) + '</select></label><label class="f" style="margin:0"><span>Валюта</span>' + curSelect('gc-' + x.id, site) + '</label></div><div class="grid2">' + (x.qty > 1 ? '<label class="f" style="margin:0"><span>Сколько продал</span><input class="g-q" inputmode="numeric" value="' + x.qty + '"></label>' : '') +
         '<label class="f" style="margin:0"><span class="g-pl">Получил за 1 шт.</span><input class="g-p" inputmode="decimal"></label></div>' +
         (needBuy ? '<div class="grid2" style="margin-top:8px"><label class="f" style="margin:0"><span>Покупал за 1 шт.</span><input class="g-b" inputmode="decimal" placeholder="0 — если выпал"></label>' +
           '<button class="btn sec2 g-zero" style="margin:auto 0 0">🎁 Выпал — 0</button></div>' : '<div class="mut" style="font-size:12px;margin-top:6px">Цена покупки — из твоей записи о покупке</div>') +
@@ -1860,17 +1861,29 @@ function goneSheet() {
     h += '<button class="btn" id="gsave">Записать</button>';
     sheet(h);
     var fill = function (force) {
-      var s = $('#gsite').value, c = $('#gcur').value;
       r.items.forEach(function (x) {
-        var el = document.querySelector('[data-g="' + x.id + '"]'), inp = el.querySelector('.g-p'), k = x.prices[s];
+        var el = document.querySelector('[data-g="' + x.id + '"]'), inp = el.querySelector('.g-p');
+        var s = $('#gs-' + x.id).value, c = $('#gc-' + x.id).value, k = x.prices[s];
         el.querySelector('.g-hint').textContent = k ? 'Сейчас на сайте самое дешёвое объявление ≈ ' + unitsIn(k, c) + ' ' + (CUR_SIGN[c] || c) : 'Цены этого сайта для предмета нет — впиши сумму сам';
         if (k && (force || !inp.getAttribute('data-ed'))) inp.value = unitsIn(k, c);
       });
     };
     fill(true);
     Array.prototype.forEach.call(document.querySelectorAll('.g-p'), function (i) { i.oninput = function () { i.setAttribute('data-ed', '1'); }; });
-    $('#gsite').onchange = function () { var c = lsGet('cur_' + $('#gsite').value); if (c && FX[c]) $('#gcur').value = c; fill(false); };
-    $('#gcur').onchange = function () { fill(false); };
+    // Общие площадка и валюта — сразу для всех предметов; у каждого предмета их можно поменять отдельно.
+    $('#gsite').onchange = function () {
+      var v = $('#gsite').value, c = lsGet('cur_' + v); if (c && FX[c]) $('#gcur').value = c;
+      r.items.forEach(function (x) { $('#gs-' + x.id).value = v; $('#gc-' + x.id).value = $('#gcur').value; });
+      fill(false);
+    };
+    $('#gcur').onchange = function () { r.items.forEach(function (x) { $('#gc-' + x.id).value = $('#gcur').value; }); fill(false); };
+    r.items.forEach(function (x) {
+      $('#gs-' + x.id).onchange = function () {
+        var c = lsGet('cur_' + this.value); if (c && FX[c]) $('#gc-' + x.id).value = c;
+        document.querySelector('[data-g="' + x.id + '"] .g-p').removeAttribute('data-ed'); fill(false);
+      };
+      $('#gc-' + x.id).onchange = function () { fill(false); };
+    });
     Array.prototype.forEach.call(document.querySelectorAll('.g-act button'), function (b) {
       b.onclick = function () {
         haptic(); var card = b.closest('[data-g]');
@@ -1882,18 +1895,19 @@ function goneSheet() {
     });
     Array.prototype.forEach.call(document.querySelectorAll('.g-zero'), function (b) { b.onclick = function () { haptic(); b.closest('[data-g]').querySelector('.g-b').value = '0'; }; });
     $('#gsave').onclick = function () {
-      var s = $('#gsite').value, c = $('#gcur').value, bc = $('#gbcur') ? $('#gbcur').value : CUR.code, rows = [];
+      var bc = $('#gbcur') ? $('#gbcur').value : CUR.code, rows = [], used = {}, s = null;
       for (var i = 0; i < r.items.length; i++) {
         var x = r.items[i], card = document.querySelector('[data-g="' + x.id + '"]');
         var act = card.querySelector('.g-act .on').getAttribute('data-v');
         if (act === 'skip') { rows.push({ id: x.id, action: 'skip' }); continue; }
+        s = $('#gs-' + x.id).value; var c = $('#gc-' + x.id).value; used[s] = c;
         var p = toKopIn(card.querySelector('.g-p').value, c), q = card.querySelector('.g-q') ? +card.querySelector('.g-q').value : x.qty;
         var bi = card.querySelector('.g-b'), b = bi ? toKopIn(bi.value, bc) : null;
         if (!(p > 0)) return toast(x.name + (act === 'listed' ? ': впиши цену, за которую выставил' : ': впиши, сколько получил'));
         if (bi && (b == null || isNaN(b) || b < 0)) return toast(x.name + ': впиши, за сколько покупал (0 — если выпал)');
         rows.push(act === 'listed' ? { id: x.id, action: 'sold', platform: s, listKop: p, qty: q, buyKop: b, pending: true } : { id: x.id, action: 'sold', platform: s, receivedKop: p, qty: q, buyKop: b, pending: false });
       }
-      lsSet('cur_' + s, c); lsSet('last_site', s); if ($('#gbcur')) lsSet('cur_buy', bc);
+      for (var u in used) if (used.hasOwnProperty(u)) lsSet('cur_' + u, used[u]); if (s) lsSet('last_site', s); if ($('#gbcur')) lsSet('cur_buy', bc);
       var anyPend = rows.some(function (z) { return z.pending; }), allPend = rows.length && rows.every(function (z) { return z.pending || z.action === 'skip'; });
       $('#gsave').disabled = true;
       api('inventory/gone/save', { method: 'POST', body: { rows: rows } }).then(function (res) {

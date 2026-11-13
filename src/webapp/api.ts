@@ -1347,17 +1347,15 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
     // «Коллекции»: общий для всех справочный экран (динамика цен, статусы ротаций, выход в плюс после комиссии Steam).
     if (path === 'collections' && method === 'GET') {
-      const [c, fx] = await Promise.all([loadCollections(d), db.loadLatestFx(d)]);
-      const usd = fx.get('USD') ?? null;
-      return json({ ok: true, at: c.at, list: collViews(c.stats, c.vols, (x) => (usd ? toKop(x, 'USD', usd) : null)).filter((v) => v.k > 0) });
+      const c = await loadCollections(d);
+      return json({ ok: true, at: c.at, list: collViews(c.stats, c.vols).filter((v) => v.k > 0) });
     }
     const collM = /^collections\/([a-z0-9-]{3,80})$/.exec(path);
     if (collM && method === 'GET') {
-      const [c, fx] = await Promise.all([loadCollections(d), db.loadLatestFx(d)]);
-      const usd = fx.get('USD') ?? null;
+      const c = await loadCollections(d);
       const hit = c.stats.find((x) => x.id === collM[1]);
       if (!hit) return bad('Коллекция не найдена', 404);
-      return json({ ok: true, id: hit.id, name: hit.name, crateNames: hit.crateNames.filter((n) => !/Souvenir/i.test(n)), skins: skinViews(hit, (x) => (usd ? toKop(x, 'USD', usd) : null)) });
+      return json({ ok: true, id: hit.id, name: hit.name, crateNames: hit.crateNames.filter((n) => !/Souvenir/i.test(n)), skins: skinViews(hit) });
     }
     // «Я отправил обмен»: человек ничего не пишет, одно нажатие. Бот сразу сообщает владельцу, для чего этот трейд.
     if (path === 'tradesent' && method === 'POST') {

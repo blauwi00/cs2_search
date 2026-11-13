@@ -91,38 +91,44 @@ export function parseCaseVols(items: unknown, now: number): Record<string, CaseV
 export interface CollView {
   id: string; name: string; rel: string | null; status: CollStatus | null;
   n: number; k: number; m7: number | null; m30: number | null; up: number; rotation: boolean;
-  ups: { name: string; priceKop: number | null; r7: number }[];
-  cov: number; fuelKop: number | null; fuelName: string | null;
-  crates: { name: string; priceKop: number | null; trend7: number | null; trend90: number | null; spark: number[]; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needKop: number | null; needPct: number | null; at: number | null }[];
+  ups: { name: string; priceUsd: number; r7: number }[];
+  cov: number; fuelUsd: number | null; fuelName: string | null;
+  crates: { name: string; priceKop: number | null; priceUsd: number | null; trend7: number | null; trend90: number | null; spark: number[]; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needKop: number | null; needPct: number | null; at: number | null }[];
 }
-/** kop: цены прайса (центы USD) → копейки. Выход в плюс — цена Steam, при которой после комиссии вернутся потраченные деньги. */
-export function collViews(stats: CollStat[], vols: Record<string, CaseVol>, kop: (usdCents: number) => number | null): CollView[] {
+/**
+ * Цена в гривнах — ТОЛЬКО живая цена Steam (priceoverview в гривнах): у гривневого Steam свои, примерно на 40% более низкие цены,
+ * чем доллар × курс НБУ. Всё из долларового прайса (средние продажи) остаётся в долларах (priceUsd, центы).
+ * Выход в плюс после комиссии Steam считаем только от живой гривневой цены.
+ */
+export function collViews(stats: CollStat[], vols: Record<string, CaseVol>): CollView[] {
   return stats.map((c) => {
     const crates = c.crates.map((x) => {
       const v = vols[x.name];
-      const priceKop = v?.low ?? (x.d7 ? kop(x.d7) : null);
+      const priceKop = v?.low ?? null;
       const need = priceKop ? steamBuyerPriceForReceived(priceKop).buyerPays : null;
       const trend7 = x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null;
       const trend90 = x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null;
-      const spark = [x.d90, x.d30, x.d7, x.d1].map((c) => (c ? kop(c) : null)).filter((v): v is number => v !== null);
-      return { name: x.name, priceKop, trend7, trend90, spark, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needKop: need, needPct: need && priceKop ? Math.round(((need - priceKop) * 100) / priceKop) : null, at: v?.at ?? null };
+      const spark = [x.d90, x.d30, x.d7, x.d1].filter((q): q is number => !!q);
+      return { name: x.name, priceKop, priceUsd: x.d7 ?? x.d30, trend7, trend90, spark, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needKop: need, needPct: need && priceKop ? Math.round(((need - priceKop) * 100) / priceKop) : null, at: v?.at ?? null };
     });
     return {
       id: c.id, name: c.name, rel: c.rel, status: COLLECTION_STATUS[c.id] ?? null, n: c.n, k: c.k,
       m7: c.m7 === null ? null : c.m7 - 100, m30: c.m30 === null ? null : c.m30 - 100, up: c.up, rotation: rotationHint(c),
-      ups: c.ups.map((u) => ({ name: u.name, priceKop: kop(u.p7), r7: u.r7 - 100 })),
-      cov: c.cov, fuelKop: c.cheapCov ? kop(c.cheapCov.d7 * 5) : null, fuelName: c.cheapCov?.name ?? null, crates,
+      ups: c.ups.map((u) => ({ name: u.name, priceUsd: u.p7, r7: u.r7 - 100 })),
+      cov: c.cov, fuelUsd: c.cheapCov ? c.cheapCov.d7 * 5 : null, fuelName: c.cheapCov?.name ?? null, crates,
     };
   });
 }
 
 export const COLL_VOL_EVERY = 6 * 3600;   // живую цену и объём кейса обновляем раз в 6 часов
 export const COLL_VOL_PER_RUN = 4;        // не больше 4 запросов к Steam за запуск сборщика
-/** Какие кейсы пора обновить в Steam: только у коллекций с известным статусом (сувенирные наборы пропускаем), самые давние первыми. */
+/** Какие кейсы пора обновить в Steam: все кейсы коллекций, кроме сувенирных наборов; сначала с известным статусом, потом самые давние. */
 export function collVolNames(stats: CollStat[], vols: Record<string, CaseVol>, now: number): string[] {
   const names = new Set<string>();
-  for (const c of stats) if (COLLECTION_STATUS[c.id]) for (const n of c.crateNames) if (!/Souvenir/i.test(n)) names.add(n);
-  return [...names].filter((n) => now - (vols[n]?.at ?? 0) > COLL_VOL_EVERY).sort((a, b) => (vols[a]?.at ?? 0) - (vols[b]?.at ?? 0)).slice(0, COLL_VOL_PER_RUN);
+  for (const c of stats) for (const n of c.crateNames) if (!/Souvenir/i.test(n)) names.add(n);
+  const known = new Set(stats.filter((c) => COLLECTION_STATUS[c.id]).flatMap((c) => c.crateNames));
+  return [...names].filter((n) => now - (vols[n]?.at ?? 0) > COLL_VOL_EVERY)
+    .sort((a, b) => (vols[a]?.at ?? 0) - (vols[b]?.at ?? 0) || Number(known.has(b)) - Number(known.has(a)) || a.localeCompare(b)).slice(0, COLL_VOL_PER_RUN);
 }
 export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[]; vols: Record<string, CaseVol>; at: number }> {
   const [s, v, at] = await Promise.all([getMeta(d, 'collections_stats'), getMeta(d, 'collections_vol'), getMeta(d, 'collections_stats_at')]);
@@ -132,11 +138,8 @@ export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[
   return { stats, vols, at: Number(at) || 0 };
 }
 
-export interface SkinView { name: string; rar: number; priceKop: number | null; trend7: number | null; trend90: number | null }
-/** Скины одной коллекции для окна «Состав»: цена за неделю (средняя продажа Steam) и изменение. Только то, что есть в прайсе. */
-export function skinViews(c: CollStat, kop: (usdCents: number) => number | null): SkinView[] {
-  return c.skins.map((x) => {
-    const p = x.d7 ?? x.d30;
-    return { name: x.n, rar: x.rar, priceKop: p ? kop(p) : null, trend7: x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null, trend90: x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null };
-  });
+export interface SkinView { name: string; rar: number; priceUsd: number | null; trend7: number | null; trend90: number | null }
+/** Скины одной коллекции: цена в долларах (средняя продажа Steam за неделю по открытому прайсу) и изменение. */
+export function skinViews(c: CollStat): SkinView[] {
+  return c.skins.map((x) => ({ name: x.n, rar: x.rar, priceUsd: x.d7 ?? x.d30, trend7: x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null, trend90: x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null }));
 }

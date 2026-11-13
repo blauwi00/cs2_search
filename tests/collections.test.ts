@@ -50,20 +50,22 @@ test('выход в плюс: цена Steam, при которой после �
     { id: 'collection-set-unknown', name: 'U', rel: null, n: 5, k: 5, m7: 100, m30: 100, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: [], skins: [] }];
   const vols = parseCaseVols([{ name: 'Gallery Case', lowest_price: '33₴', median_price: '32,79₴', volume: '4,127' }], NOW);
   assert.equal(vols['Gallery Case'].vol, 4127);
-  const v = collViews(stats, vols, (c) => c * 40);
+  const v = collViews(stats, vols);
   const cr = v[0].crates[0];
-  assert.equal(cr.priceKop, 3300); assert.equal(cr.liq, 'high');
+  assert.equal(cr.priceKop, 3300, 'гривны — только живая цена Steam'); assert.equal(cr.priceUsd, 80); assert.equal(cr.liq, 'high');
   assert.ok(cr.needPct! >= 15 && cr.needPct! <= 20, `нужно ~+17,6%, получилось ${cr.needPct}`);
+  assert.equal(collViews(stats, {})[0].crates[0].priceKop, null, 'без живой цены гривен нет, только доллары');
+  assert.equal(collViews(stats, {})[0].crates[0].needKop, null, 'выход в плюс считаем только от живой гривневой цены');
   assert.equal(v[1].status, null, 'статус неизвестной коллекции не выдумываем');
   assert.equal(v[0].status?.s, 'removed');
   assert.ok(Object.values(COLLECTION_STATUS).every((s) => s.src.length > 3), 'у каждого статуса указан источник');
 });
 
-test('какие кейсы обновить: только у коллекций со статусом, без сувенирных наборов, давние первыми, не больше 4', () => {
+test('какие кейсы обновить: все кейсы без сувенирных наборов; давние первыми, при равенстве сначала со статусом; не больше 4', () => {
   const mk = (id: string, names: string[]): CollStat => ({ id, name: id, rel: null, n: 1, k: 1, m7: null, m30: null, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: names, skins: [] });
   const stats = [mk('collection-set-community-34', ['Gallery Case']), mk('collection-set-dust-2', ['Berlin 2019 Dust II Souvenir Package']), mk('collection-set-unknown', ['Hidden Case'])];
-  assert.deepEqual(collVolNames(stats, {}, NOW), ['Gallery Case']);
-  assert.deepEqual(collVolNames(stats, { 'Gallery Case': { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW), [], 'свежее 6 часов — не трогаем');
+  assert.deepEqual(collVolNames(stats, {}, NOW), ['Gallery Case', 'Hidden Case']);
+  assert.deepEqual(collVolNames(stats, { 'Gallery Case': { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW), ['Hidden Case'], 'свежее 6 часов — не трогаем');
 });
 
 test('приём и API: сборщик шлёт статистику, приложение её видит; мусор отбрасывается; повтор не пишет заново', async () => {

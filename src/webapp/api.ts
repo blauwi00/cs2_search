@@ -358,15 +358,19 @@ export async function handleAppApi(req: Request, env: Env, now: number, rawDb?: 
  * Записать продажу (или «выставлено») одного предмета: сначала из записанных покупок по порядку,
  * остальное — новой записью с ценой покупки (0 — выпал). Суммы — за 1 шт., в копейках бота.
  */
-async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; name: string; maxQty: number; qty: unknown; receivedKop: unknown; platform: unknown; buyKop: unknown; pending: boolean; note: string },
+async function recordSaleRow(d: D1Database, tid: number, r: { itemId: number; name: string; maxQty: number; qty: unknown; receivedKop: unknown; platform: unknown; buyKop: unknown; pending: boolean; note: string; listKop?: unknown },
   wallet: { per: number }, date: string, now: number): Promise<{ resultKop: number; recorded: boolean; recordedQty: number; error?: string }> {
   const qty = Math.trunc(Number(r.qty));
-  const got = Number(r.receivedKop); // получено за 1 шт. (на баланс сайта / кошелька Steam)
   const platform = String(r.platform ?? '');
+  // «Выставил»: человек вписывает цену объявления (сколько заплатит покупатель). В Steam ожидаемое поступление — после комиссии Steam;
+  // на других сайтах комиссия продажи у нас не везде подтверждена, поэтому ожидаем цену объявления как есть (это «ожидаемо», не прибыль).
+  const list = Number(r.listKop);
+  const listed = r.pending && Number.isSafeInteger(list) && list > 0;
+  const got = listed ? (platform === 'steam' ? (steamNetKop(list, wallet) ?? 0) : list) : Number(r.receivedKop); // получено за 1 шт.
   if (!(PLATFORMS as readonly string[]).includes(platform) || BUY_ONLY.includes(platform)) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: выбери, где продал` };
   if (!Number.isInteger(qty) || qty < 1 || qty > r.maxQty) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: количество от 1 до ${r.maxQty}` };
-  if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, recordedQty: 0, error: `${r.name}: впиши, сколько получил` };
-  const sellPrice = platform === 'steam' ? steamListForNetKop(got, wallet) : got;
+  if (!Number.isSafeInteger(got) || got <= 0) return { resultKop: 0, recorded: false, recordedQty: 0, error: listed ? `${r.name}: цена слишком мала для Steam` : `${r.name}: впиши, сколько получил` };
+  const sellPrice = listed ? list : platform === 'steam' ? steamListForNetKop(got, wallet) : got;
   let left = qty, resultKop = 0;
   const sale = (tradeId: number, q: number) => (r.pending
     ? T.addPending(d, tid, { tradeId, quantity: q, sellPriceKop: sellPrice, receivedKop: got * q, platform, now })
@@ -942,7 +946,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
           skipped++;
           continue;
         }
-        const res = await recordSaleRow(d, tid, { itemId: g.item_id, name: g.name, maxQty: g.qty, qty: r.qty ?? g.qty, receivedKop: r.receivedKop, platform: r.platform, buyKop: r.buyKop, pending: r.pending === true, note: 'из «Пропало из инвентаря»' }, wallet, date, now);
+        const res = await recordSaleRow(d, tid, { itemId: g.item_id, name: g.name, maxQty: g.qty, qty: r.qty ?? g.qty, receivedKop: r.receivedKop, platform: r.platform, buyKop: r.buyKop, pending: r.pending === true, listKop: r.listKop, note: 'из «Пропало из инвентаря»' }, wallet, date, now);
         if (res.error) errors.push(res.error);
         if (!res.recordedQty) continue;
         resultKop += res.resultKop;

@@ -327,3 +327,24 @@ test('#33: висит «закрыт» — открыл «Мои скины», �
     assert.equal((await auto(NOW + 60)).updated, false, 'статус в порядке — повторно не дёргаем Steam');
   } finally { g.fetch = orig; }
 });
+
+test('пропало → «Выставил» в Steam: цена объявления, без «получил»; ждёт продажи, в прибыль не попадает, поступление — после комиссии Steam', async () => {
+  const d = migratedDb();
+  const D = d as unknown as D1Database;
+  const env = testEnv(d);
+  d.db.prepare('INSERT INTO users (telegram_id, created_at, steam_id, steam_verified, inv_synced_at) VALUES (?, ?, ?, 1, ?)').run(U, NOW - 3600, SID, NOW - 3600);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [{ name: 'X Case', qty: 2, marketable: 1, tradable: 1, img: null }], partial: false }, NOW - 100);
+  await storeInventory(D, U, { status: 'ok', steamId: SID, items: [], partial: false }, NOW);
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: U }) }, 'TEST_TOKEN');
+  const call = async (path: string, method = 'GET', body?: unknown) => (await handleAppApi(new Request('https://w.dev/app/api/' + path, { method, headers: { 'X-Init-Data': init }, body: body ? JSON.stringify(body) : undefined }), env, NOW)).json() as any;
+  const g = (await call('inventory/gone')).items[0];
+  const r = await call('inventory/gone/save', 'POST', { rows: [{ id: g.id, action: 'sold', platform: 'steam', listKop: 1150, qty: 2, buyKop: 0, pending: true }] });
+  assert.equal(r.sold, 1, r.errors?.join(';'));
+  const pend = d.db.prepare('SELECT sell_price_kop, received_kop, quantity FROM pending_sales').all() as { sell_price_kop: number; received_kop: number; quantity: number }[];
+  assert.equal(pend.length, 1, 'записано как «выставлено», а не как продажа');
+  assert.equal(pend[0].sell_price_kop, 1150, 'цена объявления — как вписал человек');
+  assert.equal(pend[0].quantity, 2);
+  assert.ok(pend[0].received_kop >= 1998 && pend[0].received_kop <= 2002, `ожидается 2 × ~10,00 ₴ после комиссии Steam, получилось ${pend[0].received_kop}`);
+  assert.equal((d.db.prepare('SELECT COUNT(*) AS n FROM trade_sales').get() as { n: number }).n, 0, 'продажи нет, пока не отмечена');
+  assert.equal((await call('inventory/gone')).items.length, 0, 'в «Пропало» больше не висит');
+});

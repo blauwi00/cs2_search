@@ -10,7 +10,7 @@ on:
   # Сразу после правок сборщика — один прогон, чтобы проверить его.
   push:
     branches: [main]
-    paths: ['.github/scripts/collect.mjs', '.github/scripts/patchnotes.mjs', '.github/workflows/collect.yml']
+    paths: ['.github/scripts/collect.mjs', '.github/scripts/patchnotes.mjs', '.github/scripts/snapshot.mjs', '.github/workflows/collect.yml']
 concurrency:
   group: collect-prices
   cancel-in-progress: false
@@ -40,6 +40,8 @@ jobs:
         env:
           WORKER_URL: https://cs2-search.blauwi925.workers.dev
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          # Суточный архив цен в приватный репозиторий данных (ключ только на него, Contents: read/write). Нет секрета — архив пропускается.
+          DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
           # Reddit с GitHub отвечает 403 — не включаем; датамайн и киберспорт открыты. Новое значение — переменная репозитория EXTRA_NEWS.
           EXTRA_NEWS: ${{ vars.EXTRA_NEWS || 'datamine,esports' }}
         run: node .github/scripts/collect.mjs

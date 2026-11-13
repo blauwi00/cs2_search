@@ -173,11 +173,13 @@ try {
 // Качаем при каждом запуске (это дёшево), Steam при этом не опрашивается. Новую версию файла (по Last-Modified)
 // сразу рассылаем по всем предметам наблюдения; иначе — только по новым предметам. Цены в USD, Worker переводит по НБУ.
 let steamAvg = new Map();
+let steamFileAt = 0; // время версии прайса Steam (для подписи архива)
 try {
   const res = await fetch('https://prices.csgotrader.app/latest/steam.json', { headers: { 'User-Agent': UA } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const lm = Date.parse(res.headers.get('last-modified') || '');
   const fileAt = Number.isFinite(lm) ? Math.floor(lm / 1000) : 0;
+  steamFileAt = fileAt;
   const raw = await res.json();
   for (const [n, v] of Object.entries(raw ?? {})) if (v && typeof v === 'object') steamAvg.set(n, { d1: v.last_24h ?? null, d7: v.last_7d ?? null, d30: v.last_30d ?? null, d90: v.last_90d ?? null });
   const fresh = fileAt > steamAvgAt;
@@ -475,6 +477,38 @@ if (sitePriceNames.length && !HOME) {
     if (!out.length) await toWorker('/ingest', { kind: 'site_prices', fetchedAt: now(), items: [], done: true, partial: sitePricePartial });
   } catch (e) {
     console.error('Цены всех площадок:', e.message);
+  }
+}
+
+// 2ж-2. Суточный архив цен ВСЕХ предметов в приватный репозиторий данных (после 19:00 UTC, пока за сегодня файла нет; повтор каждый запуск).
+// Основной сбор не ломаем: любая ошибка только в лог (строка «Архив цен: ОШИБКА»).
+if (!HOME && steamAvg.size) {
+  const token = process.env.DATA_REPO_TOKEN;
+  const utcNow = new Date();
+  if (!token) console.log('Архив цен: нет секрета DATA_REPO_TOKEN — запись пропущена');
+  else if (utcNow.getUTCHours() >= 19) {
+    try {
+      const { collectRows, buildTsv, gzipB64, putIfMissing, dayPath } = await import('./snapshot.mjs');
+      const day = utcNow.toISOString().slice(0, 10);
+      const repo = process.env.DATA_REPO || `${(process.env.GITHUB_REPOSITORY || 'x/x').split('/')[0]}/cs2-prices-data`;
+      const files = {};
+      const srcAt = { steam: steamFileAt || null };
+      for (const prov of ['buff163', 'youpin898', 'c5game', 'csfloat', 'csmoney']) {
+        try {
+          const res = await fetch(`https://prices.csgotrader.app/latest/${prov}.json`, { headers: { 'User-Agent': UA, 'Accept-Encoding': 'gzip, br' } });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const lm = Date.parse(res.headers.get('last-modified') || ''); if (Number.isFinite(lm)) srcAt[prov] = Math.floor(lm / 1000);
+          files[prov] = await readJson(res);
+        } catch (e) { console.error(`Архив цен: ${prov}:`, e.message); } // пропуск колонки, а не падение и не подстановка старого
+      }
+      const sp = new Map(allItems.filter((x) => x && x.min_price > 0).map((x) => [x.market_hash_name, x.min_price]));
+      const rows = collectRows({ steamAvg, sp, eurUsd: fx.EUR && fx.USD ? fx.EUR / fx.USD : null, markets, files });
+      const tsv = buildTsv(day, rows, srcAt);
+      const r = await putIfMissing({ repo, token, path: dayPath(day), contentB64: gzipB64(tsv), message: `Цены за ${day}: ${rows.size} предметов` });
+      console.log(`Архив цен ${day}: ${r === 'saved' ? 'записано' : 'уже есть'} (${rows.size} предметов, ${(tsv.length / 1e6).toFixed(1)} МБ до сжатия) → ${repo}`);
+    } catch (e) {
+      console.error('Архив цен: ОШИБКА —', e.message);
+    }
   }
 }
 

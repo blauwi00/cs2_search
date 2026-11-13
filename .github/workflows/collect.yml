@@ -42,6 +42,8 @@ jobs:
           INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
           # Суточный архив цен в приватный репозиторий данных (ключ только на него, Contents: read/write). Нет секрета — архив пропускается.
           DATA_REPO_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          # Приватный репозиторий архива (владелец назвал его count).
+          DATA_REPO: blauwi00/count
           # Reddit с GitHub отвечает 403 — не включаем; датамайн и киберспорт открыты. Новое значение — переменная репозитория EXTRA_NEWS.
           EXTRA_NEWS: ${{ vars.EXTRA_NEWS || 'datamine,esports' }}
         run: node .github/scripts/collect.mjs

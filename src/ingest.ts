@@ -18,7 +18,7 @@ import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
-import { parseCollStats, parseCaseVols, loadCollections, collVolNames } from './core/collections.ts';
+import { parseCollStats, parseCaseVols, loadCollections, collVolTasks, collCurrencies, STEAM_CURRENCY_ID } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
 import { jobSellAlerts } from './core/sellalerts.ts';
@@ -106,7 +106,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Обновления CS2 за 3 дня, у которых ещё нет краткого содержания на русском.
       // Записи в D1 за сегодня по источникам (выборочный учёт, ≈). Бесплатный лимит — 100 000 строк в сутки.
       writes: Object.fromEntries(Object.entries(await db.counters(d, now)).filter(([k]) => k.startsWith('w:'))),
-      collVol: await (async () => { try { const c = await loadCollections(d); return collVolNames(c.stats, c.vols, now); } catch { return []; } })(),
+      collVol: await (async () => { try { const c = await loadCollections(d); return collVolTasks(c.stats, c.vols, now, await collCurrencies(d)).map((t) => ({ ...t, id: STEAM_CURRENCY_ID[t.code] })); } catch { return []; } })(),
       needCaseEv: await (async () => { try { return now - (JSON.parse((await getMeta(d, 'case_ev')) ?? '{}').at ?? 0) > 20 * 3600; } catch { return true; } })(),
       newsNeedRu: (await d.prepare('SELECT gid FROM news WHERE summary_ru IS NULL AND ru_posted_at IS NULL AND published_at >= ? ORDER BY published_at DESC LIMIT 3').bind(now - 3 * 86400).all<{ gid: string }>()).results.map((r) => r.gid),
       // Пауза для Steam после 429 (сборщик в это время Steam не трогает).
@@ -441,9 +441,8 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Живые цена и объём Steam по нескольким кейсам: копим по именам, старые записи не теряем.
       const fresh = parseCaseVols(body.items, now);
       if (Object.keys(fresh).length) {
-        let old: Record<string, unknown> = {};
-        try { old = JSON.parse((await getMeta(d, 'collections_vol')) ?? '{}'); } catch { /* пусто */ }
-        await setMetaStmt(d, 'collections_vol', JSON.stringify({ ...old, ...fresh })).run();
+        const cur = await loadCollections(d);
+        await setMetaStmt(d, 'collections_vol', JSON.stringify({ ...cur.vols, ...fresh })).run();
       }
       result.stored = Object.keys(fresh).length;
     } else if (body.kind === 'card') {

@@ -2381,14 +2381,14 @@ function collCard(c) {
   var st = c.status ? c.status.s : 'none';
   var chip = st === 'none' ? '' : '<span class="act ' + (st === 'removed' ? 'a-sell' : 'a-buy') + '" style="white-space:nowrap">' + COLL_STATUS_RU[st] + (c.status.date ? ' · ' + ymRu(c.status.date) : '') + '</span>';
   var main = null;
-  for (var i = 0; i < c.crates.length; i++) if (c.crates[i].priceKop != null || c.crates[i].priceUsd != null) { main = c.crates[i]; break; }
+  for (var i = 0; i < c.crates.length; i++) if (c.crates[i].priceText != null || c.crates[i].priceUsd != null) { main = c.crates[i]; break; }
   var h = '<div class="rc" style="cursor:default"><div class="hd"><div class="n">' + esc(c.name.replace(/^The /, '').replace(/ Collection$/, '')) + '<div class="c">' + c.n + ' скинов' + (main ? ' · ' + esc(main.name) : '') + '</div></div>' + chip + '</div>';
   if (main) {
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px"><div><div style="font-size:24px;font-weight:800">' + (main.priceKop != null ? uahShort(main.priceKop) : usd(main.priceUsd)) + '</div><div class="mut" style="font-size:12px">' + (main.priceKop != null ? 'цена кейса в Steam (гривны)' : 'в долларах; гривневая цена Steam ещё загружается') + '</div></div>' + spark(main.spark) + '</div>';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px"><div><div style="font-size:24px;font-weight:800">' + (main.priceText != null ? main.priceText : usd(main.priceUsd)) + '</div><div class="mut" style="font-size:12px">' + (main.priceText != null ? 'цена кейса в Steam (' + (state.collCur || '') + ')' : 'в долларах; цена Steam в твоей валюте ещё загружается') + '</div></div>' + spark(main.spark) + '</div>';
     h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' +
       tile('Неделя', sgn(main.trend7), dcls(main.trend7)) + tile('3 месяца', sgn(main.trend90), dcls(main.trend90)) +
       tile('Объём', main.vol != null ? String(main.vol).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '—', '', main.vol != null ? 'продаж/сутки · ' + LIQ_RU[main.liq] : 'нет данных') + '</div>';
-    if (main.needKop != null) h += '<div class="mut" style="font-size:13px;margin-top:8px">В ноль после комиссии Steam: цена ≥ <b style="color:var(--text)">' + uahShort(main.needKop) + '</b> (' + sgn(main.needPct) + ')</div>';
+    if (main.needText != null) h += '<div class="mut" style="font-size:13px;margin-top:8px">В ноль после комиссии Steam: цена ≥ <b style="color:var(--text)">' + main.needText + '</b> (' + sgn(main.needPct) + ')</div>';
   } else if (c.m7 != null) {
     h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">' + tile('Скины, неделя', sgn(c.m7), dcls(c.m7)) + tile('Скины, 3 мес.', c.m30 != null ? sgn(c.m30) : '—', dcls(c.m30)) + '</div>';
   }
@@ -2400,26 +2400,27 @@ function collCard(c) {
   var more = '';
   more += '<div>Цены есть у ' + c.k + ' из ' + c.n + (c.rel ? ' · вышла ' + ymRu(c.rel) : '') + '</div>';
   if (main && c.m7 != null) more += '<div>Средний скин коллекции: ' + sgn(c.m7) + ' за неделю, ' + sgn(c.m30) + ' месяц к трём</div>';
-  for (var j = 0; j < c.crates.length; j++) { var x = c.crates[j]; if (x === main || (x.priceKop == null && x.priceUsd == null)) continue; more += '<div>' + esc(x.name) + ': ' + (x.priceKop != null ? uahShort(x.priceKop) : usd(x.priceUsd)) + ', ' + sgn(x.trend7) + ' за неделю</div>'; }
+  for (var j = 0; j < c.crates.length; j++) { var x = c.crates[j]; if (x === main || (x.priceText == null && x.priceUsd == null)) continue; more += '<div>' + esc(x.name) + ': ' + (x.priceText != null ? x.priceText : usd(x.priceUsd)) + ', ' + sgn(x.trend7) + ' за неделю</div>'; }
   if (c.fuelUsd != null) more += '<div>Пять красных скинов для контракта: от ' + usd(c.fuelUsd) + ' (в долларах; дешёвый: ' + esc(c.fuelName) + ')</div>';
   if (c.status) more += '<div>Статус «' + COLL_STATUS_RU[st] + '»: ' + esc(c.status.src) + '</div>';
   h += '<details class="more" style="margin:10px 0 0"><summary><span class="chev">›</span> Подробнее</summary><div class="mut" style="font-size:13px;line-height:1.5;padding:4px 0 2px">' + more + '</div></details>';
   return h + '</div>';
 }
+var RAR_COL = { 5: '#eb4b4b', 4: '#d32ee6', 3: '#8847ff', 2: '#4b69ff', 1: '#5e98d9', 0: '#b0c3d9' };
 var RAR_RU = { 5: 'Красные (Covert)', 4: 'Розовые (Classified)', 3: 'Фиолетовые (Restricted)', 2: 'Синие (Mil-Spec)', 1: 'Светло-синие', 0: 'Белые' };
 // Состав коллекции: кейс и все скины с ценой Steam; нажатие — окно предмета (график и цены на всех площадках).
 function collSheet(id, name) {
   sheet('<div class="skel"></div><div class="skel" style="height:180px"></div>');
   api('collections/' + encodeURIComponent(id)).then(function (r) {
-    var h = '<h2>' + esc(String(r.name).replace(/^The /, '').replace(/ Collection$/, '')) + '</h2><div class="sub">Нажми на предмет: график цены и цены на всех площадках. Цена скина в долларах: средняя продажа в Steam за неделю (в гривневом Steam она ниже).</div>';
+    var h = '<h2>' + esc(String(r.name).replace(/^The /, '').replace(/ Collection$/, '')) + '</h2><div class="sub">Нажми на предмет: график цены и цены на всех площадках. Цена скина в долларах: средняя продажа в Steam за неделю. В твоём Steam она отличается: точная цена — в карточке скина.</div>';
     if (r.crateNames.length) {
       h += '<div class="sec">Кейс</div><div class="card" style="padding:2px 14px">' + r.crateNames.map(function (n) { return '<div class="kv" style="cursor:pointer" data-nm="' + esc(n) + '"><span>' + esc(n) + '</span><span class="v">›</span></div>'; }).join('') + '</div>';
     }
     var last = -1;
     r.skins.forEach(function (x, i) {
-      if (x.rar !== last) { if (last !== -1) h += '</div>'; h += '<div class="sec">' + RAR_RU[x.rar] + '</div><div class="card" style="padding:2px 14px">'; last = x.rar; }
+      if (x.rar !== last) { if (last !== -1) h += '</div>'; h += '<div class="sec" style="border-left:4px solid ' + RAR_COL[x.rar] + ';padding-left:8px">' + RAR_RU[x.rar] + '</div><div class="card" style="padding:2px 14px">'; last = x.rar; }
       var sp = splitName(x.name);
-      h += '<div class="kv" style="cursor:pointer;align-items:center" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + (sp.wear ? '<div class="mut" style="font-size:11px">' + esc(sp.wear) + '</div>' : '') + '</span><span class="v" style="white-space:nowrap">' + (x.priceUsd != null ? usd(x.priceUsd) : '—') + (x.trend7 != null ? ' <span class="' + dcls(x.trend7) + '" style="font-size:12px">' + sgn(x.trend7) + '</span>' : '') + '</span></div>';
+      h += '<div class="kv" style="cursor:pointer;align-items:center;border-left:4px solid ' + RAR_COL[x.rar] + ';padding-left:10px;margin-left:-4px" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + (sp.wear ? '<div class="mut" style="font-size:11px">' + esc(sp.wear) + '</div>' : '') + '</span><span class="v" style="white-space:nowrap">' + (x.priceUsd != null ? usd(x.priceUsd) : '—') + (x.trend7 != null ? ' <span class="' + dcls(x.trend7) + '" style="font-size:12px">' + sgn(x.trend7) + '</span>' : '') + '</span></div>';
     });
     if (last !== -1) h += '</div>';
     if (!r.skins.length) h += '<div class="card mut">Цен на скины этой коллекции пока нет.</div>';
@@ -2432,6 +2433,7 @@ function collections() {
   loading(5);
   state.collF = state.collF || 'all';
   api('collections').then(function (r) {
+    state.collCur = r.cur;
     var h = recSwitch('coll');
     var all = r.list, nRem = 0, nSig = 0, nAct = 0;
     all.forEach(function (c) { if (c.rotation) nSig++; if (c.status && c.status.s === 'removed') nRem++; if (c.status && c.status.s === 'active') nAct++; });
@@ -2441,7 +2443,7 @@ function collections() {
       view.innerHTML = h; bindRecSwitch(); deEmoji(view); return;
     }
     h += '<div class="seg scroll" id="cf">' + [['all', 'Все'], ['sig', 'Сигналы'], ['act', 'В дропе'], ['rem', 'Убраны'], ['cases', 'Кейсы']].map(function (t) { return '<button data-f="' + t[0] + '" class="' + (state.collF === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
-    var hasCrate = function (c) { return c.crates.some(function (x) { return x.priceKop != null || x.priceUsd != null; }); };
+    var hasCrate = function (c) { return c.crates.some(function (x) { return x.priceText != null || x.priceUsd != null; }); };
     var f = state.collF;
     var rank = function (c) { return c.rotation ? 0 : c.status && c.status.s === 'active' ? 1 : c.status ? 2 : 3; };
     var list = all.filter(function (c) {

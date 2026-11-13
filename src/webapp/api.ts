@@ -37,7 +37,7 @@ import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { sha256Hex, requestedSiteNames } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
-import { loadCollections, collViews, skinViews } from '../core/collections.ts';
+import { loadCollections, collViews, skinViews, STEAM_CURRENCY_ID } from '../core/collections.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
 import { matchName } from '../core/screenread.ts';
@@ -1347,8 +1347,9 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
     // «Коллекции»: общий для всех справочный экран (динамика цен, статусы ротаций, выход в плюс после комиссии Steam).
     if (path === 'collections' && method === 'GET') {
-      const c = await loadCollections(d);
-      return json({ ok: true, at: c.at, list: collViews(c.stats, c.vols).filter((v) => v.k > 0) });
+      const [c, w] = await Promise.all([loadCollections(d), walletCur()]);
+      const code = w.code in STEAM_CURRENCY_ID ? w.code : 'UAH'; // валюта Steam человека; если Steam такой нет — гривна
+      return json({ ok: true, at: c.at, cur: code, list: collViews(c.stats, c.vols, code).filter((v) => v.k > 0) });
     }
     const collM = /^collections\/([a-z0-9-]{3,80})$/.exec(path);
     if (collM && method === 'GET') {

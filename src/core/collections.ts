@@ -16,7 +16,14 @@ export interface CollStat {
   crateNames: string[];
   skins: { n: string; rar: number; d7: number | null; d30: number | null; d90: number | null }[];
 }
+/** Валюты кошелька Steam (ECurrencyCode), у которых цена в двух знаках после запятой: для них разбор строки Steam надёжен. */
+export const STEAM_CURRENCY_ID: Record<string, number> = { USD: 1, GBP: 2, EUR: 3, CHF: 4, RUB: 5, PLN: 6, BRL: 7, NOK: 9, MYR: 11, PHP: 12, SGD: 13, THB: 14, TRY: 17, UAH: 18, MXN: 19, CAD: 20, AUD: 21, NZD: 22, CNY: 23, INR: 24, ZAR: 28, HKD: 29, SAR: 31, AED: 32, ILS: 35, KZT: 37 };
+/** Живая цена и объём Steam по кейсу в валюте кошелька (low/med — в минимальных единицах этой валюты). Ключ: «КОД|название». */
 export interface CaseVol { low: number | null; med: number | null; vol: number | null; at: number }
+export const volKey = (code: string, name: string): string => `${code}|${name}`;
+export function fmtMinor(minor: number, code: string): string {
+  try { return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: code }).format(minor / 100); } catch { return `${(minor / 100).toFixed(2)} ${code}`; }
+}
 
 /** Статусы, найденные вручную (обзоры, трекеры): «date» — как в источнике, может быть неполной. */
 export interface CollStatus { s: 'active' | 'removed'; date: string | null; src: string }
@@ -75,15 +82,17 @@ export function parseCollStats(items: unknown): CollStat[] {
   return out;
 }
 
-/** Живой priceoverview Steam по кейсам (валюта запроса — гривна): строки как у Steam → копейки. */
+/** Живой priceoverview Steam по кейсам в валюте кошелька: строки как у Steam → минимальные единицы этой валюты. */
 export function parseCaseVols(items: unknown, now: number): Record<string, CaseVol> {
   const out: Record<string, CaseVol> = {};
   for (const r of (Array.isArray(items) ? items : []).slice(0, 12) as Record<string, any>[]) {
     const name = str(r?.name, 120); if (!name) continue;
+    const code = r.code === undefined ? 'UAH' : typeof r.code === 'string' && r.code in STEAM_CURRENCY_ID ? r.code : null; // без кода — старый формат сборщика (гривна)
+    if (!code) continue;
     const vol = typeof r.volume === 'string' && r.volume.replace(/[^\d]/g, '') ? Number(r.volume.replace(/[^\d]/g, '')) : null;
     const low = parseSteamPriceString(typeof r.lowest_price === 'string' ? r.lowest_price : null);
     if (low === null && vol === null) continue;
-    out[name] = { low, med: parseSteamPriceString(typeof r.median_price === 'string' ? r.median_price : null), vol, at: now };
+    out[volKey(code, name)] = { low, med: parseSteamPriceString(typeof r.median_price === 'string' ? r.median_price : null), vol, at: now };
   }
   return out;
 }
@@ -93,23 +102,23 @@ export interface CollView {
   n: number; k: number; m7: number | null; m30: number | null; up: number; rotation: boolean;
   ups: { name: string; priceUsd: number; r7: number }[];
   cov: number; fuelUsd: number | null; fuelName: string | null;
-  crates: { name: string; priceKop: number | null; priceUsd: number | null; trend7: number | null; trend90: number | null; spark: number[]; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needKop: number | null; needPct: number | null; at: number | null }[];
+  crates: { name: string; priceText: string | null; priceUsd: number | null; trend7: number | null; trend90: number | null; spark: number[]; vol: number | null; liq: 'high' | 'mid' | 'low' | null; needText: string | null; needPct: number | null; at: number | null }[];
 }
 /**
- * Цена в гривнах — ТОЛЬКО живая цена Steam (priceoverview в гривнах): у гривневого Steam свои, примерно на 40% более низкие цены,
- * чем доллар × курс НБУ. Всё из долларового прайса (средние продажи) остаётся в долларах (priceUsd, центы).
- * Выход в плюс после комиссии Steam считаем только от живой гривневой цены.
+ * Цена кейса — живая цена Steam в ВАЛЮТЕ КОШЕЛЬКА ЧЕЛОВЕКА (code), никакого пересчёта по курсу: у Steam в каждой валюте свои цены.
+ * Если живой цены в этой валюте пока нет, остаётся только цена из долларового прайса (priceUsd, центы), она подписывается в приложении.
+ * Выход в плюс после комиссии Steam считаем только от живой цены в валюте кошелька.
  */
-export function collViews(stats: CollStat[], vols: Record<string, CaseVol>): CollView[] {
+export function collViews(stats: CollStat[], vols: Record<string, CaseVol>, code: string): CollView[] {
   return stats.map((c) => {
     const crates = c.crates.map((x) => {
-      const v = vols[x.name];
-      const priceKop = v?.low ?? null;
-      const need = priceKop ? steamBuyerPriceForReceived(priceKop).buyerPays : null;
+      const v = vols[volKey(code, x.name)];
+      const low = v?.low ?? null;
+      const need = low ? steamBuyerPriceForReceived(low).buyerPays : null;
       const trend7 = x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null;
       const trend90 = x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null;
       const spark = [x.d90, x.d30, x.d7, x.d1].filter((q): q is number => !!q);
-      return { name: x.name, priceKop, priceUsd: x.d7 ?? x.d30, trend7, trend90, spark, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needKop: need, needPct: need && priceKop ? Math.round(((need - priceKop) * 100) / priceKop) : null, at: v?.at ?? null };
+      return { name: x.name, priceText: low ? fmtMinor(low, code) : null, priceUsd: x.d7 ?? x.d30, trend7, trend90, spark, vol: v?.vol ?? null, liq: liquidity(v?.vol ?? null), needText: need ? fmtMinor(need, code) : null, needPct: need && low ? Math.round(((need - low) * 100) / low) : null, at: v?.at ?? null };
     });
     return {
       id: c.id, name: c.name, rel: c.rel, status: COLLECTION_STATUS[c.id] ?? null, n: c.n, k: c.k,
@@ -122,19 +131,31 @@ export function collViews(stats: CollStat[], vols: Record<string, CaseVol>): Col
 
 export const COLL_VOL_EVERY = 6 * 3600;   // живую цену и объём кейса обновляем раз в 6 часов
 export const COLL_VOL_PER_RUN = 4;        // не больше 4 запросов к Steam за запуск сборщика
-/** Какие кейсы пора обновить в Steam: все кейсы коллекций, кроме сувенирных наборов; сначала с известным статусом, потом самые давние. */
-export function collVolNames(stats: CollStat[], vols: Record<string, CaseVol>, now: number): string[] {
+export interface VolTask { name: string; code: string }
+/** Какие пары «кейс + валюта» пора обновить: все кейсы коллекций (без сувенирных наборов) во всех валютах, что нужны людям. Давние первыми; при равенстве — по порядку валют (самые частые первыми), потом со статусом. */
+export function collVolTasks(stats: CollStat[], vols: Record<string, CaseVol>, now: number, codes: string[]): VolTask[] {
+  const known = new Set(stats.filter((c) => COLLECTION_STATUS[c.id]).flatMap((c) => c.crateNames));
   const names = new Set<string>();
   for (const c of stats) for (const n of c.crateNames) if (!/Souvenir/i.test(n)) names.add(n);
-  const known = new Set(stats.filter((c) => COLLECTION_STATUS[c.id]).flatMap((c) => c.crateNames));
-  return [...names].filter((n) => now - (vols[n]?.at ?? 0) > COLL_VOL_EVERY)
-    .sort((a, b) => (vols[a]?.at ?? 0) - (vols[b]?.at ?? 0) || Number(known.has(b)) - Number(known.has(a)) || a.localeCompare(b)).slice(0, COLL_VOL_PER_RUN);
+  const out: VolTask[] = [];
+  for (const code of codes) for (const name of names) if (now - (vols[volKey(code, name)]?.at ?? 0) > COLL_VOL_EVERY) out.push({ name, code });
+  return out.sort((a, b) => (vols[volKey(a.code, a.name)]?.at ?? 0) - (vols[volKey(b.code, b.name)]?.at ?? 0)
+    || codes.indexOf(a.code) - codes.indexOf(b.code) || Number(known.has(b.name)) - Number(known.has(a.name)) || a.name.localeCompare(b.name)).slice(0, COLL_VOL_PER_RUN);
+}
+/** Валюты кошельков, которыми реально пользуются люди (до 4 самых частых, только те, что Steam поддерживает; гривна всегда). */
+export async function collCurrencies(d: D1Database): Promise<string[]> {
+  const rows = (await d.prepare("SELECT value AS v, COUNT(*) AS n FROM user_settings WHERE key = 'currency' AND value != '' GROUP BY value ORDER BY n DESC LIMIT 8").all<{ v: string; n: number }>()).results;
+  const codes = ['UAH', ...rows.map((r) => r.v).filter((v) => v !== 'UAH' && v in STEAM_CURRENCY_ID)];
+  return codes.slice(0, 4);
 }
 export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[]; vols: Record<string, CaseVol>; at: number }> {
   const [s, v, at] = await Promise.all([getMeta(d, 'collections_stats'), getMeta(d, 'collections_vol'), getMeta(d, 'collections_stats_at')]);
   let stats: CollStat[] = [], vols: Record<string, CaseVol> = {};
   try { stats = parseCollStats(JSON.parse(s ?? '[]')); } catch { /* пусто */ }
-  try { vols = JSON.parse(v ?? '{}'); } catch { /* пусто */ }
+  try {
+    const raw = JSON.parse(v ?? '{}') as Record<string, CaseVol>;
+    for (const [k, val] of Object.entries(raw)) vols[k.includes('|') ? k : volKey('UAH', k)] = val; // старые записи были в гривнах
+  } catch { /* пусто */ }
   return { stats, vols, at: Number(at) || 0 };
 }
 

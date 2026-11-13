@@ -206,17 +206,17 @@ try {
       console.error('Коллекции:', e.message);
     }
   }
-  // Живые цена и объём Steam по нескольким кейсам (Worker сам выбирает самые давние, не больше 4 за запуск).
+  // Живые цена и объём Steam по кейсам в валюте кошелька людей (Worker выбирает самые давние пары «кейс + валюта», не больше 4 за запуск).
   if (!HOME && collVol.length) {
     const got = [];
-    for (const name of collVol.slice(0, 4)) {
+    for (const t of collVol.slice(0, 4)) {
       if (!steamCan(12)) break;
       try {
-        const q = new URLSearchParams({ appid: '730', currency: '18', market_hash_name: name });
+        const q = new URLSearchParams({ appid: '730', currency: String(t.id), market_hash_name: t.name });
         const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${q}`, { headers: { 'User-Agent': UA } });
         steamReq++;
         if (res.status === 429) { steamLimited = true; console.log('Steam 429 при ценах кейсов — стоп'); break; }
-        if (res.ok) { const b = await readJson(res); if (b?.success) got.push({ name, lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }); }
+        if (res.ok) { const b = await readJson(res); if (b?.success) got.push({ name: t.name, code: t.code, lowest_price: b.lowest_price, median_price: b.median_price, volume: b.volume }); }
       } catch { /* пропускаем кейс */ }
       await sleep(STEAM_GAP_MS);
     }

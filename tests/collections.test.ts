@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCollections, skinPrice } from '../.github/scripts/collections.mjs';
-import { liquidity, rotationHint, parseCollStats, parseCaseVols, collViews, collVolNames, COLLECTION_STATUS, type CollStat } from '../src/core/collections.ts';
+import { liquidity, rotationHint, parseCollStats, parseCaseVols, collViews, collVolTasks, volKey, COLLECTION_STATUS, type CollStat } from '../src/core/collections.ts';
 import { migratedDb, testEnv, ADMIN } from './helpers.ts';
 import { handleIngest } from '../src/ingest.ts';
 import { handleAppApi } from '../src/webapp/api.ts';
@@ -48,14 +48,17 @@ test('ликвидность и признак ротации: пороги', ()
 test('выход в плюс: цена Steam, при которой после комиссии 15% возвращаются потраченные деньги; статусы только из списка', () => {
   const stats: CollStat[] = [{ id: 'collection-set-community-34', name: 'Gallery', rel: null, n: 17, k: 10, m7: 100, m30: 100, up: 0, ups: [], cov: 1, cheapCov: null, crates: [{ name: 'Gallery Case', d1: null, d7: 80, d30: 80, d90: 80 }], crateNames: ['Gallery Case'], skins: [] },
     { id: 'collection-set-unknown', name: 'U', rel: null, n: 5, k: 5, m7: 100, m30: 100, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: [], skins: [] }];
-  const vols = parseCaseVols([{ name: 'Gallery Case', lowest_price: '33₴', median_price: '32,79₴', volume: '4,127' }], NOW);
-  assert.equal(vols['Gallery Case'].vol, 4127);
-  const v = collViews(stats, vols);
+  const vols = parseCaseVols([{ name: 'Gallery Case', code: 'UAH', lowest_price: '33₴', median_price: '32,79₴', volume: '4,127' }, { name: 'Gallery Case', code: 'USD', lowest_price: '$1.31', median_price: '$1.30', volume: '4,127' }, { name: 'Gallery Case', code: 'XXX', lowest_price: '5₴' }], NOW);
+  assert.equal(vols[volKey('UAH', 'Gallery Case')].vol, 4127);
+  assert.equal(vols[volKey('USD', 'Gallery Case')].low, 131, 'доллары — в центах, без пересчёта по курсу');
+  assert.equal(Object.keys(vols).length, 2, 'неизвестный код валюты пропускаем, гривной не подменяем');
+  const v = collViews(stats, vols, 'UAH');
   const cr = v[0].crates[0];
-  assert.equal(cr.priceKop, 3300, 'гривны — только живая цена Steam'); assert.equal(cr.priceUsd, 80); assert.equal(cr.liq, 'high');
+  assert.match(cr.priceText!, /33,00/); assert.equal(cr.priceUsd, 80); assert.equal(cr.liq, 'high');
   assert.ok(cr.needPct! >= 15 && cr.needPct! <= 20, `нужно ~+17,6%, получилось ${cr.needPct}`);
-  assert.equal(collViews(stats, {})[0].crates[0].priceKop, null, 'без живой цены гривен нет, только доллары');
-  assert.equal(collViews(stats, {})[0].crates[0].needKop, null, 'выход в плюс считаем только от живой гривневой цены');
+  assert.match(collViews(stats, vols, 'USD')[0].crates[0].priceText!, /1,31/, 'у человека с долларовым Steam — цена в долларах Steam');
+  assert.equal(collViews(stats, vols, 'EUR')[0].crates[0].priceText, null, 'нет живой цены в его валюте — не пересчитываем по курсу');
+  assert.equal(collViews(stats, {}, 'UAH')[0].crates[0].needText, null, 'выход в плюс считаем только от живой цены');
   assert.equal(v[1].status, null, 'статус неизвестной коллекции не выдумываем');
   assert.equal(v[0].status?.s, 'removed');
   assert.ok(Object.values(COLLECTION_STATUS).every((s) => s.src.length > 3), 'у каждого статуса указан источник');
@@ -64,8 +67,10 @@ test('выход в плюс: цена Steam, при которой после �
 test('какие кейсы обновить: все кейсы без сувенирных наборов; давние первыми, при равенстве сначала со статусом; не больше 4', () => {
   const mk = (id: string, names: string[]): CollStat => ({ id, name: id, rel: null, n: 1, k: 1, m7: null, m30: null, up: 0, ups: [], cov: 0, cheapCov: null, crates: [], crateNames: names, skins: [] });
   const stats = [mk('collection-set-community-34', ['Gallery Case']), mk('collection-set-dust-2', ['Berlin 2019 Dust II Souvenir Package']), mk('collection-set-unknown', ['Hidden Case'])];
-  assert.deepEqual(collVolNames(stats, {}, NOW), ['Gallery Case', 'Hidden Case']);
-  assert.deepEqual(collVolNames(stats, { 'Gallery Case': { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW), ['Hidden Case'], 'свежее 6 часов — не трогаем');
+  assert.deepEqual(collVolTasks(stats, {}, NOW, ['UAH']).map((t) => t.name), ['Gallery Case', 'Hidden Case']);
+  assert.deepEqual(collVolTasks(stats, { [volKey('UAH', 'Gallery Case')]: { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW, ['UAH']).map((t) => t.name), ['Hidden Case'], 'свежее 6 часов — не трогаем');
+  const two = collVolTasks(stats, { [volKey('UAH', 'Gallery Case')]: { low: 1, med: 1, vol: 1, at: NOW - 3600 } }, NOW, ['UAH', 'USD']);
+  assert.deepEqual(two.map((t) => `${t.code}:${t.name}`), ['UAH:Hidden Case', 'USD:Gallery Case', 'USD:Hidden Case'], 'каждая валюта кошельков — свои запросы, давние первыми');
 });
 
 test('приём и API: сборщик шлёт статистику, приложение её видит; мусор отбрасывается; повтор не пишет заново', async () => {

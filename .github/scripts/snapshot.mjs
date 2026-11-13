@@ -33,7 +33,16 @@ export async function putIfMissing({ repo, token, path, contentB64, message, fet
   if (g.status === 200) return 'exists';
   if (g.status !== 404) throw new Error(`GitHub GET ${g.status}`);
   const p = await fetchImpl(base, { method: 'PUT', headers: { ...h, 'Content-Type': 'application/json' }, body: JSON.stringify({ message, content: contentB64 }) });
-  if (!p.ok) throw new Error(`GitHub PUT ${p.status}: ${(await p.text()).slice(0, 200)}`);
+  if (!p.ok) {
+    // Диагностика без секретов: видит ли ключ репозиторий и есть ли право записи.
+    let diag = '';
+    try {
+      const r = await fetchImpl(`https://api.github.com/repos/${repo}`, { headers: h });
+      const j = r.status === 200 ? await r.json() : null;
+      diag = r.status === 200 ? `репозиторий виден, private=${j?.private}, право записи=${j?.permissions?.push}` : `репозиторий ${repo} ключу НЕ виден (HTTP ${r.status}): нет такого репозитория или ключ выдан не на него`;
+    } catch (e) { diag = 'диагностика не удалась: ' + e.message; }
+    throw new Error(`GitHub PUT ${p.status} (${diag})`);
+  }
   return 'saved';
 }
 export const dayPath = (d) => `daily/${d.slice(0, 4)}/${d.slice(5, 7)}/${d}.tsv.gz`;

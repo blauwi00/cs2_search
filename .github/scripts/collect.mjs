@@ -480,13 +480,13 @@ if (sitePriceNames.length && !HOME) {
   }
 }
 
-// 2ж-2. Суточный архив цен ВСЕХ предметов в приватный репозиторий данных (после 19:00 UTC, пока за сегодня файла нет; повтор каждый запуск).
+// 2ж-2. Суточный архив цен ВСЕХ предметов в приватный репозиторий данных (раз в сутки по UTC: пока файла за сегодня нет, каждый запуск пробует снова).
 // Основной сбор не ломаем: любая ошибка только в лог (строка «Архив цен: ОШИБКА»).
 if (!HOME && steamAvg.size) {
   const token = process.env.DATA_REPO_TOKEN;
   const utcNow = new Date();
   if (!token) console.log('Архив цен: нет секрета DATA_REPO_TOKEN — запись пропущена');
-  else if (utcNow.getUTCHours() >= 19) {
+  else {
     try {
       const { collectRows, buildTsv, gzipB64, putIfMissing, dayPath } = await import('./snapshot.mjs');
       const day = utcNow.toISOString().slice(0, 10);

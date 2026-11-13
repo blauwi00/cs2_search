@@ -48,12 +48,12 @@ test('приложение: /sellprice — без живого объявлен�
   assert.match(r.url, /steamcommunity\.com\/market\/listings\/730\/Kilowatt%20Case/);
 });
 
-test('оценка: средней Steam не верим, если на площадках вдвое дешевле (резкое падение цены)', async () => {
+test('оценка: средние прайса Steam как сумму не используем; нет живой цены — цена других площадок', async () => {
   const { marketValue, siteMedianKop } = await import('../src/core/evidence.ts');
   const ev = { listing: null, buyOrder: null, median24h: null, avg: { d1: 5393, d7: 5700, d30: 7200, d90: null, at: 0 }, status: 'history' as const, stale: [] };
-  assert.deepEqual(marketValue(ev), { kop: 5393, basis: 'avg' });
+  assert.equal(marketValue(ev), null, 'одни средние прайса — оценки нет (завышены относительно живого Steam)');
   assert.deepEqual(marketValue(ev, 1200), { kop: 1200, basis: 'site' }, 'Sealed Dead Hand Terminal: средняя 53,93 ₴, на площадках ~12 ₴');
-  assert.deepEqual(marketValue(ev, 4000), { kop: 5393, basis: 'avg' }, 'обычная наценка Steam — средней верим');
+  assert.deepEqual(marketValue(ev, 4000), { kop: 4000, basis: 'site' }, 'даже при обычной наценке Steam берём честную цену площадок');
   assert.deepEqual(marketValue({ ...ev, listing: { kop: 1400, at: 0 } }, 1200), { kop: 1400, basis: 'listing' });
   assert.equal(siteMedianKop([1200, 1100, 90000]), 1200, 'одна площадка с ошибкой не сбивает');
   assert.equal(siteMedianKop([]), null);

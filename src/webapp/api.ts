@@ -711,7 +711,7 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
             steamLowKop: low?.price_kop ?? null, steamMedKop: g('steam', 'median_24h')?.price_kop ?? null, sales24h: g('steam', 'median_24h')?.volume ?? null,
             skinportKop: g('skinport', 'lowest_listing')?.price_kop ?? null, skinportQty: g('skinport', 'lowest_listing')?.quantity ?? null,
             change24hBp: ch, targetKop: x.target_buy_kop, updatedAt: low?.fetched_at ?? null, advice: adv.get(x.item_id) ?? null, img: imgs.get(x.market_hash_name) ?? null,
-            steamAvgKop: (() => { const a = avgsW.get(x.item_id); const c = a?.d7 ?? a?.d30 ?? null; return c && usdW ? toKop(c, 'USD', usdW) : null; })(),
+            steamAvgKop: null, // средние прайса как сумму не показываем (завышены)
           };
         }),
       });
@@ -794,14 +794,17 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const sa = (await steamAvgFor(d, [itemId])).get(itemId) ?? null;
       const usd = (await db.loadLatestFx(d)).get('USD') ?? null;
       const conv = (c: number | null) => (c && usd ? toKop(c, 'USD', usd) : null);
-      const steamAvg = sa && (sa.d1 || sa.d7 || sa.d30) ? { d1: conv(sa.d1), d7: conv(sa.d7), d30: conv(sa.d30), d90: conv(sa.d90), at: sa.updated_at } : null;
+      // Средние прайса — только как изменение в процентах (сумма завышена, см. evidence.ts).
+      const chg = (a: number | null, b: number | null) => (a && b ? Math.round(((a - b) * 100) / b) : null);
+      void conv;
+      const steamAvg = sa && sa.d30 ? { dayVsMonth: chg(sa.d1, sa.d30), weekVsMonth: chg(sa.d7, sa.d30), monthVs3m: chg(sa.d30, sa.d90), at: sa.updated_at } : null;
       // Цены на других площадках — суточные точки с момента, как бот начал их копить (раньше истории нет, не выдумываем).
       const siteRows = (await d.prepare('SELECT day, json FROM site_price_daily WHERE item_id = ? AND day >= ? ORDER BY day LIMIT 100').bind(itemId, new Date((now - days * 86400) * 1000).toISOString().slice(0, 10)).all<{ day: string; json: string }>()).results;
       const siteSeries: Record<string, { t: number; v: number }[]> = {};
       for (const r of siteRows) {
         let o: Record<string, number> = {};
         try { o = JSON.parse(r.json); } catch { continue; }
-        for (const key of ['csgomarket', 'waxpeer', 'lisskins', 'csfloat', 'steamavg']) {
+        for (const key of ['csgomarket', 'waxpeer', 'lisskins', 'csfloat']) {
           const v = o[key] && usd ? toKop(o[key]!, 'USD', usd) : null;
           if (v) (siteSeries[key] ??= []).push({ t: Math.floor(Date.parse(r.day + 'T12:00:00Z') / 1000), v });
         }

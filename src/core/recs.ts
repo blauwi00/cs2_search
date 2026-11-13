@@ -198,15 +198,8 @@ export function marketSides(e: ScanEntry, fx: Map<Currency, FxRate>, s: RecSetti
     const list = e.steam.lowestKop - 1;
     const net = steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0;
     sells.push({ m: 'steam', listKop: list, netKop: net, basis: `на 1 коп. дешевле самого дешёвого (${e.steam.volume24h} продаж за сутки)`, fees: ['Steam 15%'] });
-  } else if (e.sa?.d7 && e.sa.d1) {
-    // Живой цены Steam нет — ориентир: средняя цена продаж в Steam за неделю (прайс CSGO Trader, USD → грн по НБУ).
-    const list = kop(Math.min(e.sa.d7, e.sa.d1), 'USD');
-    const net = list ? steamSellerProceeds(Math.max(3, list))?.sellerReceives ?? 0 : 0;
-    // Средняя — история: у предмета могла резко упасть цена. Если на площадках он вдвое дешевле средней — ей не верим, идею не строим.
-    const siteMin = Math.min(...buys.filter((b) => b.m !== 'steam').map((b) => b.listKop));
-    const doubt = Number.isFinite(siteMin) && siteMin > 0 && list !== null && siteMin * AVG_DOUBT_RATIO < list;
-    if (list && !doubt) sells.push({ m: 'steam', listKop: list, netKop: net, basis: 'средняя цена продаж в Steam за неделю (≈, пересчёт из USD по курсу НБУ)', fees: ['Steam 15%'] });
   }
+  // Без живой цены Steam сторону «продать в Steam» не считаем: средние из открытого прайса завышены (проверено 13.11.2026).
   if (e.s7?.median && sales7 !== null && sales7 >= 7) {
     const list = kop(e.s7.median, 'EUR');
     const feeBp = e.s7.median > SKINPORT_HIGH_EUR_CENTS ? SKINPORT_SELL_FEE_HIGH_BP : MARKETS.skinport.sellFeeBp;

@@ -57,9 +57,9 @@ export function steamEvidence(quotes: QuoteLike[], avg: AvgLike | null | undefin
 export function marketValue(e: SteamEvidence, siteKop?: number | null): { kop: number; basis: 'listing' | 'median24h' | 'avg' | 'site' } | null {
   if (e.listing) return { kop: e.listing.kop, basis: 'listing' };
   if (e.median24h) return { kop: e.median24h.kop, basis: 'median24h' };
-  const a = e.avg && (e.avg.d1 && e.avg.d7 ? Math.min(e.avg.d1, e.avg.d7) : e.avg.d1 ?? e.avg.d7);
-  if (a && siteKop && siteKop > 0 && siteKop * AVG_DOUBT_RATIO < a) return { kop: siteKop, basis: 'site' };
-  if (a) return { kop: a, basis: 'avg' };
+  // Средние продаж Steam из открытого прайса CSGO Trader как сумму НЕ используем: проверка 13.11.2026 на живом Steam —
+  // они выше реальной цены в 1,2–2 раза (Kilowatt Case: $0,24 против $0,13). Нет живой цены — честная цена других площадок.
+  if (siteKop && siteKop > 0) return { kop: siteKop, basis: 'site' };
   return null;
 }
 

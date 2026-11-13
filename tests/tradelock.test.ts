@@ -33,7 +33,7 @@ test('«Можно продавать»: одно напоминание пос�
   assert.equal(m.ref, `unlock:${lot}`);
   assert.match(m.text, /Можно продавать/);
   assert.match(m.text, /Kilowatt Case<\/b> ×2/);
-  assert.match(m.text, /Steam: ≈ ⟦720⟧/, '0,18 $ × 40 = 7,20 ₴');
+  assert.match(m.text, /Steam: свежей цены нет/, 'средние прайса как цену Steam не выдаём (завышены)');
   assert.match(m.text, /Площадки: ≈ ⟦620⟧/, 'медиана площадок 0,155 $ (CS.MONEY-ориентир не берём)');
   assert.equal((await jobTradeUnlock({ db: D, now: BUY + TRADE_LOCK_SEC + 3 * 86400 })).sent, 0, 'спустя 3 дня — уже не актуально');
 });

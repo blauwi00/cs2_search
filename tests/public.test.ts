@@ -167,7 +167,8 @@ test('прайс Steam (CSGO Trader): сохраняется для предме
   assert.match(rev.advice.reason, /в Steam \(продажи за сутки\) ниже средней цены продаж в Steam за месяц на 15%/);
   assert.equal(w.body.items.find((x: { name: string }) => x.name === 'Kilowatt Case').advice.action, 'nodata');
   const item = await api(env, ALICE, `item/${rev.itemId}`);
-  assert.equal(item.body.steamAvg.d30, 1600, '0,40 $ × 40 = 16,00 грн');
+  assert.equal(item.body.steamAvg.dayVsMonth, -15, 'только изменение в процентах, без суммы');
+  assert.equal(item.body.steamAvg.d30, undefined, 'сумму средней прайса не отдаём');
 });
 
 test('автозапуск сборщика: workflow отключён в GitHub (422) — сборщик помечается «не работает» с подсказкой', async () => {

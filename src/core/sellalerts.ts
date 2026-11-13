@@ -14,8 +14,9 @@ export const MAX_SELL_ALERTS = 50;
 
 export function steamEstKop(live: { price_kop: number | null; fetched_at: number } | null | undefined, sa: { d1: number | null; d7: number | null; updated_at?: number } | null | undefined, usd: FxRate | null, now: number): number | null {
   if (live?.price_kop && now - live.fetched_at < LIVE_MAX_AGE_SEC) return live.price_kop;
-  if (sa?.updated_at !== undefined && now - sa.updated_at > AVG_MAX_AGE_SEC) return null; // устаревшие средние — не повод для уведомления
-  return sa?.d7 && usd ? toKop(Math.min(sa.d7, sa.d1 ?? sa.d7), 'USD', usd) : null;
+  // Только живая цена Steam: средние из открытого прайса завышены (до 2 раз) и давали бы ложное «цена дошла до цели».
+  void sa; void usd; void AVG_MAX_AGE_SEC;
+  return null;
 }
 
 interface Ctx { db: D1Database; now: number }

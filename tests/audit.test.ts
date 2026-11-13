@@ -46,7 +46,8 @@ test('доказательства цены: объявление, медиан�
   // Объявление 7 ч назад — уже не «сейчас»: остаются только средние продаж (история, не предложение).
   const e2 = steamEvidence([q('lowest_listing', 450, 7 * 3600)], avg, USD, NOW);
   assert.equal(e2.status, 'history'); assert.equal(e2.listing, null); assert.deepEqual(e2.stale, ['lowest_listing']);
-  assert.equal(marketValue(e2)?.basis, 'avg'); assert.equal(marketValue(e2)?.kop, 415);
+  assert.equal(marketValue(e2), null, 'средние прайса как сумму не используем (завышены относительно живого Steam)');
+  assert.deepEqual(marketValue(e2, 300), { kop: 300, basis: 'site' }, 'нет живой цены — цена других площадок');
   // Средние старше 48 ч и нет живых данных — «Нет актуальных данных».
   const e3 = steamEvidence([q('lowest_listing', 450, 9 * 3600)], { ...avg, updated_at: NOW - 3 * 86400 }, USD, NOW);
   assert.equal(e3.status, 'no_data'); assert.equal(marketValue(e3), null);

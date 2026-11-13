@@ -92,7 +92,7 @@ export function buildPostLead(slot: Slot, entries: ScanEntry[], fx: Map<Currency
   const usd = fx.get('USD') ?? null;
   const rows = entries
     .filter((e) => / Case$/.test(e.name) && e.sa?.d1 && e.sa.d30)
-    .map((e) => ({ name: e.name, d: Math.trunc(((e.sa!.d1! - e.sa!.d30!) * 10000) / e.sa!.d30!), kop: usd ? toKop(e.sa!.d1!, 'USD', usd) : null }));
+    .map((e) => ({ name: e.name, d: Math.trunc(((e.sa!.d1! - e.sa!.d30!) * 10000) / e.sa!.d30!), kop: null as number | null })); // сумму не показываем: средние прайса завышены, процент изменения — по одному источнику
   if (rows.length < 3) return null;
   const up = [...rows].sort((a, b) => b.d - a.d).filter((x) => x.d > 200).slice(0, 3);
   const down = [...rows].sort((a, b) => a.d - b.d).filter((x) => x.d < -200).slice(0, 3);

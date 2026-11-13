@@ -26,17 +26,18 @@ test('цель продажи: ставится только на свой пр�
   assert.equal(st.items[0].targetKop, 4400);
 
   assert.equal((await jobSellAlerts({ db: D, now: NOW })).sent, 0, 'пока 40 грн < 44');
-  d.db.exec(`UPDATE steam_avg SET d1 = 120, d7 = 115 WHERE item_id = 1`);   // min(1.20, 1.15) = 46 грн
-  assert.equal((await jobSellAlerts({ db: D, now: NOW + 1800 })).sent, 1);
+  d.db.exec(`UPDATE steam_avg SET d1 = 120, d7 = 115 WHERE item_id = 1`);   // средние прайса выросли до 46 грн —
+  assert.equal((await jobSellAlerts({ db: D, now: NOW + 1800 })).sent, 0, 'по средним прайса (завышены) не уведомляем');
+  d.db.exec(`INSERT INTO market_quotes (item_id, source, price_type, price_minor, currency, price_kop, fetched_at, quality) VALUES (1, 'steam', 'lowest_listing', 4600, 'UAH', 4600, ${NOW + 1700}, 'ok')`);
+  assert.equal((await jobSellAlerts({ db: D, now: NOW + 1800 })).sent, 1, 'живая цена Steam дошла до цели');
   const row = d.db.prepare("SELECT text, keyboard FROM outbox WHERE kind = 'sell_target'").get() as { text: string; keyboard: string };
   assert.match(row.text, /Revolution Case/); assert.match(row.text, /⟦4600⟧/); assert.match(row.text, /цель ⟦4400⟧/);
   assert.equal((await jobSellAlerts({ db: D, now: NOW + 3600 })).sent, 0, 'второй раз — нет');
   assert.equal((await call('steam')).items[0].targetKop, null, 'выполненная цель снята');
   assert.equal((await call('sellalert', { itemId: 1, kop: null })).ok, true);
-  // Устаревшие средние (старше 48 ч) — не повод для уведомления.
+  // Живая цена устарела (старше нескольких часов) — не повод для уведомления.
   assert.equal((await call('sellalert', { itemId: 1, kop: 4400 })).targetKop, 4400);
   d.db.exec(`UPDATE steam_avg SET updated_at = ${NOW - 3 * 86400}`);
-  assert.equal((await jobSellAlerts({ db: D, now: NOW + 7200 })).sent, 0);
-  const st2 = await call('steam');
-  assert.equal(st2.items[0].status, 'no_data'); assert.equal(st2.items[0].priceKop, null, 'нет актуальных данных — нет цены');
+  assert.equal((await jobSellAlerts({ db: D, now: NOW + 7 * 86400 })).sent, 0);
+  void call;
 });

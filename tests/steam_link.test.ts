@@ -85,7 +85,7 @@ test('инвентарь: сборщик забирает открытый ин�
   assert.equal(st.body.pending, false);
   const rc = st.body.items.find((x: { name: string }) => x.name === 'Revolution Case');
   assert.equal(rc.qty, 5);
-  assert.equal(rc.priceKop, 1600, '≈ 0,40 $ × 40');
+  assert.equal(rc.priceKop, null, 'нет живой цены Steam и площадок — суммы нет (средние прайса завышены)');
   assert.equal(rc.advice.action, 'sell', 'за сутки на 10% дороже месяца — хороший момент продать');
   assert.match(rc.img, /steamstatic/);
   assert.equal(st.body.items.find((x: { name: string }) => x.name === 'Service Medal').advice, null, 'нельзя продать — без подсказки');

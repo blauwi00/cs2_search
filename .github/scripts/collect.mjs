@@ -206,10 +206,10 @@ try {
       console.error('Коллекции:', e.message);
     }
   }
-  // Живые цена и объём Steam по кейсам в валюте кошелька людей (Worker выбирает самые давние пары «кейс + валюта», не больше 4 за запуск).
+  // Живые цена и объём Steam по кейсам в валюте кошелька людей (Worker выбирает самые давние пары «кейс + валюта», не больше 6 за запуск; сначала то, что человек открыл в «Составе»).
   if (!HOME && collVol.length) {
     const got = [];
-    for (const t of collVol.slice(0, 4)) {
+    for (const t of collVol.slice(0, 6)) {
       if (!steamCan(12)) break;
       try {
         const q = new URLSearchParams({ appid: '730', currency: String(t.id), market_hash_name: t.name });

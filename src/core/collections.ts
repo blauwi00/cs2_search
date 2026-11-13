@@ -5,7 +5,7 @@
  */
 import { steamBuyerPriceForReceived } from './fees.ts';
 import { parseSteamPriceString } from '../utils/money.ts';
-import { getMeta } from './channel.ts';
+import { getMeta, setMetaStmt } from './channel.ts';
 
 export interface CollStat {
   id: string; name: string; rel: string | null;
@@ -130,23 +130,43 @@ export function collViews(stats: CollStat[], vols: Record<string, CaseVol>, code
 }
 
 export const COLL_VOL_EVERY = 6 * 3600;   // живую цену и объём кейса обновляем раз в 6 часов
-export const COLL_VOL_PER_RUN = 4;        // не больше 4 запросов к Steam за запуск сборщика
+export const COLL_VOL_PER_RUN = 6;        // не больше 6 запросов к Steam за запуск сборщика
 export interface VolTask { name: string; code: string }
-/** Какие пары «кейс + валюта» пора обновить: все кейсы коллекций (без сувенирных наборов) во всех валютах, что нужны людям. Давние первыми; при равенстве — по порядку валют (самые частые первыми), потом со статусом. */
-export function collVolTasks(stats: CollStat[], vols: Record<string, CaseVol>, now: number, codes: string[]): VolTask[] {
+/**
+ * Какие пары «предмет + валюта» пора обновить. Сначала то, что человек открыл в «Составе» (живые цены скинов в валюте его Steam),
+ * потом все кейсы коллекций (без сувенирных наборов) во всех валютах, что нужны людям: давние первыми, затем по порядку валют, затем со статусом.
+ */
+export function collVolTasks(stats: CollStat[], vols: Record<string, CaseVol>, now: number, codes: string[], req: VolTask[] = []): VolTask[] {
+  const asked = req.filter((t) => t.code in STEAM_CURRENCY_ID && now - (vols[volKey(t.code, t.name)]?.at ?? 0) > SKIN_FRESH_SEC).slice(0, COLL_VOL_PER_RUN);
+  if (asked.length >= COLL_VOL_PER_RUN) return asked;
   const known = new Set(stats.filter((c) => COLLECTION_STATUS[c.id]).flatMap((c) => c.crateNames));
   const names = new Set<string>();
   for (const c of stats) for (const n of c.crateNames) if (!/Souvenir/i.test(n)) names.add(n);
   const out: VolTask[] = [];
   for (const code of codes) for (const name of names) if (now - (vols[volKey(code, name)]?.at ?? 0) > COLL_VOL_EVERY) out.push({ name, code });
-  return out.sort((a, b) => (vols[volKey(a.code, a.name)]?.at ?? 0) - (vols[volKey(b.code, b.name)]?.at ?? 0)
-    || codes.indexOf(a.code) - codes.indexOf(b.code) || Number(known.has(b.name)) - Number(known.has(a.name)) || a.name.localeCompare(b.name)).slice(0, COLL_VOL_PER_RUN);
+  out.sort((a, b) => (vols[volKey(a.code, a.name)]?.at ?? 0) - (vols[volKey(b.code, b.name)]?.at ?? 0)
+    || codes.indexOf(a.code) - codes.indexOf(b.code) || Number(known.has(b.name)) - Number(known.has(a.name)) || a.name.localeCompare(b.name));
+  return [...asked, ...out].slice(0, COLL_VOL_PER_RUN);
 }
 /** Валюты кошельков, которыми реально пользуются люди (до 4 самых частых, только те, что Steam поддерживает; гривна всегда). */
 export async function collCurrencies(d: D1Database): Promise<string[]> {
   const rows = (await d.prepare("SELECT value AS v, COUNT(*) AS n FROM user_settings WHERE key = 'currency' AND value != '' GROUP BY value ORDER BY n DESC LIMIT 8").all<{ v: string; n: number }>()).results;
   const codes = ['UAH', ...rows.map((r) => r.v).filter((v) => v !== 'UAH' && v in STEAM_CURRENCY_ID)];
   return codes.slice(0, 4);
+}
+/** Очередь «живые цены скинов открытой коллекции» (кому что нужно): мета 'coll_req', до 80 пар. */
+export async function loadReq(d: D1Database): Promise<VolTask[]> {
+  try {
+    const a = JSON.parse((await getMeta(d, 'coll_req')) ?? '[]');
+    return (Array.isArray(a) ? a : []).filter((t: any) => t && typeof t.name === 'string' && typeof t.code === 'string' && t.code in STEAM_CURRENCY_ID).slice(0, 80);
+  } catch { return []; }
+}
+export async function addReq(d: D1Database, add: VolTask[]): Promise<void> {
+  if (!add.length) return;
+  const cur = await loadReq(d);
+  const have = new Set(cur.map((t) => volKey(t.code, t.name)));
+  const fresh = add.filter((t) => !have.has(volKey(t.code, t.name)));
+  if (fresh.length) await setMetaStmt(d, 'coll_req', JSON.stringify([...cur, ...fresh].slice(-80))).run();
 }
 export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[]; vols: Record<string, CaseVol>; at: number }> {
   const [s, v, at] = await Promise.all([getMeta(d, 'collections_stats'), getMeta(d, 'collections_vol'), getMeta(d, 'collections_stats_at')]);
@@ -159,8 +179,33 @@ export async function loadCollections(d: D1Database): Promise<{ stats: CollStat[
   return { stats, vols, at: Number(at) || 0 };
 }
 
-export interface SkinView { name: string; rar: number; priceUsd: number | null; trend7: number | null; trend90: number | null }
-/** Скины одной коллекции: цена в долларах (средняя продажа Steam за неделю по открытому прайсу) и изменение. */
-export function skinViews(c: CollStat): SkinView[] {
-  return c.skins.map((x) => ({ name: x.n, rar: x.rar, priceUsd: x.d7 ?? x.d30, trend7: x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null, trend90: x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null }));
+export const SKIN_FRESH_SEC = 24 * 3600;  // живая цена скина считается свежей сутки
+export interface SkinView { name: string; rar: number; priceText: string | null; priceUsd: number | null; trend7: number | null; trend90: number | null }
+/**
+ * Скины одной коллекции. Цена — живая цена Steam в валюте кошелька человека (если сборщик уже получил её, не старше суток);
+ * иначе остаётся долларовая цена из открытого прайса (priceUsd), она подписывается в приложении. Пересчёта по курсу нет.
+ */
+export function skinViews(c: CollStat, vols: Record<string, CaseVol>, code: string, now: number): SkinView[] {
+  return c.skins.map((x) => {
+    const v = vols[volKey(code, x.n)];
+    const live = v?.low && now - v.at < SKIN_FRESH_SEC ? v.low : null;
+    return { name: x.n, rar: x.rar, priceText: live ? fmtMinor(live, code) : null, priceUsd: x.d7 ?? x.d30, trend7: x.d7 && x.d30 ? Math.round(((x.d7 - x.d30) * 100) / x.d30) : null, trend90: x.d7 && x.d90 ? Math.round(((x.d7 - x.d90) * 100) / x.d90) : null };
+  });
+}
+/** Пять самых дешёвых красных для контракта: берём живую цену самого дешёвого красного × 5 (нижняя оценка), если она есть. */
+export function fuelText(c: CollStat, vols: Record<string, CaseVol>, code: string, now: number): { name: string; text: string } | null {
+  let best: { name: string; low: number } | null = null;
+  for (const x of c.skins) {
+    if (x.rar !== 5) continue;
+    const v = vols[volKey(code, x.n)];
+    if (v?.low && now - v.at < SKIN_FRESH_SEC && (!best || v.low < best.low)) best = { name: x.n, low: v.low };
+  }
+  return best ? { name: best.name, text: fmtMinor(best.low * 5, code) } : null;
+}
+/** Выданные сборщику задачи убираем из очереди: одна попытка на запрос (повторно поставит следующее открытие «Состава»). */
+export async function popReq(d: D1Database, given: VolTask[]): Promise<void> {
+  const cur = await loadReq(d);
+  const gone = new Set(given.map((t) => volKey(t.code, t.name)));
+  const next = cur.filter((t) => !gone.has(volKey(t.code, t.name)));
+  if (next.length !== cur.length) await setMetaStmt(d, 'coll_req', JSON.stringify(next)).run();
 }

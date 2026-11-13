@@ -2401,7 +2401,6 @@ function collCard(c) {
   more += '<div>Цены есть у ' + c.k + ' из ' + c.n + (c.rel ? ' · вышла ' + ymRu(c.rel) : '') + '</div>';
   if (main && c.m7 != null) more += '<div>Средний скин коллекции: ' + sgn(c.m7) + ' за неделю, ' + sgn(c.m30) + ' месяц к трём</div>';
   for (var j = 0; j < c.crates.length; j++) { var x = c.crates[j]; if (x === main || (x.priceText == null && x.priceUsd == null)) continue; more += '<div>' + esc(x.name) + ': ' + (x.priceText != null ? x.priceText : usd(x.priceUsd)) + ', ' + sgn(x.trend7) + ' за неделю</div>'; }
-  if (c.fuelUsd != null) more += '<div>Пять красных скинов для контракта: от ' + usd(c.fuelUsd) + ' (в долларах; дешёвый: ' + esc(c.fuelName) + ')</div>';
   if (c.status) more += '<div>Статус «' + COLL_STATUS_RU[st] + '»: ' + esc(c.status.src) + '</div>';
   h += '<details class="more" style="margin:10px 0 0"><summary><span class="chev">›</span> Подробнее</summary><div class="mut" style="font-size:13px;line-height:1.5;padding:4px 0 2px">' + more + '</div></details>';
   return h + '</div>';
@@ -2412,7 +2411,9 @@ var RAR_RU = { 5: 'Красные (Covert)', 4: 'Розовые (Classified)', 3
 function collSheet(id, name) {
   sheet('<div class="skel"></div><div class="skel" style="height:180px"></div>');
   api('collections/' + encodeURIComponent(id)).then(function (r) {
-    var h = '<h2>' + esc(String(r.name).replace(/^The /, '').replace(/ Collection$/, '')) + '</h2><div class="sub">Нажми на предмет: график цены и цены на всех площадках. Цена скина в долларах: средняя продажа в Steam за неделю. В твоём Steam она отличается: точная цена — в карточке скина.</div>';
+    var h = '<h2>' + esc(String(r.name).replace(/^The /, '').replace(/ Collection$/, '')) + '</h2><div class="sub">Нажми на предмет: график цены и цены на всех площадках. Цена скина — живая цена в твоём Steam (самое дешёвое объявление).</div>';
+    if (r.fuel) h += '<div class="note" style="margin-top:0">Пять красных для контракта: от ' + r.fuel.text + ' (за самый дешёвый красный: ' + esc(splitName(r.fuel.name).base) + ' × 5, то есть минимум).</div>';
+    if (r.loading) h += '<div class="card" style="font-size:13px;color:var(--amber)">У ' + r.loading + ' скинов цены в твоей валюте Steam ещё загружаются: я поставил их в очередь, Steam отвечает не быстро. Открой «Состав» снова через 15–30 минут. Пока серым показана цена в долларах.</div>';
     if (r.crateNames.length) {
       h += '<div class="sec">Кейс</div><div class="card" style="padding:2px 14px">' + r.crateNames.map(function (n) { return '<div class="kv" style="cursor:pointer" data-nm="' + esc(n) + '"><span>' + esc(n) + '</span><span class="v">›</span></div>'; }).join('') + '</div>';
     }
@@ -2420,7 +2421,7 @@ function collSheet(id, name) {
     r.skins.forEach(function (x, i) {
       if (x.rar !== last) { if (last !== -1) h += '</div>'; h += '<div class="sec" style="border-left:4px solid ' + RAR_COL[x.rar] + ';padding-left:8px">' + RAR_RU[x.rar] + '</div><div class="card" style="padding:2px 14px">'; last = x.rar; }
       var sp = splitName(x.name);
-      h += '<div class="kv" style="cursor:pointer;align-items:center;border-left:4px solid ' + RAR_COL[x.rar] + ';padding-left:10px;margin-left:-4px" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + (sp.wear ? '<div class="mut" style="font-size:11px">' + esc(sp.wear) + '</div>' : '') + '</span><span class="v" style="white-space:nowrap">' + (x.priceUsd != null ? usd(x.priceUsd) : '—') + (x.trend7 != null ? ' <span class="' + dcls(x.trend7) + '" style="font-size:12px">' + sgn(x.trend7) + '</span>' : '') + '</span></div>';
+      h += '<div class="kv" style="cursor:pointer;align-items:center;border-left:4px solid ' + RAR_COL[x.rar] + ';padding-left:10px;margin-left:-4px" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + (sp.wear ? '<div class="mut" style="font-size:11px">' + esc(sp.wear) + '</div>' : '') + '</span><span class="v" style="white-space:nowrap">' + (x.priceText != null ? x.priceText : x.priceUsd != null ? '<span class="mut">' + usd(x.priceUsd) + '</span>' : '—') + (x.trend7 != null ? ' <span class="' + dcls(x.trend7) + '" style="font-size:12px">' + sgn(x.trend7) + '</span>' : '') + '</span></div>';
     });
     if (last !== -1) h += '</div>';
     if (!r.skins.length) h += '<div class="card mut">Цен на скины этой коллекции пока нет.</div>';

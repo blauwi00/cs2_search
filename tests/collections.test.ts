@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCollections, skinPrice } from '../.github/scripts/collections.mjs';
-import { liquidity, rotationHint, parseCollStats, parseCaseVols, collViews, collVolTasks, volKey, COLLECTION_STATUS, type CollStat } from '../src/core/collections.ts';
+import { liquidity, rotationHint, parseCollStats, parseCaseVols, collViews, collVolTasks, volKey, skinViews, fuelText, loadReq, COLLECTION_STATUS, SKIN_FRESH_SEC, type CollStat } from '../src/core/collections.ts';
 import { migratedDb, testEnv, ADMIN } from './helpers.ts';
 import { handleIngest } from '../src/ingest.ts';
 import { handleAppApi } from '../src/webapp/api.ts';
@@ -91,4 +91,37 @@ test('приём и API: сборщик шлёт статистику, прил�
   const dj = await det.json() as any;
   assert.equal(dj.ok, true); assert.deepEqual(dj.crateNames, ['Gallery Case']); assert.equal(dj.skins.length, 2); assert.equal(dj.skins[0].rar, 5); assert.equal(dj.skins[0].trend7, 20);
   assert.equal((await handleAppApi(new Request('https://w/app/api/collections/nope-nope', { headers: { 'X-Init-Data': init } }), env, NOW)).status, 404);
+});
+
+test('скины коллекции: цена только живая в валюте Steam человека и не старше суток; нет — остаётся доллар отдельно; «красные» считаются по живой цене', () => {
+  const c: CollStat = { id: 'x', name: 'X', rel: null, n: 3, k: 3, m7: null, m30: null, up: 0, ups: [], cov: 2, cheapCov: null, crates: [], crateNames: [],
+    skins: [{ n: 'A | Red (Field-Tested)', rar: 5, d7: 3000, d30: 2500, d90: 2000 }, { n: 'B | Red (Field-Tested)', rar: 5, d7: 5000, d30: 5000, d90: null }, { n: 'C | Blue (Field-Tested)', rar: 2, d7: 100, d30: 100, d90: null }] };
+  const vols = { [volKey('UAH', 'A | Red (Field-Tested)')]: { low: 4000, med: null, vol: null, at: NOW - 3600 }, [volKey('UAH', 'B | Red (Field-Tested)')]: { low: 9000, med: null, vol: null, at: NOW - 3600 },
+    [volKey('UAH', 'C | Blue (Field-Tested)')]: { low: 50, med: null, vol: null, at: NOW - SKIN_FRESH_SEC - 10 } };
+  const v = skinViews(c, vols, 'UAH', NOW);
+  assert.match(v[0].priceText!, /40,00/); assert.equal(v[0].priceUsd, 3000); assert.equal(v[0].trend7, 20);
+  assert.equal(v[2].priceText, null, 'живая цена старше суток не показывается');
+  assert.equal(skinViews(c, vols, 'USD', NOW)[0].priceText, null, 'в другой валюте чужие цены не подставляем');
+  const f = fuelText(c, vols, 'UAH', NOW)!;
+  assert.equal(f.name, 'A | Red (Field-Tested)'); assert.match(f.text, /200,00/, 'пять самых дешёвых красных не посчитать точнее: минимум = 5 × самый дешёвый');
+  assert.equal(fuelText(c, {}, 'UAH', NOW), null);
+});
+
+test('очередь живых цен: открытие «Состава» ставит скины в очередь, сборщик получает их первыми, повторно одно и то же не ставится', async () => {
+  const d = migratedDb(); const env = testEnv(d, { INGEST_SECRET: SECRET, COLLECTOR: 'github' });
+  const post = (body: unknown) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env, NOW);
+  const item = { id: 'collection-set-community-34', name: 'The Gallery Collection', rel: '2024-10-02', n: 17, k: 10, m7: 110, m30: 100, up: 0, ups: [], cov: 1, cheapCov: null, crates: [], crateNames: ['Gallery Case'], skins: [{ n: 'A | Red (Field-Tested)', rar: 5, d7: 3000, d30: 2500, d90: 2000 }, { n: 'A | One (Field-Tested)', rar: 2, d7: 100, d30: 100, d90: null }] };
+  await post({ kind: 'collections_stats', fetchedAt: NOW, items: [item] });
+  const init = await signInitData({ auth_date: String(NOW), query_id: 'Q', user: JSON.stringify({ id: ADMIN }) }, 'TEST_TOKEN');
+  const open = async () => await (await handleAppApi(new Request('https://w/app/api/collections/collection-set-community-34', { headers: { 'X-Init-Data': init } }), env, NOW)).json() as any;
+  const j = await open(); await open();
+  assert.equal(j.loading, 2); assert.equal(j.skins[0].priceText, null);
+  assert.equal((await loadReq(d as unknown as D1Database)).length, 2, 'без дублей');
+  const plan = await (await handleIngest(new Request('https://w/ingest/items', { headers: { 'X-Ingest-Secret': SECRET } }), env, NOW + 60)).json() as any;
+  assert.deepEqual(plan.collVol.slice(0, 2).map((t: any) => t.name), ['A | Red (Field-Tested)', 'A | One (Field-Tested)']);
+  assert.equal(plan.collVol[0].code, 'UAH'); assert.equal(plan.collVol[0].id, 18);
+  assert.equal((await loadReq(d as unknown as D1Database)).length, 0, 'выданные сборщику задачи убраны из очереди');
+  await post({ kind: 'collections_vol', fetchedAt: NOW + 70, items: [{ name: 'A | Red (Field-Tested)', code: 'UAH', lowest_price: '40₴', volume: '10' }] });
+  const j2 = await (await handleAppApi(new Request('https://w/app/api/collections/collection-set-community-34', { headers: { 'X-Init-Data': init } }), env, NOW + 80)).json() as any;
+  assert.match(j2.skins[0].priceText, /40,00/); assert.equal(j2.loading, 1); assert.match(j2.fuel.text, /200,00/);
 });

@@ -1,0 +1,12 @@
+[Unit]
+Description=Ценолов: проход живых цен Steam
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Файл окружения на ноутбуке (права 600): CENOLOV_URL=…, INGEST_SECRET=…
+EnvironmentFile=-%h/.config/cenolov/ingest.env
+WorkingDirectory=%h/projects/cs2_search
+ExecStart=/bin/bash -lc 'source "$HOME/.nvm/nvm.sh" && exec node home/steam-pass.mjs'
+TimeoutStartSec=8h

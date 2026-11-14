@@ -37,7 +37,7 @@ export default {
     if (url.hostname !== OFFICIAL_HOST && (url.pathname === '/app' || url.pathname === '/telegram')) ctx.waitUntil(rememberSelfHost(env.DB, url.hostname).catch(() => undefined));
     if (url.pathname === '/telegram') return handleWebhook(req, env, nowSec());
     if (url.pathname.startsWith('/admin/')) return handleAdmin(req, env, nowSec());
-    if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest') return handleIngest(req, env, nowSec());
+    if (url.pathname === '/ingest' || url.pathname === '/ingest/items' || url.pathname === '/ingest/backtest' || url.pathname === '/ingest/steam_live') return handleIngest(req, env, nowSec());
     if (url.pathname === '/app' && req.method === 'GET') {
       // ETag: при повторном открытии телефон получает «не изменилось» (304) вместо 300 КБ — приложение открывается быстрее.
       if ((req.headers.get('If-None-Match') ?? '').replace(/^W\//, '') === appEtag().replace(/^W\//, '')) return new Response(null, { status: 304, headers: { ETag: appEtag(), 'Cache-Control': 'no-cache' } });

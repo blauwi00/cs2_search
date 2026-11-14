@@ -18,6 +18,7 @@ import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
+import { parseSteamLive, steamLiveStmts } from './core/steamlive.ts';
 import { parseCollStats, parseCaseVols, loadCollections, collVolTasks, collCurrencies, loadReq, popReq, STEAM_CURRENCY_ID } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
@@ -35,7 +36,7 @@ interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: un
 interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown; done?: unknown }
 
 /** Что может присылать домашний агент (свой ключ, а не общий ключ сборщика): только данные Steam со своего компьютера. */
-export const AGENT_KINDS = ['steam', 'steam_inventory', 'steam_avg', 'rally_scan', 'agent_ping'] as const;
+export const AGENT_KINDS = ['steam', 'steam_inventory', 'steam_avg', 'rally_scan', 'agent_ping', 'steam_live'] as const;
 
 export async function sha256Hex(s: string): Promise<string> {
   const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
@@ -431,6 +432,12 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
         .map((r) => ({ name: r.name as string, d1: c(r.d1), d7: c(r.d7), d30: c(r.d30) }));
       if (list.length) await setMetaStmt(d, 'cases_stats', JSON.stringify(list)).run();
       result.stored = list.length;
+    } else if (body.kind === 'steam_live') {
+      // Живые цены Steam по всему рынку от домашнего сборщика: пачка до 1000 предметов, пишутся только изменения.
+      const rows = parseSteamLive(body.items);
+      const at = Math.floor(typeof body.fetchedAt === 'number' ? body.fetchedAt : now); // общая проверка времени выше: не в будущем, не старше часа
+      if (rows.length || body.done === true) for (let i = 0, st = steamLiveStmts(d, rows, at, body.done === true); i < st.length; i += 90) await d.batch(st.slice(i, i + 90));
+      result.stored = rows.length;
     } else if (body.kind === 'collections_stats') {
       // Динамика цен по коллекциям (считает сборщик из открытых файлов): одна запись в meta, не чаще раза в час.
       const list = parseCollStats(body.items);

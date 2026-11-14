@@ -11,6 +11,9 @@ import { join } from 'node:path';
 
 const DIR = process.env.STATE_DIR || join(homedir(), '.local/state/cenolov');
 const STATE = join(DIR, 'steam-pass.json');
+const SENT = join(DIR, 'steam-sent.json'); // последние отправленные цены: {имя: [центы, unix]}
+const RESEND_AFTER = 3 * 86400;            // слать без изменений не реже раза в 3 дня
+const MIN_CHANGE = 0.01;                    // или если цена изменилась ≥ 1 %
 const LOG = join(DIR, 'steam-pass.log');
 const PAGE = 10;               // Steam без входа отдаёт 10 предметов за запрос
 const BATCH = 1000;            // предметов в одной отправке
@@ -29,10 +32,16 @@ const load = () => { try { return JSON.parse(readFileSync(STATE, 'utf8')); } cat
 const st = { start: 0, slow: 1, total: null, passStartedAt: null, lastPassDoneAt: null, ...load() };
 const save = () => writeFileSync(STATE, JSON.stringify(st, null, 2));
 
-let batch = {};
+let sent = {};
+try { sent = JSON.parse(readFileSync(SENT, 'utf8')); } catch { /* первого состояния нет — шлём всё */ }
+const changed = (name, cents, now) => {
+  const p = sent[name];
+  return !p || now - p[1] >= RESEND_AFTER || Math.abs(cents - p[0]) >= MIN_CHANGE * Math.max(p[0], 1);
+};
+let batch = {}, skipped = 0;
 async function flush(final = false) {
   const n = Object.keys(batch).length;
-  if (!n) return;
+  if (!n && !final) return;
   const body = { kind: 'steam_live', fetchedAt: Math.floor(Date.now() / 1000), items: batch, done: final };
   if (DRY) {
     writeFileSync(join(DIR, 'batches', `${Date.now()}.json`), JSON.stringify(body));
@@ -41,7 +50,13 @@ async function flush(final = false) {
     for (let a = 1; a <= 3; a++) {
       try {
         const r = await fetch(`${URL_BASE}/ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ingest-Secret': KEY }, body: JSON.stringify(body) });
-        if (r.ok) { log(`отправлено ${n} предметов`); break; }
+        if (r.ok) {
+          const t = body.fetchedAt;
+          for (const [k, v] of Object.entries(batch)) sent[k] = [v[0], t];
+          writeFileSync(SENT, JSON.stringify(sent));
+          log(`отправлено ${n} предметов (без изменений пропущено ${skipped})`); skipped = 0;
+          break;
+        }
         log(`отправка: HTTP ${r.status}, попытка ${a}`);
       } catch (e) { log(`отправка: ${e}, попытка ${a}`); }
       await sleep(30_000 * a);
@@ -75,7 +90,9 @@ while (reqs < MAX_REQ) {
     st.total = j.total_count ?? st.total;
     for (const it of j.results) {
       const name = it.hash_name || it.asset_description?.market_hash_name;
-      if (name && Number.isFinite(it.sell_price)) batch[name] = [it.sell_price, it.sell_listings ?? 0];
+      if (!name || !Number.isFinite(it.sell_price)) continue;
+      if (changed(name, it.sell_price, Math.floor(Date.now() / 1000))) batch[name] = [it.sell_price, it.sell_listings ?? 0];
+      else skipped++;
     }
     st.start += PAGE;
     if (Object.keys(batch).length >= BATCH) { await flush(); save(); }

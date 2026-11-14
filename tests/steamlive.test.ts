@@ -31,4 +31,7 @@ test('приём: пишет цены, повтор без изменений н
   const bad = await post({ kind: 'steam_live', fetchedAt: NOW, items: { 'X': ['не число'] } });
   assert.equal(((await bad.json()) as any).stored, 0);
   assert.equal((await post({ kind: 'steam_live', fetchedAt: NOW + 600, items: { 'Y': [5, 1] } })).status, 400, 'время из будущего отклоняется');
+  const chk = await (await handleIngest(new Request('https://w/ingest/steam_live?names=' + encodeURIComponent('Kilowatt Case|Nope'), { headers: { 'X-Ingest-Secret': SECRET } }), env, NOW)).json() as any;
+  assert.deepEqual(chk.items['Kilowatt Case'].slice(0, 2), [14, 65000]); assert.equal(chk.items['Nope'], undefined); assert.equal(chk.passAt, NOW + 100);
+  assert.equal((await handleIngest(new Request('https://w/ingest/steam_live?names=x'), env, NOW)).status, 403, 'без ключа нельзя');
 });

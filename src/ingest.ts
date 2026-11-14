@@ -18,7 +18,7 @@ import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
-import { parseSteamLive, steamLiveStmts } from './core/steamlive.ts';
+import { parseSteamLive, steamLiveStmts, steamLiveFor } from './core/steamlive.ts';
 import { parseCollStats, parseCaseVols, loadCollections, collVolTasks, collCurrencies, loadReq, popReq, STEAM_CURRENCY_ID } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
@@ -60,11 +60,17 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       return json({ ok: false, error: 'forbidden' }, 403);
     }
     agentOnly = true;
-    if (!((req.method === 'GET' && url.pathname === '/ingest/items') || (req.method === 'POST' && url.pathname === '/ingest'))) return json({ ok: false, error: 'forbidden' }, 403);
+    if (!((req.method === 'GET' && (url.pathname === '/ingest/items' || url.pathname === '/ingest/steam_live')) || (req.method === 'POST' && url.pathname === '/ingest'))) return json({ ok: false, error: 'forbidden' }, 403);
   }
   const budget = newBudget();
   const d = budgetedDb(rawDb ?? env.DB, budget);
 
+  // Проверка приёма живых цен: до 40 имён через «|» → что лежит в базе, плюс время последней пачки и последнего полного прохода (дёшево: без COUNT по таблице).
+  if (req.method === 'GET' && url.pathname === '/ingest/steam_live') {
+    const names = (url.searchParams.get('names') ?? '').split('|').map((x) => x.trim()).filter(Boolean).slice(0, 40);
+    const [found, at, passAt] = await Promise.all([steamLiveFor(d, names), getMeta(d, 'steam_live_at'), getMeta(d, 'steam_live_pass_at')]);
+    return json({ ok: true, at: Number(at) || null, passAt: Number(passAt) || null, items: Object.fromEntries([...found].map(([n, v]) => [n, [v.cents, v.listings, v.at]])) });
+  }
   if (req.method === 'GET' && url.pathname === '/ingest/items') {
     const items = await db.itemsDueForSource(d, 'steam', 'median_24h', 300);
     const [cat, fx, noImg, noAvg, avgAt, invQ, track] = await Promise.all([

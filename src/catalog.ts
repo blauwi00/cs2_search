@@ -52,8 +52,30 @@ export function searchChunks(texts: string[], query: string, limit = 15): string
 export async function searchCatalog(db: D1Database, query: string, limit = 15): Promise<string[]> {
   const r = await db.prepare('SELECT names FROM catalog_chunks ORDER BY chunk').all<{ names: string }>();
   const texts = r.results.map((x) => x.names);
-  // Русские слова «на слух» сопоставляются со словами каталога по индексу (читается из базы раз в 30 минут).
-  return searchSmart(texts, query, limit, /[а-яё]/i.test(query) ? await loadTokens(db) : undefined);
+  if (!/[а-яё]/i.test(query)) return searchSmart(texts, query, limit);
+  // 1) Официальные русские названия Steam («Горячечные грёзы», «Синобу»), 2) словарь и звуковое сопоставление.
+  const official = searchRu(texts, query, limit, await loadRuLines(db));
+  if (official.length) return official;
+  return searchSmart(texts, query, limit, await loadTokens(db));
+}
+
+let ruMemo: { at: number; text: string } | null = null;
+export const resetRuMemo = (): void => { ruMemo = null; };
+export async function loadRuLines(db: D1Database): Promise<string> {
+  const now = Date.now() / 1000;
+  if (ruMemo && now - ruMemo.at < 1800) return ruMemo.text;
+  const text = (await db.prepare(`SELECT value FROM meta WHERE key = 'catalog_ru'`).first<{ value: string }>())?.value ?? '';
+  ruMemo = { at: now, text };
+  return text;
+}
+const noYo = (s: string): string => s.toLowerCase().replace(/ё/g, 'е');
+/** Поиск по официальным русским названиям Steam: найденное базовое английское название разворачивается во все предметы каталога (износы, StatTrak™). */
+export function searchRu(texts: string[], query: string, limit: number, ruLines: string): string[] {
+  if (!ruLines) return [];
+  const bases = searchChunks([ruLines], noYo(query), 6);
+  const out: string[] = [];
+  for (const b of bases) for (const n of searchChunks(texts, b, limit)) if (!out.includes(n) && out.length < limit) out.push(n);
+  return out;
 }
 
 export type TokenIndex = Record<string, string[]>;

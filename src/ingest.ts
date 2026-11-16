@@ -18,7 +18,7 @@ import { parseScan, mergeScan, safeImg } from './core/recs.ts';
 import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
-import { parseSteamLive, steamLiveStmts, steamLiveFor } from './core/steamlive.ts';
+import { parseSteamLive, steamLiveStmts, steamLiveFor, ruNamesStmts, rebuildRuLines } from './core/steamlive.ts';
 import { TelegramClient } from './telegram/api.ts';
 import { parseCollStats, parseCaseVols, loadCollections, collVolTasks, collCurrencies, loadReq, popReq, STEAM_CURRENCY_ID } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
@@ -446,6 +446,10 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       const firstEver = !(await getMeta(d, 'steam_live_at'));
       if (rows.length || body.done === true) for (let i = 0, st = steamLiveStmts(d, rows, at, body.done === true); i < st.length; i += 90) await d.batch(st.slice(i, i + 90));
       result.stored = rows.length;
+      // Русские названия Steam: новые пары пишем один раз; строки для поиска пересобираем в конце обхода и не чаще раза в час.
+      const ruSt = ruNamesStmts(d, rows);
+      for (let i = 0; i < ruSt.length; i += 90) await d.batch(ruSt.slice(i, i + 90));
+      if (ruSt.length || body.done === true) await rebuildRuLines(d, now, body.done === true);
       // Владельцу: первая пачка пришла и полный обход закончен — сообщение в Telegram (проверка без доступа к базе). Не чаще, чем событие.
       if ((firstEver || body.done === true) && env.TELEGRAM_BOT_TOKEN && env.ADMIN_TELEGRAM_ID) {
         try {

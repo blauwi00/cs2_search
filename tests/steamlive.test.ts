@@ -35,3 +35,19 @@ test('приём: пишет цены, повтор без изменений н
   assert.deepEqual(chk.items['Kilowatt Case'].slice(0, 2), [14, 65000]); assert.equal(chk.items['Nope'], undefined); assert.equal(chk.passAt, NOW + 100);
   assert.equal((await handleIngest(new Request('https://w/ingest/steam_live?names=x'), env, NOW)).status, 403, 'без ключа нельзя');
 });
+
+test('владельцу приходит сообщение: первая пачка и конец полного обхода (без доступа к базе проверить приём)', async () => {
+  const d = migratedDb(); const sent: string[] = [];
+  const { mockFetch, json: j } = await import('./helpers.ts');
+  const { fetcher } = mockFetch([{ match: (u: string) => u.startsWith('https://api.telegram.org/'), respond: (_u: string, init?: RequestInit) => { sent.push(String(JSON.parse(String(init?.body)).text)); return j({ ok: true, result: { message_id: 1 } }); } }]);
+  const realFetch = globalThis.fetch; globalThis.fetch = fetcher as typeof fetch;
+  try {
+    const env = testEnv(d, { INGEST_SECRET: SECRET, COLLECTOR: 'github' });
+    const post = (body: unknown) => handleIngest(new Request('https://w/ingest', { method: 'POST', headers: { 'X-Ingest-Secret': SECRET, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env, NOW);
+    await post({ kind: 'steam_live', fetchedAt: NOW, items: { 'A Case': [13, 5000] } });
+    await post({ kind: 'steam_live', fetchedAt: NOW, items: { 'B Case': [14, 5000] } });
+    assert.equal(sent.length, 1); assert.match(sent[0], /первая пачка/);
+    await post({ kind: 'steam_live', fetchedAt: NOW, items: { 'C Case': [15, 5000] }, done: true });
+    assert.equal(sent.length, 2); assert.match(sent[1], /полный обход закончен/); assert.match(sent[1], /3 предметов/);
+  } finally { globalThis.fetch = realFetch; }
+});

@@ -19,6 +19,7 @@ import { sanitizeAssets, type AssetDetail } from './core/inspect.ts';
 import { ideasToTrack, checkStmts, cleanSnippet, newsImage, CHECK_AFTER, type IdeaRow } from './core/insights.ts';
 import { setMetaStmt, getMeta } from './core/channel.ts';
 import { parseSteamLive, steamLiveStmts, steamLiveFor } from './core/steamlive.ts';
+import { TelegramClient } from './telegram/api.ts';
 import { parseCollStats, parseCaseVols, loadCollections, collVolTasks, collCurrencies, loadReq, popReq, STEAM_CURRENCY_ID } from './core/collections.ts';
 import { loadScan } from './storage/scan.ts';
 import { parseUsdRates } from './currency/display.ts';
@@ -442,8 +443,17 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Живые цены Steam по всему рынку от домашнего сборщика: пачка до 1000 предметов, пишутся только изменения.
       const rows = parseSteamLive(body.items);
       const at = Math.floor(typeof body.fetchedAt === 'number' ? body.fetchedAt : now); // общая проверка времени выше: не в будущем, не старше часа
+      const firstEver = !(await getMeta(d, 'steam_live_at'));
       if (rows.length || body.done === true) for (let i = 0, st = steamLiveStmts(d, rows, at, body.done === true); i < st.length; i += 90) await d.batch(st.slice(i, i + 90));
       result.stored = rows.length;
+      // Владельцу: первая пачка пришла и полный обход закончен — сообщение в Telegram (проверка без доступа к базе). Не чаще, чем событие.
+      if ((firstEver || body.done === true) && env.TELEGRAM_BOT_TOKEN && env.ADMIN_TELEGRAM_ID) {
+        try {
+          const n = body.done === true ? ((await d.prepare('SELECT COUNT(*) AS n FROM steam_live').first<{ n: number }>())?.n ?? 0) : null;
+          await new TelegramClient(env.TELEGRAM_BOT_TOKEN).sendMessage(Number(env.ADMIN_TELEGRAM_ID),
+            body.done === true ? `🖥 <b>Живые цены Steam: полный обход закончен.</b>\nВ базе ${n} предметов. Экран «Идеи → До $1» теперь полный.` : `🖥 <b>Живые цены Steam: пришла первая пачка</b> (${rows.length} предметов). Домашний сборщик работает.`);
+        } catch { /* сообщение не критично */ }
+      }
     } else if (body.kind === 'collections_stats') {
       // Динамика цен по коллекциям (считает сборщик из открытых файлов): одна запись в meta, не чаще раза в час.
       const list = parseCollStats(body.items);

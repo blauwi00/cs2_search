@@ -454,6 +454,16 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
             body.done === true ? `🖥 <b>Живые цены Steam: полный обход закончен.</b>\nВ базе ${n} предметов. Экран «Идеи → До $1» теперь полный.` : `🖥 <b>Живые цены Steam: пришла первая пачка</b> (${rows.length} предметов). Домашний сборщик работает.`);
         } catch { /* сообщение не критично */ }
       }
+    } else if (body.kind === 'catalog_tokens') {
+      // Индекс слов каталога для звукового русского поиска (строит сборщик): { скелет: [слова] }, до 800 КБ.
+      const raw = (body as { tokens?: unknown }).tokens;
+      const idx: Record<string, string[]> = {};
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 20000)) {
+        if (/^[a-z]{2,20}$/.test(k) && Array.isArray(v)) { const w = v.filter((x): x is string => typeof x === 'string' && /^[a-z]{3,30}$/.test(x)).slice(0, 4); if (w.length) idx[k] = w; }
+      }
+      const json = JSON.stringify(idx);
+      if (Object.keys(idx).length >= 100 && json.length < 800_000) await setMetaStmt(d, 'catalog_tokens', json).run();
+      result.stored = Object.keys(idx).length;
     } else if (body.kind === 'collections_stats') {
       // Динамика цен по коллекциям (считает сборщик из открытых файлов): одна запись в meta, не чаще раза в час.
       const list = parseCollStats(body.items);

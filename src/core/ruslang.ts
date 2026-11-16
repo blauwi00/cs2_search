@@ -41,6 +41,7 @@ const WORDS: Record<string, string> = {
   // Прочее
   'кейс': 'case', 'кейсы': 'case', 'капсула': 'capsule', 'наклейка': 'sticker', 'наклейки': 'sticker', 'стикер': 'sticker',
   'брелок': 'charm', 'брелки': 'charm', 'граффити': 'graffiti', 'нашивка': 'patch', 'ключ': 'key', 'значок': 'pin',
+  'агент': 'agent', 'агенты': 'agent', 'золотая': 'gold', 'золотой': 'gold', 'золото': 'gold', 'голо': 'holo', 'голографическая': 'holo', 'фольга': 'foil', 'блестящая': 'glitter', 'глиттер': 'glitter',
   'сувенир': 'souvenir', 'сувенирный': 'souvenir', 'статтрек': 'stattrak', 'стат': 'stattrak', 'ст': 'stattrak',
   // Износ сокращённо
   'фн': 'factory new', 'мв': 'minimal wear', 'фт': 'field tested', 'вв': 'well worn', 'бс': 'battle scarred',

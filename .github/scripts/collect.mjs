@@ -91,6 +91,11 @@ try {
       const r = await toWorker('/ingest', { kind: 'catalog', fetchedAt: now(), part: p, parts, items: names.slice(p * size, (p + 1) * size) });
       console.log(`Каталог названий ${p + 1}/${parts}:`, r);
     }
+    try {
+      const { buildTokenIndex } = await import('./catalogtokens.mjs');
+      const tokens = buildTokenIndex(names);
+      console.log(`Слова каталога для русского поиска: ${Object.keys(tokens).length}`, await toWorker('/ingest', { kind: 'catalog_tokens', fetchedAt: now(), tokens }));
+    } catch (e) { console.error('Слова каталога:', e.message); }
   }
   const wanted = new Set(items);
   const rows = all.filter((x) => wanted.has(x.market_hash_name));

@@ -98,7 +98,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
     // needCatalog: каталог названий старше суток или пуст — сборщик пришлёт его заново.
     // fx: курсы НБУ (грн за 1 USD/EUR) — сборщику, чтобы сравнивать площадки при отборе кандидатов.
     return json({
-      ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400,
+      ok: true, items: items.map((i) => i.market_hash_name), needCatalog: !cat.updatedAt || now - cat.updatedAt > 86400 || !(await getMeta(d, 'catalog_tokens')), // нет индекса слов для русского поиска — пришлём каталог заново
       fx: Object.fromEntries([...fx.values()].map((r) => [r.base, r.rateMicro / 1e6])),
       missingImages: noImg.results.map((r) => r.n),
       needSteamAvg: noAvg.results.map((r) => r.n),

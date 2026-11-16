@@ -38,6 +38,7 @@ import { TelegramClient } from '../telegram/api.ts';
 import { sha256Hex, requestedSiteNames } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
 import { loadCollections, collViews, skinViews, fuelText, addReq, STEAM_CURRENCY_ID } from '../core/collections.ts';
+import { loadCheap, pickCheap, cheapMeta, CHEAP_CATS } from '../core/cheap.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
 import { fetchInventory, storeInventory, type InvFetch } from '../core/steaminv.ts';
 import { matchName } from '../core/screenread.ts';
@@ -1357,6 +1358,13 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
       const [c, w] = await Promise.all([loadCollections(d), walletCur()]);
       const code = w.code in STEAM_CURRENCY_ID ? w.code : 'UAH'; // валюта Steam человека; если Steam такой нет — гривна
       return json({ ok: true, at: c.at, cur: code, list: collViews(c.stats, c.vols, code).filter((v) => v.k > 0) });
+    }
+    // «Дёшево в Steam»: живые цены Steam с домашнего сборщика (центы USD), справочный экран для всех.
+    if (path === 'cheap' && method === 'GET') {
+      const max = [25, 50, 100].includes(Number(url.searchParams.get('max'))) ? Number(url.searchParams.get('max')) : 100;
+      const cat = (url.searchParams.get('cat') ?? 'all') in CHEAP_CATS ? url.searchParams.get('cat')! : 'all';
+      const [rows, meta] = await Promise.all([loadCheap(d, max, now), cheapMeta(d)]);
+      return json({ ok: true, ...meta, max, cat, ...pickCheap(rows, cat) });
     }
     const collM = /^collections\/([a-z0-9-]{3,80})$/.exec(path);
     if (collM && method === 'GET') {

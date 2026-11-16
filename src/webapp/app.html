@@ -596,7 +596,7 @@ $('#sbg').onclick = closeSheet;
 if (tg && tg.BackButton) tg.BackButton.onClick(closeSheet);
 
 // ---------- Навигация ----------
-var TITLES = { collections: 'Коллекции', rally: 'Разгон баланса', home: 'Ценолов', deals: 'Идеи', market: 'Цены', inv: 'Мои скины', trades: 'Мои скины', more: 'Ещё' };
+var TITLES = { cheap: 'Дёшево в Steam', collections: 'Коллекции', rally: 'Разгон баланса', home: 'Ценолов', deals: 'Идеи', market: 'Цены', inv: 'Мои скины', trades: 'Мои скины', more: 'Ещё' };
 Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
   b.onclick = function () { haptic(); go(b.getAttribute('data-t')); };
 });
@@ -615,7 +615,7 @@ function go(t) {
   setMenu(null);
   state.tab = t; closeSheet();
   document.documentElement.classList.toggle('at-home', t === 'home'); // парящие скины — только на главной
-  var bt = t === 'rally' || t === 'collections' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
+  var bt = t === 'rally' || t === 'collections' || t === 'cheap' ? 'deals' : t === 'trades' ? 'inv' : t; // «Разгон» — часть «Идей»; покупки и продажи — часть «Моих скинов»
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) { b.classList.toggle('on', b.getAttribute('data-t') === bt); });
   // Бегущие строки — только на главной, чтобы не мешали в остальных разделах.
   // Бегущая строка идей — только на главной; строка «Топ поддержки» переехала в «Ещё».
@@ -623,7 +623,7 @@ function go(t) {
   $('#title').textContent = TITLES[t];
   window.scrollTo(0, 0);
   view.classList.remove('enter'); view._fresh = true;
-  ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally, collections: collections })[t]();
+  ({ home: home, deals: deals, market: market, inv: inventory, trades: trades, more: more, rally: rally, collections: collections, cheap: cheap })[t]();
 }
 
 // Набегание сумм [data-cnt] и ползунок под выбранным пунктом переключателя — после каждой отрисовки раздела.
@@ -1080,12 +1080,12 @@ function recSheet(r) {
 }
 // Переключатель внутри «Рекомендаций»: идеи купить-продать и «Разгон баланса» Steam.
 function recSwitch(on) {
-  var b = [['recs', 'Идеи'], ['coll', 'Коллекции']];
+  var b = [['recs', 'Идеи'], ['coll', 'Коллекции'], ['cheap', 'До $1']];
   if (state.isAdmin || state.rallyOk) b.push(['rally', 'Разгон баланса']); // «Разгон» скрыт, пока бот не подтвердил схему
   return '<div class="seg" id="recsw">' + b.map(function (x) { return '<button data-v="' + x[0] + '" class="' + (on === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
 }
 function bindRecSwitch() {
-  Array.prototype.forEach.call(document.querySelectorAll('#recsw button'), function (b) { b.onclick = function () { haptic(); var v = b.getAttribute('data-v'); go(v === 'rally' ? 'rally' : v === 'coll' ? 'collections' : 'deals'); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('#recsw button'), function (b) { b.onclick = function () { haptic(); var v = b.getAttribute('data-v'); go(v === 'rally' ? 'rally' : v === 'coll' ? 'collections' : v === 'cheap' ? 'cheap' : 'deals'); }; });
 }
 function deals() {
   loading(6);
@@ -2477,6 +2477,35 @@ function collections() {
     deEmoji(view);
   }).catch(function (e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</div>' + esc(e.message) + '</div>'; });
 }
+// «Дёшево в Steam»: предметы с живой ценой Steam до $1 (самое дешёвое объявление, центы USD) — из цен домашнего сборщика.
+var CHEAP_CATS_RU = [['all', 'Все'], ['case', 'Кейсы'], ['skin', 'Скины'], ['sticker', 'Наклейки'], ['other', 'Прочее']];
+function cheap() {
+  loading(5);
+  state.cheapMax = state.cheapMax || 100; state.cheapCat = state.cheapCat || 'all';
+  api('cheap?max=' + state.cheapMax + '&cat=' + state.cheapCat).then(function (r) {
+    var h = recSwitch('cheap');
+    h += '<div class="seg" id="chm">' + [[25, 'до $0,25'], [50, 'до $0,50'], [100, 'до $1']].map(function (t) { return '<button data-m="' + t[0] + '" class="' + (state.cheapMax === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    h += '<div class="seg scroll" id="chc">' + CHEAP_CATS_RU.map(function (t) { return '<button data-c="' + t[0] + '" class="' + (state.cheapCat === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>';
+    var stale = r.passAt != null && Date.now() / 1000 - r.passAt > 86400;
+    if (!r.at) {
+      h += '<div class="empty"><div class="e">⏳</div>Живые цены Steam ещё не пришли: их собирает домашний компьютер бота, первый полный обход идёт несколько часов.</div>';
+    } else {
+      h += '<div class="mut" style="font-size:13px;margin:0 2px 8px">Цена — самое дешёвое объявление в Steam в долларах, обновлено ' + ago(r.at) + (stale ? '. <span style="color:var(--amber)">Полного обхода не было больше суток — данные могли устареть.</span>' : '.') + ' Показано ' + r.list.length + ' из ' + r.total + '. Продаж в сутки мы не знаем: показываем число объявлений.</div>';
+      h += r.list.length ? '<div class="card" style="padding:2px 14px">' + r.list.map(function (x) {
+        var sp = splitName(x.name);
+        return '<div class="kv" style="cursor:pointer;align-items:center" data-nm="' + esc(x.name) + '"><span style="min-width:0">' + esc(sp.base) + '<div class="mut" style="font-size:11px">' + (sp.wear ? esc(sp.wear) + ' · ' : '') + esc(x.catRu) + ' · объявлений: ' + String(x.listings).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '</div></span><span class="v" style="white-space:nowrap">$' + (x.cents / 100).toFixed(2) + '</span></div>';
+      }).join('') + '</div>' : '<div class="card mut" style="font-size:14px">Под этот фильтр пока ничего нет.</div>';
+      h += '<div class="note">Это справочник, а не совет покупать. Нажми на предмет: откроются графики и цены на всех площадках, там видно, где он дешевле.</div>';
+    }
+    view.innerHTML = h;
+    bindRecSwitch();
+    Array.prototype.forEach.call(document.querySelectorAll('#chm button'), function (b) { b.onclick = function () { haptic(); state.cheapMax = +b.getAttribute('data-m'); cheap(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('#chc button'), function (b) { b.onclick = function () { haptic(); state.cheapCat = b.getAttribute('data-c'); cheap(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nm]'), function (el) { el.onclick = function () { haptic(); openByName(el.getAttribute('data-nm')); }; });
+    deEmoji(view);
+  }).catch(function (e) { view.innerHTML = '<div class="empty"><div class="e">⚠️</div>' + esc(e.message) + '</div>'; });
+}
+
 function rally() {
   loading(4);
   state.rallyTab = state.rallyTab || 'opps';

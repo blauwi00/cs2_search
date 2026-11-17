@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<script src="assets/gsap.min.js"></script>
+<style>
+  html,body{margin:0;background:#070707}
+  #main{position:relative;width:1080px;height:1920px;overflow:hidden;font-family:Inter,sans-serif;color:#fff6df;background:#070707}
+  .abs{position:absolute}
+  #bg{inset:0;background:radial-gradient(900px 900px at 50% 38%,rgba(231,178,76,.20),transparent 70%),radial-gradient(700px 500px at 50% 100%,rgba(231,178,76,.10),transparent 70%),#070707}
+  #grain{inset:0;opacity:.07;background:repeating-linear-gradient(135deg,transparent 0 6px,#e7b24c 6px 7px)}
+  /* герой */
+  #hero{left:-230px;top:120px;width:1540px;height:1540px;opacity:0;transform-origin:50% 50%}
+  #hero img,#heroSweep{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  #hero img{filter:drop-shadow(0 50px 60px rgba(0,0,0,.8)) drop-shadow(0 0 40px rgba(231,178,76,.25))}
+  #heroSweep{-webkit-mask-image:url(assets/glock.png);mask-image:url(assets/glock.png);-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;background:linear-gradient(105deg,transparent 38%,rgba(255,236,170,.95) 50%,transparent 62%);background-size:300% 100%;background-position:150% 0;mix-blend-mode:screen}
+  /* телефон */
+  #phoneWrap{left:224px;top:215px;width:632px;height:1232px;opacity:0;perspective:1600px}
+  #phone{position:absolute;inset:0;border-radius:74px;background:linear-gradient(145deg,#3a2f17,#14110a 45%,#2b2210);padding:16px;box-sizing:border-box;box-shadow:0 60px 90px rgba(0,0,0,.75),0 0 0 2px rgba(231,178,76,.55),0 0 80px rgba(231,178,76,.18);transform-style:preserve-3d}
+  #screen{position:relative;width:600px;height:1200px;border-radius:58px;overflow:hidden;background:#0b0b0b}
+  .scr{position:absolute;left:0;top:0;width:600px;height:1200px;object-fit:cover}
+  #scrB,#scrC,#scrD{opacity:0}
+  #dd{position:absolute;inset:0;clip-path:circle(0px at 80% 88%)}
+  #caseWrap{left:520px;top:960px;width:600px;height:600px;opacity:0}
+  #caseWrap img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.8)) drop-shadow(0 0 50px rgba(231,178,76,.45))}
+  /* текст */
+  .line{left:40px;right:40px;text-align:center;font:900 150px/1 Inter,sans-serif;letter-spacing:-2px;text-transform:uppercase;white-space:nowrap;color:#fff6df;text-shadow:0 8px 40px rgba(0,0,0,.8);display:flex;justify-content:center}
+  .line.gold{background:linear-gradient(180deg,#fff3c9,#f6d98a 40%,#e7b24c 70%,#a87326);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 8px 30px rgba(0,0,0,.7))}
+  .ch{display:inline-block;transform-origin:50% 100%;will-change:transform}
+  #t1{top:1480px}#t2{top:1480px}#t3{top:1480px}#t4{top:1480px;font-size:128px}#t4b{top:1500px;font-size:88px}#t5{top:1480px}#t6{top:1480px}
+  #hookT{top:1450px;font-size:170px}
+  #flash{inset:0;background:radial-gradient(circle at 50% 45%,#fff3c9,#e7b24c 55%,transparent 80%);opacity:0;z-index:30}
+  /* финал */
+  #endw{inset:0;opacity:0;z-index:20;background:radial-gradient(800px 760px at 50% 38%,rgba(231,178,76,.38),transparent 70%),#060606}
+  #elg{left:380px;top:360px;width:320px;height:320px;border-radius:72px;background:linear-gradient(145deg,#f6d98a,#d9a441 55%,#a87326);box-shadow:0 0 140px rgba(231,178,76,.6);display:flex;align-items:center;justify-content:center}
+  #etx{left:40px;right:40px;top:760px;text-align:center;font:900 150px/1 Inter,sans-serif;letter-spacing:-3px;text-transform:uppercase;background:linear-gradient(180deg,#fff3c9,#e7b24c 60%,#a87326);-webkit-background-clip:text;background-clip:text;color:transparent}
+  #etg{left:150px;right:150px;top:990px;text-align:center;font:800 62px/1 Inter,sans-serif;padding:30px 0;border-radius:999px;color:#1a1305;background:linear-gradient(180deg,#f6d98a,#e7b24c)}
+  #efr{left:300px;right:300px;top:1180px;text-align:center;font:900 68px/1 Inter,sans-serif;color:#35d07f;border:8px solid #35d07f;border-radius:20px;padding:12px 0;opacity:0}
+</style></head>
+<body><div id="main">
+  <div id="bg" class="abs"></div><div id="grain" class="abs"></div>
+  <div id="hero" class="abs"><img src="assets/glock.png" alt=""><div id="heroSweep"></div></div>
+  <div id="phoneWrap" class="abs"><div id="phone"><div id="screen">
+    <img id="scrA" class="scr" src="assets/p/001.jpg" alt="">
+    <img id="scrB" class="scr" src="assets/i/001.jpg" alt="">
+    <img id="scrC" class="scr" src="assets/c/001.jpg" alt="">
+    <div id="dd"><img id="scrD" class="scr" style="opacity:1" src="assets/d/001.jpg" alt=""></div>
+  </div></div></div>
+  <div id="caseWrap" class="abs"><img src="assets/case.png" alt=""></div>
+  <div id="t1" class="abs line gold" data-t="КРАСИВЫЙ?"></div>
+  <div id="t2" class="abs line gold" data-t="А ЦЕНА?"></div>
+  <div id="t3" class="abs line gold" data-t="СРАВНИ."></div>
+  <div id="t4" class="abs line gold" data-t="ЕСТЬ ИДЕИ"></div>
+  <div id="t4b" class="abs line" data-t="КОГДА ПОЯВЯТСЯ"></div>
+  <div id="t5" class="abs line gold" data-t="И КЕЙСЫ"></div>
+  <div id="t6" class="abs line gold" data-t="НЕ ГАДАЙ"></div>
+  <div id="flash" class="abs"></div>
+  <div id="endw" class="abs">
+    <div id="elg" class="abs"><svg width="190" height="190" viewBox="0 0 24 24" fill="none" stroke="#2a1d06" stroke-width="2.2"><circle cx="12" cy="12" r="8.5" stroke-opacity=".6"/><circle cx="12" cy="12" r="4" stroke-opacity=".45"/><path d="M12 12 L12 3.5" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="#2a1d06" stroke="none"/></svg></div>
+    <div id="etx" class="abs">Ценолов</div><div id="etg" class="abs">@cenolow_bot</div><div id="efr" class="abs">БЕСПЛАТНО</div>
+  </div>
+</div>
+<script>
+  var $ = function (s) { return document.querySelector(s); };
+  // Буквы отдельными элементами — для «пружины по слогам».
+  [].forEach.call(document.querySelectorAll('.line'), function (el) {
+    el.innerHTML = el.getAttribute('data-t').split('').map(function (c) { return c === ' ' ? '<span class="ch" style="width:.3em"> </span>' : '<span class="ch">' + c + '</span>'; }).join('');
+    el.style.opacity = 0;
+  });
+  var tl = gsap.timeline({ paused: true });
+  var spring = function (id, t, out) {
+    tl.set(id, { opacity: 1 }, t);
+    tl.fromTo(id + ' .ch', { y: 120, scaleY: 1.5, scaleX: .7, opacity: 0, rotateX: 60 }, { y: 0, scaleY: 1, scaleX: 1, opacity: 1, rotateX: 0, duration: .55, ease: 'back.out(2.4)', stagger: .04, immediateRender: false }, t);
+    tl.to(id, { scale: 1.06, duration: .35, ease: 'sine.inOut', yoyo: true, repeat: 1 }, t + .5);
+    tl.to(id + ' .ch', { y: -60, opacity: 0, scaleY: 1.3, duration: .22, ease: 'power2.in', stagger: .012 }, out - .25);
+    tl.set(id, { opacity: 0 }, out);
+  };
+  var flash = function (t, a) { tl.fromTo('#flash', { opacity: a || .85 }, { opacity: 0, duration: .22, ease: 'power2.out', immediateRender: false }, t); };
+  // 0–2.5  КРАСИВЫЙ?  герой, медленный облёт, блик по металлу
+  tl.set('#hero', { opacity: 1 }, 0);
+  tl.fromTo('#hero', { scale: .9, rotation: -9, x: 60 }, { scale: 1.12, rotation: -3, x: -20, duration: 2.6, ease: 'sine.inOut' }, 0);
+  tl.fromTo('#heroSweep', { backgroundPosition: '150% 0' }, { backgroundPosition: '-50% 0', duration: 1.3, ease: 'power2.inOut' }, 0.5);
+  spring('#t1', .15, 2.5);
+  // 2.5  привязка: рывок, блик, герой улетает, телефон входит с ценами
+  flash(2.5, .8);
+  tl.to('#hero', { scale: 2.1, opacity: 0, filter: 'blur(14px)', duration: .28, ease: 'power3.in' }, 2.35);
+  tl.set('#phoneWrap', { opacity: 1 }, 2.5);
+  tl.fromTo('#phone', { y: 340, rotateX: 22, scale: .86 }, { y: 0, rotateX: 0, scale: 1, duration: .6, ease: 'back.out(1.5)', immediateRender: false }, 2.5);
+  spring('#t2', 2.65, 5.0);
+  // 5–8  СРАВНИ.  лёгкий наезд на список
+  spring('#t3', 5.1, 8.0);
+  tl.to('#phone', { scale: 1.05, duration: 2.8, ease: 'sine.inOut' }, 5.0);
+  // 8–11  ЕСТЬ ИДЕИ → КОГДА ПОЯВЯТСЯ  экран «Идеи» без выдуманной прибыли
+  tl.to('#phone', { scale: 1, rotateY: 90, duration: .22, ease: 'power2.in' }, 7.85);
+  tl.set('#scrA', { opacity: 0 }, 8.07); tl.set('#scrB', { opacity: 1 }, 8.07);
+  tl.fromTo('#phone', { rotateY: -90 }, { rotateY: 0, duration: .3, ease: 'power2.out', immediateRender: false }, 8.07);
+  spring('#t4', 8.2, 9.8);
+  spring('#t4b', 9.75, 11.0);
+  // 11–14.5  И КЕЙСЫ  коллекции, кейс влетает
+  tl.to('#phone', { scale: 1, rotateY: -90, duration: .22, ease: 'power2.in' }, 10.85);
+  tl.set('#scrB', { opacity: 0 }, 11.07); tl.set('#scrC', { opacity: 1 }, 11.07);
+  tl.fromTo('#phone', { rotateY: 90 }, { rotateY: 0, duration: .3, ease: 'power2.out', immediateRender: false }, 11.07);
+  tl.set('#caseWrap', { opacity: 1 }, 11.3);
+  tl.fromTo('#caseWrap', { x: 700, rotation: 40, scale: .6 }, { x: 0, rotation: -10, scale: 1, duration: .7, ease: 'back.out(1.6)', immediateRender: false }, 11.3);
+  tl.to('#caseWrap', { y: -22, rotation: -4, duration: 1.2, ease: 'sine.inOut', yoyo: true, repeat: 1 }, 12.0);
+  spring('#t5', 11.4, 14.5);
+  // 14.5–18  НЕ ГАДАЙ  кейс-«силуэт» раскрывает «Дёшево в Steam» кругом
+  tl.to('#caseWrap', { x: -120, y: -380, scale: 3.4, rotation: 0, duration: .45, ease: 'power3.in' }, 14.25);
+  tl.to('#dd', { clipPath: 'circle(1700px at 80% 88%)', duration: .5, ease: 'power3.in' }, 14.3);
+  tl.set('#caseWrap', { opacity: 0 }, 14.75);
+  flash(14.75, .6);
+  spring('#t6', 14.9, 18.0);
+  tl.fromTo('#phone', { scale: 1.0 }, { scale: 1.04, duration: 3.0, ease: 'sine.inOut', immediateRender: false }, 14.9);
+  // 18–22  финал: телефон и текст уходят, собирается фирменный экран
+  tl.to('#phoneWrap', { y: -500, scale: .6, opacity: 0, duration: .5, ease: 'power3.in' }, 17.7);
+  tl.fromTo('#endw', { opacity: 0 }, { opacity: 1, duration: .25 , immediateRender: false }, 17.9);
+  tl.fromTo('#elg', { scale: .2, rotation: -30, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: .6, ease: 'back.out(2)' , immediateRender: false }, 18.05);
+  tl.fromTo('#etx', { opacity: 0, y: 80, scale: .9 }, { opacity: 1, y: 0, scale: 1, duration: .45, ease: 'back.out(2)' , immediateRender: false }, 18.5);
+  tl.fromTo('#etg', { scale: .5, opacity: 0 }, { scale: 1, opacity: 1, duration: .4, ease: 'back.out(2.2)' , immediateRender: false }, 19.0);
+  tl.fromTo('#efr', { scale: 2.4, opacity: 0, rotation: -14 }, { scale: 1, opacity: 1, rotation: -4, duration: .22, ease: 'power4.in' , immediateRender: false }, 19.6);
+  tl.to('#elg', { boxShadow: '0 0 220px rgba(231,178,76,.9)', duration: .8, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 19.8);
+  flash(18.05, .5);
+  // Кадры записи экрана: A 5 с (цены), C 3,4 с (коллекции), D 4 с (дёшево) при 30 к/с
+  var pad = function (n) { n = String(n); while (n.length < 3) n = '0' + n; return n; };
+  var cA = { s: 2.7, n: 100 }, cC = { s: 11.07, n: 102 }, cD = { s: 14.3, n: 120 };
+  var last = {};
+  function setClip(id, dir, c, t) {
+    var i = Math.min(c.n, Math.max(1, Math.floor((t - c.s) * 30) + 1)), el = $(id);
+    if (last[id] !== i) { last[id] = i; el.src = 'assets/' + dir + '/' + pad(i) + '.jpg'; }
+    return el;
+  }
+  window.frameAt = function (t) {
+    tl.time(t);
+    return Promise.all([setClip('#scrA', 'p', cA, t), setClip('#scrC', 'c', cC, t), setClip('#scrD', 'd', cD, t)].map(function (e) { return e.decode ? e.decode().catch(function () {}) : null; }));
+  };
+</script></body></html>

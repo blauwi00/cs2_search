@@ -128,6 +128,7 @@ details.more{margin:8px 0 12px}details.more>summary{list-style:none;cursor:point
 .toast.on{opacity:1;transform:translateX(-50%)}
 .skel{height:64px;border-radius:var(--r);background:linear-gradient(90deg,var(--card),color-mix(in srgb,var(--card) 70%,var(--hint)),var(--card));background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:8px}
 @keyframes sk{to{background-position:-200% 0}}
+textarea.rf-ta{width:100%;box-sizing:border-box;min-height:240px;padding:12px 14px;border-radius:12px;border:1px solid var(--sep);background:var(--card);color:var(--text);font:inherit;font-size:16px;line-height:1.45;resize:none}
 label.f{display:block;margin:10px 0 0}label.f span{display:block;color:var(--hint);font-size:13px;margin:0 0 5px 3px}
 .sw{position:relative;width:48px;height:29px;flex:none}
 .sw input{opacity:0;width:0;height:0}
@@ -1839,37 +1840,55 @@ function lotSheet(l) {
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
 }
-// Рефералки (только владелец): список «название · ссылка · промокод», текст-предупреждение, включатель ежедневной публикации в канал.
+// Рефералки (только владелец): компактный список сайтов; каждый сайт и текст правятся в своём маленьком окне и сохраняются сразу.
+function refsSave(c) { return api('owner/refs', { method: 'POST', body: { links: c.links, text: c.text, daily: c.daily } }); }
 function refsSheet() {
   sheet('<div class="skel"></div><div class="skel"></div>');
-  api('owner/refs').then(function (r) {
-    var row = function (l) {
-      return '<div class="card rf-row" style="margin-bottom:8px"><input class="rf-n" placeholder="Название сайта" value="' + esc(l.name || '') + '" autocomplete="off">' +
-        '<input class="rf-u" placeholder="https://…" value="' + esc(l.url || '') + '" autocomplete="off" style="margin-top:6px">' +
-        '<input class="rf-p" placeholder="Промокод (если есть)" value="' + esc(l.promo || '') + '" autocomplete="off" style="margin-top:6px">' +
-        '<button class="btn sec2 rf-x" style="margin:8px 0 0">Убрать</button></div>';
-    };
-    var h = '<h2>🔗 Рефералки</h2><div class="sub">Раз в день в канал уходит текст-предупреждение с кнопкой. Ссылки человек видит только в боте, после кнопки «Я прочитал данное сообщение». Несколько сайтов идут в списке подряд.</div>';
-    h += '<div id="rf-list">' + (r.links.length ? r.links.map(row).join('') : '') + '</div>';
+  api('owner/refs').then(function (c) {
+    var host = function (u) { var m = /^https:\/\/([^\/?#]+)/.exec(u || ''); return m ? m[1] : u; };
+    var h = '<h2>🔗 Рефералки</h2><div class="sub">Раз в день в канал уходит предупреждение с кнопкой. Ссылки и промокоды человек видит в боте после кнопки «Я прочитал данное сообщение».</div>';
+    h += '<div class="card"><div class="kv" style="align-items:center"><span>Публиковать раз в день<div class="mut" style="font-size:12px">' + (c.last ? 'Последний раз: ' + esc(c.last) : 'Пока не публиковалось') + '</div></span><label class="sw"><input type="checkbox" id="rf-d"' + (c.daily ? ' checked' : '') + '><b></b></label></div></div>';
+    h += '<div class="sec">Сайты (' + c.links.length + ')</div>';
+    h += c.links.length ? c.links.map(function (l, i) {
+      return '<div class="row" data-i="' + i + '"><div class="m"><div class="n">' + esc(l.name) + '</div><div class="d">' + esc(host(l.url)) + (l.promo ? ' · промокод ' + esc(l.promo) : '') + '</div></div><span class="mut">›</span></div>';
+    }).join('') : '<div class="note">Пока пусто. Добавь первый сайт.</div>';
     h += '<button class="btn sec2" id="rf-add">＋ Добавить сайт</button>';
-    h += '<label class="f"><span>Текст-предупреждение (его читают перед ссылками)</span><textarea id="rf-t" rows="9" style="width:100%">' + esc(r.text) + '</textarea></label>';
-    h += '<div class="mut" style="font-size:12px;margin:-4px 2px 8px"><a id="rf-def" style="color:var(--link);cursor:pointer">Вернуть стандартный текст</a></div>';
-    h += '<label class="row" style="cursor:pointer"><div class="m"><div class="n">Публиковать раз в день</div><div class="d">' + (r.last ? 'Последний раз: ' + esc(r.last) : 'Пока не публиковалось') + ' · после 12:00 по Варшаве</div></div><input type="checkbox" id="rf-d"' + (r.daily ? ' checked' : '') + '></label>';
-    h += '<button class="btn" id="rf-save">Сохранить</button>';
+    h += '<div class="sec">Текст-предупреждение</div><div class="row" id="rf-text"><div class="m"><div class="n">' + esc(c.text.slice(0, 60)) + '…</div><div class="d">Его читают перед ссылками. Нажми, чтобы изменить</div></div><span class="mut">›</span></div>';
     sheet(h);
-    var wire = function () { Array.prototype.forEach.call(document.querySelectorAll('.rf-x'), function (b) { b.onclick = function () { haptic(); b.closest('.rf-row').remove(); }; }); };
-    wire();
-    $('#rf-add').onclick = function () { haptic(); var d = document.createElement('div'); d.innerHTML = row({}); $('#rf-list').appendChild(d.firstChild); wire(); };
-    $('#rf-def').onclick = function () { $('#rf-t').value = r.defaultText; };
-    $('#rf-save').onclick = function () {
-      var links = Array.prototype.map.call(document.querySelectorAll('.rf-row'), function (c) { return { name: c.querySelector('.rf-n').value, url: c.querySelector('.rf-u').value, promo: c.querySelector('.rf-p').value }; });
-      var bad = links.filter(function (l) { return (l.name || l.url) && !(l.name.trim() && /^https:\/\//.test(l.url.trim())); })[0];
-      if (bad) return toast('У каждого сайта нужны название и ссылка, начинающаяся с https://');
-      $('#rf-save').disabled = true;
-      api('owner/refs', { method: 'POST', body: { links: links, text: $('#rf-t').value, daily: $('#rf-d').checked } })
-        .then(function (res) { haptic('ok'); toast(res.daily ? 'Сохранено. Публикация раз в день включена' : 'Сохранено'); closeSheet(); })
-        .catch(function (e) { $('#rf-save').disabled = false; toast(e.message); });
+    var save = function (done) { refsSave(c).then(function () { haptic('ok'); done(); }).catch(function (e) { toast(e.message); }); };
+    $('#rf-d').onchange = function () {
+      c.daily = this.checked;
+      if (c.daily && !c.links.length) { this.checked = false; c.daily = false; return toast('Сначала добавь хотя бы одну ссылку'); }
+      refsSave(c).then(function () { haptic('ok'); toast(c.daily ? 'Публикация раз в день включена' : 'Публикация выключена'); }).catch(function (e) { toast(e.message); });
     };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i]'), function (r) { r.onclick = function () { haptic(); edit(+r.getAttribute('data-i')); }; });
+    $('#rf-add').onclick = function () { haptic(); edit(-1); };
+    $('#rf-text').onclick = function () { haptic(); editText(); };
+    function edit(i) {
+      var l = i >= 0 ? c.links[i] : { name: '', url: '', promo: '' };
+      var f = '<h2>' + (i >= 0 ? 'Сайт' : 'Новый сайт') + '</h2>' +
+        '<label class="f"><span>Название</span><input id="rf-n" value="' + esc(l.name) + '" placeholder="Например: Hellpromo" autocomplete="off"></label>' +
+        '<label class="f"><span>Ссылка (https://…)</span><input id="rf-u" value="' + esc(l.url) + '" placeholder="https://…" autocomplete="off" autocapitalize="off" inputmode="url"></label>' +
+        '<label class="f"><span>Промокод (если есть)</span><input id="rf-p" value="' + esc(l.promo || '') + '" autocomplete="off" autocapitalize="off"></label>' +
+        '<div class="btns" style="margin-top:14px"><button class="btn" id="rf-ok">Сохранить</button>' + (i >= 0 ? '<button class="btn sec2" id="rf-del">Убрать</button>' : '') + '</div>';
+      sheet(f);
+      $('#rf-ok').onclick = function () {
+        var n = $('#rf-n').value.trim(), u = $('#rf-u').value.trim(), p = $('#rf-p').value.trim();
+        if (!n) return toast('Впиши название сайта');
+        if (!/^https:\/\/\S{4,}$/.test(u)) return toast('Ссылка должна начинаться с https://');
+        var item = { name: n, url: u, promo: p };
+        if (i >= 0) c.links[i] = item; else c.links.push(item);
+        save(refsSheet);
+      };
+      if (i >= 0) $('#rf-del').onclick = function () { haptic(); c.links.splice(i, 1); if (!c.links.length) c.daily = false; save(refsSheet); };
+    }
+    function editText() {
+      sheet('<h2>Текст-предупреждение</h2><div class="sub">Его читают перед ссылками. Не обещай доход и не зови пользоваться сайтами: пиши, что это твои реферальные ссылки.</div>' +
+        '<label class="f"><textarea id="rf-t" rows="12" maxlength="1500" class="rf-ta">' + esc(c.text) + '</textarea></label>' +
+        '<div class="btns" style="margin-top:14px"><button class="btn" id="rf-ok">Сохранить</button><button class="btn sec2" id="rf-def">Стандартный</button></div>');
+      $('#rf-def').onclick = function () { haptic(); $('#rf-t').value = c.defaultText || ''; };
+      $('#rf-ok').onclick = function () { var t = $('#rf-t').value.trim(); if (t.length < 30) return toast('Текст слишком короткий'); c.text = t; save(refsSheet); };
+    }
   }).catch(function (e) { closeSheet(); toast(e.message); });
 }
 // «Пропало из инвентаря» — записать продажи пачкой. Цены подставлены с сайта (подсказка), суммы — в валюте сайта.

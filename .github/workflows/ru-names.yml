@@ -2,6 +2,9 @@ name: ru-names
 # Русские названия скинов из Steam (по одному износу на задачу). Запускается вручную.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/scripts/runames.mjs', '.github/workflows/ru-names.yml']
 jobs:
   names:
     runs-on: ubuntu-latest

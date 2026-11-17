@@ -1839,6 +1839,39 @@ function lotSheet(l) {
     if (tg && tg.showConfirm) tg.showConfirm('Удалить запись о покупке?', function (ok) { if (ok) del(); }); else if (confirm('Удалить запись?')) del();
   };
 }
+// Рефералки (только владелец): список «название · ссылка · промокод», текст-предупреждение, включатель ежедневной публикации в канал.
+function refsSheet() {
+  sheet('<div class="skel"></div><div class="skel"></div>');
+  api('owner/refs').then(function (r) {
+    var row = function (l) {
+      return '<div class="card rf-row" style="margin-bottom:8px"><input class="rf-n" placeholder="Название сайта" value="' + esc(l.name || '') + '" autocomplete="off">' +
+        '<input class="rf-u" placeholder="https://…" value="' + esc(l.url || '') + '" autocomplete="off" style="margin-top:6px">' +
+        '<input class="rf-p" placeholder="Промокод (если есть)" value="' + esc(l.promo || '') + '" autocomplete="off" style="margin-top:6px">' +
+        '<button class="btn sec2 rf-x" style="margin:8px 0 0">Убрать</button></div>';
+    };
+    var h = '<h2>🔗 Рефералки</h2><div class="sub">Раз в день в канал уходит текст-предупреждение с кнопкой. Ссылки человек видит только в боте, после кнопки «Я прочитал данное сообщение». Несколько сайтов идут в списке подряд.</div>';
+    h += '<div id="rf-list">' + (r.links.length ? r.links.map(row).join('') : '') + '</div>';
+    h += '<button class="btn sec2" id="rf-add">＋ Добавить сайт</button>';
+    h += '<label class="f"><span>Текст-предупреждение (его читают перед ссылками)</span><textarea id="rf-t" rows="9" style="width:100%">' + esc(r.text) + '</textarea></label>';
+    h += '<div class="mut" style="font-size:12px;margin:-4px 2px 8px"><a id="rf-def" style="color:var(--link);cursor:pointer">Вернуть стандартный текст</a></div>';
+    h += '<label class="row" style="cursor:pointer"><div class="m"><div class="n">Публиковать раз в день</div><div class="d">' + (r.last ? 'Последний раз: ' + esc(r.last) : 'Пока не публиковалось') + ' · после 12:00 по Варшаве</div></div><input type="checkbox" id="rf-d"' + (r.daily ? ' checked' : '') + '></label>';
+    h += '<button class="btn" id="rf-save">Сохранить</button>';
+    sheet(h);
+    var wire = function () { Array.prototype.forEach.call(document.querySelectorAll('.rf-x'), function (b) { b.onclick = function () { haptic(); b.closest('.rf-row').remove(); }; }); };
+    wire();
+    $('#rf-add').onclick = function () { haptic(); var d = document.createElement('div'); d.innerHTML = row({}); $('#rf-list').appendChild(d.firstChild); wire(); };
+    $('#rf-def').onclick = function () { $('#rf-t').value = r.defaultText; };
+    $('#rf-save').onclick = function () {
+      var links = Array.prototype.map.call(document.querySelectorAll('.rf-row'), function (c) { return { name: c.querySelector('.rf-n').value, url: c.querySelector('.rf-u').value, promo: c.querySelector('.rf-p').value }; });
+      var bad = links.filter(function (l) { return (l.name || l.url) && !(l.name.trim() && /^https:\/\//.test(l.url.trim())); })[0];
+      if (bad) return toast('У каждого сайта нужны название и ссылка, начинающаяся с https://');
+      $('#rf-save').disabled = true;
+      api('owner/refs', { method: 'POST', body: { links: links, text: $('#rf-t').value, daily: $('#rf-d').checked } })
+        .then(function (res) { haptic('ok'); toast(res.daily ? 'Сохранено. Публикация раз в день включена' : 'Сохранено'); closeSheet(); })
+        .catch(function (e) { $('#rf-save').disabled = false; toast(e.message); });
+    };
+  }).catch(function (e) { closeSheet(); toast(e.message); });
+}
 // «Пропало из инвентаря» — записать продажи пачкой. Цены подставлены с сайта (подсказка), суммы — в валюте сайта.
 function goneSheet() {
   sheet('<div class="skel"></div><div class="skel"></div>');
@@ -2943,7 +2976,7 @@ function more() {
     Array.prototype.forEach.call(document.querySelectorAll('[data-mm]'), function (el) { el.onclick = function () { haptic(); items[+el.getAttribute('data-mm')][3](); }; });
   };
   if ($('#m-people')) $('#m-people').onclick = function () { haptic(); peopleScreen(); };
-  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🏠', 'Домашний агент', 'Цены Steam с твоего компьютера, пока он включён', agentSheet], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
+  if ($('#m-own')) $('#m-own').onclick = function () { haptic(); menu([['🛠', 'Панель владельца', 'Пользователи, Steam, домашний агент', ownerPanel], ['🏠', 'Домашний агент', 'Цены Steam с твоего компьютера, пока он включён', agentSheet], ['📣', 'Продвижение бесплатно', 'План рекламы бота, что уже сделано', promoSheet], ['🔗', 'Рефералки', 'Ссылки и промокоды сайтов — раз в день в канал', refsSheet], ['🩺', 'Состояние системы', 'Источники, сборщик, курсы, ошибки', status]]); };
   $('#m-set').onclick = function () { haptic(); settings(); };
   $('#m-invite').onclick = function () { haptic(); inviteFriend(); };
   $('#m-sites').onclick = function () { haptic(); sitesSheet(); };

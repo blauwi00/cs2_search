@@ -1,3 +1,4 @@
+import { loadRefs, refsWarning, refsLinks, refsConfirmKb } from '../core/refs.ts';
 import { saveNameStmts } from '../webapp/people.ts';
 import { getMeta, channelButton } from '../core/channel.ts';
 import { loadScan } from '../storage/scan.ts';
@@ -132,6 +133,7 @@ async function onText(text: string, h: H): Promise<void> {
       await db.clearState(h.d, h.uid);
       // Метка источника (t.me/бот?start=tt) — чтобы видеть, откуда приходят люди.
       if ((t.split(/\s+/)[1] ?? '') === 'suggest') return suggestStart(h);
+      if ((t.split(/\s+/)[1] ?? '') === 'refs') return refsStart(h);
       const ref = refStmt(h.d, h.uid, t.split(/\s+/)[1] ?? '', h.now);
       if (ref) await ref.run();
       // Кнопка приложения у поля ввода; повторная установка безопасна.
@@ -263,6 +265,17 @@ async function doSearch(h: H, query: string): Promise<void> {
   await h.tg.sendMessage(h.uid, 'Выбери точный вариант:', kb);
 }
 
+/** Рефералки: сначала текст-предупреждение с кнопкой «Я прочитал», ссылки — только после нажатия. */
+async function refsStart(h: H): Promise<void> {
+  const c = await loadRefs(h.d);
+  if (!c.links.length) return say(h, 'Сейчас ссылок нет.');
+  return say(h, refsWarning(c), refsConfirmKb);
+}
+async function refsShow(h: H): Promise<void> {
+  const c = await loadRefs(h.d);
+  if (!c.links.length) return say(h, 'Сейчас ссылок нет.');
+  return say(h, refsLinks(c));
+}
 async function onCallback(cb: TgCallback, h: H): Promise<void> {
   const data = (cb.data ?? '').slice(0, 64);
   const msgId = cb.message?.message_id;
@@ -286,6 +299,7 @@ async function onCallback(cb: TgCallback, h: H): Promise<void> {
   }
   if (!(await termsAccepted(h))) return askTerms(h);
   if (a === 'chpost' && b) return publishNow(h, b);
+  if (a === 'refs' && b === 'ok') return refsShow(h);
   if (a === 'bc') return broadcastConfirm(h, b === 'send');
   if (a === 'sg' && b === 'go') return suggestStart(h);
   if (a === 'sg' && Number.isInteger(Number(c))) return suggestDecide(h, b, Number(c));

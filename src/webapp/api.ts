@@ -37,6 +37,7 @@ import { sitePriceList, SITE_PRICE_KIND } from '../core/sites.ts';
 import { TelegramClient } from '../telegram/api.ts';
 import { sha256Hex, requestedSiteNames } from '../ingest.ts';
 import { botUsername, getMeta, setMetaStmt } from '../core/channel.ts';
+import { loadRefs, parseRefs, DEFAULT_REFS_TEXT } from '../core/refs.ts';
 import { loadCollections, collViews, skinViews, fuelText, addReq, STEAM_CURRENCY_ID } from '../core/collections.ts';
 import { loadCheap, pickCheap, cheapMeta, CHEAP_CATS } from '../core/cheap.ts';
 import { submitSuggestion } from '../telegram/suggest.ts';
@@ -1345,6 +1346,18 @@ async function appApi(req: Request, env: Env, now: number, tid: number, rawDb?: 
     }
     // Трейд-ссылка владельца для подарков скинами (розыгрыш подписчикам / подарок автору): видят все, меняет только владелец.
     if (path === 'tradeurl' && method === 'GET') return json({ ok: true, url: (await getMeta(d, 'trade_url')) || null, getUrl: TRADE_URL_HELP });
+    // Рефералки владельца: ссылки, промокоды, текст-предупреждение и включатель ежедневной публикации в канал.
+    if (path === 'owner/refs' && method === 'GET') {
+      if (!isAdmin) return bad('admin_only', 403);
+      return json({ ok: true, ...(await loadRefs(d)), defaultText: DEFAULT_REFS_TEXT, last: await getMeta(d, 'refs_done') });
+    }
+    if (path === 'owner/refs' && method === 'POST') {
+      if (!isAdmin) return bad('admin_only', 403);
+      const c = parseRefs(body);
+      if (c.daily && !c.links.length) return bad('Сначала добавь хотя бы одну ссылку');
+      await setMetaStmt(d, 'refs', JSON.stringify(c)).run();
+      return json({ ok: true, ...c });
+    }
     if (path === 'owner/tradeurl' && method === 'POST') {
       if (!isAdmin) return bad('admin_only', 403);
       const raw = typeof body.url === 'string' ? body.url.trim() : '';

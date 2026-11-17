@@ -26,6 +26,7 @@ import { outcomeAfter } from './quality.ts';
 import { warsawHour, warsawDate, utcDay } from '../utils/time.ts';
 import { steamListingUrl, type Fetcher } from '../utils/http.ts';
 import { deliverAt, enqueueStmt, enqueueEditsStmt, loadUserSettings, withDefaults, type Delivery } from './audience.ts';
+import { loadRefs, refsWarning, refsChannelKb } from './refs.ts';
 import { ANNOUNCEMENTS, buildCard, composeChannelPost, dueSlot, getMeta, setMetaStmt, botUsername, botButton, channelUrlOf, ALL_SLOTS, type Slot } from './channel.ts';
 import { ensureTodayIdeas, newsPost, newsRuLines, extraPost, EXTRA_BUTTON, type NewsItem } from './insights.ts';
 import { loadScan } from '../storage/scan.ts';
@@ -802,6 +803,9 @@ export const CARD_WAIT_SEC = 25 * 60;
 /** Кнопки под постом об обновлении CS2. */
 export const newsKb = (n: NewsItem, user: string | null): Keyboard => [[{ text: newsRuLines(n) ? '📰 Полный список в Steam' : '📰 Читать в Steam', url: n.url }], ...botButton(user)];
 
+/** Ежедневная публикация рефералок включена и есть хотя бы одна ссылка. */
+const refsDue = async (ctx: Ctx): Promise<boolean> => { const c = await loadRefs(ctx.db); return c.daily && c.links.length > 0; };
+
 /** Объявления — только днём по Варшаве, чтобы не будить людей ночью. */
 const announceDue = (ctx: Ctx) => warsawHour(ctx.now) >= 10 && warsawHour(ctx.now) < 21 && ANNOUNCEMENTS.some((x) => ctx.now >= x.after);
 
@@ -919,6 +923,10 @@ export async function jobChannel(ctx: Ctx): Promise<void> {
       const id = await post(a.text, botButton(user, a.button), null);
       if (id) writes.push(setMetaStmt(ctx.db, 'announce_done', JSON.stringify([...done, a.id])));
     }
+  } else if (user && warsawHour(ctx.now) >= 12 && warsawHour(ctx.now) < 21 && (await getMeta(ctx.db, 'refs_done')) !== warsawDate(ctx.now) && await refsDue(ctx)) {
+    // 1c. Рефералки владельца: раз в день предупреждение и кнопка в бота; ссылки человек получает только в боте после «Я прочитал».
+    const c = await loadRefs(ctx.db);
+    if (await post(refsWarning(c), refsChannelKb(user), null)) writes.push(setMetaStmt(ctx.db, 'refs_done', warsawDate(ctx.now)));
   } else {
     // 2. Посты по расписанию.
     const doneRows = (await ctx.db.prepare(`SELECT key, value FROM meta WHERE key LIKE 'channel_done_%'`).all<{ key: string; value: string }>()).results;

@@ -1180,7 +1180,11 @@ function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><spa
 // ---------- Рынок (наблюдение) ----------
 // «Цены»: найти любой скин → цены на всех площадках, график, «Следить за ценой». Ниже — «Слежу»: свои цели.
 // Предметы, попавшие в список сами из покупок, здесь не показываем — они в «Моих скинах».
-var WEAR_RU = { 'Factory New': 'Прямо с завода', 'Minimal Wear': 'Немного поношенное', 'Field-Tested': 'После полевых испытаний', 'Well-Worn': 'Поношенное', 'Battle-Scarred': 'Закалённое в боях' };
+var UI_LANG = String((tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) || (navigator.language || 'ru')).slice(0, 2).toLowerCase();
+// Язык интерфейса берём из Telegram: русский/украинский/белорусский — русские названия износа, остальным — как в Steam (английские).
+var WEAR_RU = (UI_LANG === 'ru' || UI_LANG === 'uk' || UI_LANG === 'be')
+  ? { 'Factory New': 'Прямо с завода', 'Minimal Wear': 'Немного поношенное', 'Field-Tested': 'После полевых испытаний', 'Well-Worn': 'Поношенное', 'Battle-Scarred': 'Закалённое в боях' }
+  : { 'Factory New': 'Factory New', 'Minimal Wear': 'Minimal Wear', 'Field-Tested': 'Field-Tested', 'Well-Worn': 'Well-Worn', 'Battle-Scarred': 'Battle-Scarred' };
 /** «AK-47 | Slate (Field-Tested)» → название и износ отдельно, чтобы название не обрезалось вместе с износом. */
 function splitName(n) {
   var m = /^(.*) \((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)$/.exec(n || '');

@@ -120,7 +120,7 @@
   flash(18.05, .5);
   // Кадры записи экрана: A 5 с (цены), C 3,4 с (коллекции), D 4 с (дёшево) при 30 к/с
   var pad = function (n) { n = String(n); while (n.length < 3) n = '0' + n; return n; };
-  var cA = { s: 2.7, n: 100 }, cC = { s: 11.07, n: 102 }, cD = { s: 14.3, n: 120 };
+  var cA = { s: 2.7, n: 55 }, cC = { s: 11.07, n: 102 }, cD = { s: 14.3, n: 120 };
   var last = {};
   function setClip(id, dir, c, t) {
     var i = Math.min(c.n, Math.max(1, Math.floor((t - c.s) * 30) + 1)), el = $(id);

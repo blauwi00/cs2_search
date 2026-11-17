@@ -1,0 +1,25 @@
+name: ru-names
+# Русские названия скинов из Steam (по одному износу на задачу). Запускается вручную.
+on:
+  workflow_dispatch:
+jobs:
+  names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        wear: ['0', '4', '2']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Обход
+        env:
+          WORKER_URL: https://cs2-search.blauwi925.workers.dev
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          WEAR: ${{ matrix.wear }}
+        run: node .github/scripts/runames.mjs

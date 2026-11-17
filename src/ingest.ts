@@ -34,7 +34,7 @@ export const MAX_INGEST_BYTES = 1024 * 1024;
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'Content-Type': 'application/json' } });
 
 interface SteamEntry { name?: unknown; ok?: unknown; status?: unknown; body?: unknown; error?: unknown }
-interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown; done?: unknown }
+interface IngestBody { kind?: unknown; fetchedAt?: unknown; items?: unknown; wanted?: unknown; error?: unknown; status?: unknown; rates?: unknown; id?: unknown; jpg?: unknown; done?: unknown; rebuild?: unknown }
 
 /** Что может присылать домашний агент (свой ключ, а не общий ключ сборщика): только данные Steam со своего компьютера. */
 export const AGENT_KINDS = ['steam', 'steam_inventory', 'steam_avg', 'rally_scan', 'agent_ping', 'steam_live'] as const;
@@ -449,7 +449,7 @@ export async function handleIngest(req: Request, env: Env, now: number, rawDb?: 
       // Русские названия Steam: новые пары пишем один раз; строки для поиска пересобираем в конце обхода и не чаще раза в час.
       const ruSt = ruNamesStmts(d, rows);
       for (let i = 0; i < ruSt.length; i += 90) await d.batch(ruSt.slice(i, i + 90));
-      if (ruSt.length || body.done === true) await rebuildRuLines(d, now, body.done === true);
+      if (ruSt.length || body.done === true || body.rebuild === true) await rebuildRuLines(d, now, body.done === true || body.rebuild === true);
       // Владельцу: первая пачка пришла и полный обход закончен — сообщение в Telegram (проверка без доступа к базе). Не чаще, чем событие.
       if ((firstEver || body.done === true) && env.TELEGRAM_BOT_TOKEN && env.ADMIN_TELEGRAM_ID) {
         try {

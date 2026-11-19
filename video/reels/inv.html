@@ -7,17 +7,18 @@
 html,body{width:1080px;height:1920px;overflow:hidden;background:#04100B}
 body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative}
 #bg{position:absolute;inset:0}
-.hook{position:absolute;left:80px;right:80px;top:226px;color:#fff;z-index:50;text-align:center;
-  font-weight:900;font-size:84px;line-height:1.05;letter-spacing:-2px;text-shadow:0 6px 0 rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.65)}
-.hook .r{display:inline-block}.hook .g{color:#FFD23F;text-shadow:0 6px 0 rgba(0,0,0,.45),0 0 30px rgba(255,210,63,.6)}
-.mb{position:absolute;left:0;top:0;width:250px;height:290px;border-radius:20px;z-index:55;overflow:hidden;
-  background:linear-gradient(160deg,#1b1406,#0b0a07 60%);border:3px solid #FFD23F;box-shadow:0 0 24px rgba(255,210,63,.45),0 16px 40px rgba(0,0,0,.6);
-  text-align:center;color:#fff;letter-spacing:-.3px}
-.mb img{display:block;width:124px;height:124px;border-radius:22px;margin:18px auto 8px}
-.mb .t{font-weight:900;font-size:40px;line-height:1;color:#FFD23F;text-transform:uppercase;letter-spacing:.5px}
-.mb .u{font-weight:700;font-size:27px;margin-top:6px;opacity:.95}
-.mb .b{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:8px;background:#FFD23F;color:#111;font-weight:900;font-size:21px;letter-spacing:.5px}
-.mb .sh{position:absolute;top:-40px;left:-200px;width:90px;height:400px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
+.hook{position:absolute;left:70px;width:940px;top:200px;height:230px;color:#fff;z-index:50;text-align:center;border-radius:34px;
+  padding-top:31px;
+  background:linear-gradient(135deg,rgba(120,230,170,.30),rgba(30,90,62,.6) 45%,rgba(8,40,27,.9));border:2px solid rgba(190,255,215,.35);
+  box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);
+  font-weight:900;font-size:80px;line-height:1.05;letter-spacing:-2px;text-shadow:0 4px 18px rgba(0,0,0,.45)}
+.hook .g{color:#FFD23F;text-shadow:0 0 28px rgba(255,210,63,.55)}
+.mb{position:absolute;left:0;top:0;width:280px;height:96px;border-radius:16px;z-index:55;overflow:hidden;display:flex;align-items:center;gap:12px;padding:0 14px 0 10px;
+  background:linear-gradient(160deg,#1b1406,#0b0a07 60%);border:3px solid #FFD23F;box-shadow:0 0 20px rgba(255,210,63,.4),0 12px 30px rgba(0,0,0,.55);color:#fff;white-space:nowrap}
+.mb img{width:70px;height:70px;border-radius:14px;flex:none}
+.mb .t{font-weight:900;font-size:34px;line-height:1;color:#FFD23F;text-transform:uppercase;letter-spacing:.5px}
+.mb .u{font-weight:700;font-size:23px;margin-top:5px;opacity:.95}
+.mb .sh{position:absolute;top:-30px;left:-200px;width:70px;height:180px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
 .word{position:absolute;left:60px;right:60px;top:1330px;height:130px;text-align:center;font-weight:900;font-size:124px;line-height:130px;z-index:60;
   color:#FFD23F;text-shadow:0 0 30px rgba(255,210,63,.6),0 6px 0 rgba(0,0,0,.35);letter-spacing:1px}
 /* Сцена 1: огромный скин со светом его цвета */
@@ -35,7 +36,6 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 .card img{position:absolute;left:20px;top:10px;width:380px;height:210px;object-fit:contain;filter:drop-shadow(0 14px 14px rgba(0,0,0,.6))}
 .card .p{position:absolute;right:40px;top:58px;font-weight:900;font-size:110px;letter-spacing:-3px;text-shadow:0 4px 20px rgba(0,0,0,.4)}
 .card .n{position:absolute;right:40px;bottom:26px;font-weight:700;font-size:68px;letter-spacing:-1.5px;opacity:.92;white-space:nowrap}
-#line{position:absolute;width:10px;height:1250px;left:948px;top:500px;border-radius:5px;background:linear-gradient(#b8ffcf,#41e08a);box-shadow:0 0 30px #41e08a,0 0 80px #41e08a;opacity:0}
 /* Сцена 3: итог на стеклянной плите */
 #tot{position:absolute;inset:0;perspective:1600px}
 #plate{position:absolute;left:50px;width:980px;top:660px;height:640px;border-radius:44px;transform-style:preserve-3d;
@@ -49,10 +49,10 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 </style></head><body>
 <canvas id="bg" width="1080" height="1920"></canvas>
 <div id="hero"><div id="halo"></div><img id="heroimg"><div id="streak"></div></div>
-<div id="stage"><div id="deck"></div><div id="line"></div></div>
+<div id="stage"><div id="deck"></div></div>
 <div id="tot"><div id="plate"><div class="sh" id="psh"></div><div class="big" id="big"></div><div class="l" id="netl"></div><div class="m" id="note"></div></div></div>
 <div class="hook" id="hook"></div>
-<div class="mb" id="mb"><img src="assets/avatar.png" onerror="this.style.display='none'"><div class="t">Ценолов</div><div class="u">@cenolow_bot</div><div class="b">ЦЕНЫ СКИНОВ CS2</div><div class="sh" id="mbsh"></div></div>
+<div class="mb" id="mb"><img src="assets/avatar.png" onerror="this.style.display='none'"><div><div class="t">Ценолов</div><div class="u">@cenolow_bot</div></div><div class="sh" id="mbsh"></div></div>
 <div class="word" id="word"></div>
 <canvas id="grain" width="540" height="960" style="width:1080px;height:1920px"></canvas>
 <script src="work/vdata.js"></script>
@@ -66,29 +66,29 @@ var back = function (x) { x = clamp(x, 0, 1); var c = 1.7; return 1 + (c + 1) * 
 
 // Крючок из настоящих чисел: сколько стоит пример в Steam и сколько придёт после комиссии.
 if (!(V.total > 0 && V.net > 0)) throw new Error('нет данных цен: рендер остановлен');
-$('hook').innerHTML = '<span class="r" id="h1">Скинов на <span class="g">$' + Math.floor(V.total / 100) + '</span>,</span><br><span class="r" id="h2">а на руки <span class="g">$' + Math.floor(V.net / 100) + '?</span></span>';
+$('hook').innerHTML = '<span>Скинов на <span class="g">$' + Math.floor(V.total / 100) + '</span>,</span><br><span>а на руки <span class="g">$' + Math.floor(V.net / 100) + '?</span></span>';
 function drawHook(t) {
-  [['h1', 0], ['h2', 0.3]].forEach(function (h) {
-    var p = clamp((t - h[1]) / 0.2, 0, 1), el = $(h[0]);
-    el.style.opacity = p; el.style.transform = 'scale(' + (1.3 - 0.3 * ease(p)) + ')'; el.style.filter = p < 1 ? 'blur(' + (8 * (1 - p)).toFixed(1) + 'px)' : 'none';
-  });
+  var p = (t - 0.05) / 0.4, e = back(p), el = $('hook');
+  el.style.opacity = p > 0 ? 1 : 0;
+  el.style.transform = 'translateX(' + ((1 - e) * 1100).toFixed(1) + 'px) rotate(' + ((1 - ease(p)) * -4).toFixed(2) + 'deg)';
+  el.style.filter = p < 1 ? 'blur(' + ((1 - ease(p)) * 10).toFixed(1) + 'px)' : 'none';
 }
 
 // Мини-баннер Ценолова, как реклама на стриме: квадрат въезжает из-за края экрана, держится, уезжает; место меняется.
 // [с, сторона ('l' слева, 'r' справа — правый край на 900, 'c' по центру), y, угол, масштаб]
-var MB = [[0.2, 'r', 440, 3, 1], [1.5, 'l', 1050, -3, 1], [4.5, 'r', 1050, 3, 1], [8, 'l', 425, -3, 0.75], [10, 'r', 425, 3, 0.75], [11.5, 'r', 425, 3, 0.75], [14, 'c', 1000, 0, 1.3]];
+var MB = [[0.6, 'r', 448, 2, 1], [1.5, 'l', 448, -2, 1], [4.5, 'r', 448, 2, 1], [8, 'l', 448, -2, 1], [10, 'r', 448, 2, 1], [11.5, 'c', 448, 0, 1], [14, 'c', 448, 0, 1]];
 function drawMb(t) {
   var el = $('mb'), cur = -1;
   for (var i = 0; i < MB.length; i++) if (t >= MB[i][0]) cur = i;
   if (cur < 0) { el.style.opacity = 0; return; }
-  var m = MB[cur], nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9, W = 250 * m[4];
+  var m = MB[cur], nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9, W = 280 * m[4];
   var x = m[1] === 'c' ? 540 - W / 2 : m[1] === 'r' ? 900 - W : 70, off = m[1] === 'r' ? 1080 - x + 40 : m[1] === 'l' ? -(x + W + 40) : 0;
   var inP = back((t - m[0]) / 0.3), outP = ease((t - (nxt - 0.2)) / 0.2);
   var dx = off * (1 - inP) + off * clamp(outP, 0, 1), dy = m[1] === 'c' ? (1 - inP) * 700 : 0;
   var rot = m[3] + Math.sin(t * 2.4) * 0.8;
   el.style.opacity = 1; el.style.transformOrigin = '0 0';
   el.style.transform = 'translate(' + (x + dx).toFixed(1) + 'px,' + (m[2] + dy).toFixed(1) + 'px) rotate(' + rot.toFixed(2) + 'deg) scale(' + m[4] + ')';
-  $('mbsh').style.left = (-200 + ((t - m[0] - 0.3) % 1.6) / 0.6 * 560) + 'px';
+  $('mbsh').style.left = (-200 + ((t - m[0] - 0.3) % 1.6) / 0.6 * 600) + 'px';
 }
 
 // Цвет света скина (vfetch.py): усиливаем до яркого; почти серым скинам — фирменный зелёный.
@@ -179,8 +179,6 @@ function drawCards(t) {
     d.style.filter = 'blur(' + ((1 - ease(p)) * 10).toFixed(1) + 'px)';
     d.style.opacity = (1 - collapse) * clamp((sy - 480) / 160, 0, 1);
   }
-  var lp = (t - C0) / 3.0; $('line').style.opacity = clamp(Math.sin(clamp(lp, 0, 1) * Math.PI) * 1.4, 0, 1) * (1 - collapse);
-  $('line').style.transform = 'rotateZ(' + (-7 + k * 3) + 'deg) scaleY(' + ease(lp * 1.5) + ')'; $('line').style.transformOrigin = '50% 0';
 }
 
 // Сцена 3 (11,5–14 с): итог считается на стеклянной плите, плита чуть повёрнута и доворачивается к зрителю.

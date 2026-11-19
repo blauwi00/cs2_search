@@ -175,6 +175,23 @@
         var sh = el.querySelector(':scope > .sh'); if (sh) sh.style.left = (-300 + ease((p - 0.6) / 1.4) * 1500) + 'px';
         return ease(p);
       },
+      // Объёмная пушка: n слоёв картинки по глубине (толщина), поворот в 3D, блик по форме скина, тень на полу. pose(t, {rz, ry, rx, s, blur, op, tx, ty}).
+      gun3d: function (src, r, n, depth) {
+        n = n || 14; depth = depth || 2.2;
+        var w = K.el('<div class="shd"></div><div class="obj"></div>', 'g3'); K.box(w, r);
+        var o = w.querySelector('.obj'), html = '';
+        for (var i = n; i >= 1; i--) html += '<img src="' + src + '" style="transform:translateZ(' + (-i * depth).toFixed(1) + 'px);filter:brightness(' + (0.22 + 0.35 * (1 - i / n)).toFixed(2) + ') saturate(1.2)">';
+        html += '<img src="' + src + '" style="transform:translateZ(0)"><div class="gls" style="-webkit-mask-image:url(\'' + src + '\')"></div>';
+        o.innerHTML = html;
+        var g = o.querySelector('.gls'), shd = w.querySelector('.shd');
+        return { el: w, pose: function (t, p) {
+          p = p || {}; var ry = p.ry || 0, rx = p.rx || 0;
+          o.style.transform = 'translate(' + (p.tx || 0) + 'px,' + (p.ty || 0) + 'px) rotateZ(' + (p.rz || 0) + 'deg) rotateY(' + ry.toFixed(2) + 'deg) rotateX(' + rx.toFixed(2) + 'deg) scale(' + (p.s || 1).toFixed(3) + ')';
+          g.style.backgroundPosition = (100 - ((ry + 30) / 60) * 100 + Math.sin(t * 0.7) * 20).toFixed(1) + '% 0';
+          shd.style.transform = 'scaleX(' + (1 - Math.abs(ry) / 90).toFixed(3) + ')';
+          w.style.opacity = p.op == null ? 1 : p.op; w.style.filter = p.blur > 0.3 ? 'blur(' + p.blur.toFixed(1) + 'px)' : 'none';
+        } };
+      },
       // Счётчик между a и b с вертикальным размытием, пока катится.
       roll: function (a, b, t, t0, dur) { var u = inout((t - t0) / dur); return { v: a + (b - a) * u, blur: u > 0 && u < 1 ? Math.sin(u * Math.PI) * 6 : 0 }; }
     };

@@ -39,11 +39,11 @@ KIT.run({
   punches: knifeAt.map(function (t) { return [t, 0.08]; }).concat([[8.64, 0.07], [11.52, 0.04]]),
   mb: [[2.0, 70, 250, -2, 0.8], [8.6, 'off'], [9.7, 'r', 440, 2, 1], [11.45, 'off'], [15.45, 'c', 470, 0, 1], [17.2, 'off']],
   segs: [{ t0: 13.44, t1: 15.36, clip: 'liq1', c0: 7.90, n: 376, rect: [150, 600, 680, 840], tilt: [-14, 0],
-    k: [[0, 540, 1700, 1.15], [1.0, 540, 1550, 1.3], [1.4, 540, 1550, 2.2], [1.92, 540, 1550, 2.2]] }],
+    k: [[0, 540, 1500, 1.0], [1.92, 540, 1550, 1.0]] }],
   pops: [{ at: 15.0, box: [29, 537.7, 332, 44], text: 'Подробнее', size: 120, to: [475, 1020] }],
   init: function (K) {
     E.halo = K.el('', ''); E.halo.style.cssText = 'position:absolute;left:-60px;top:560px;width:1200px;height:800px;border-radius:50%;filter:blur(90px);opacity:.7';
-    E.knife = K.img(K.B + knife.img, ''); E.knife.style.cssText += ';left:80px;top:720px;width:800px;height:460px;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.6))';
+    E.knife = K.gun3d(K.B + knife.img, [80, 720, 800, 460], 20, 3.2);
     E.H = K.plate('Нож за <span class="g">' + K.usd(knife.cents) + '</span>.<br>Сколько продаж<br>за сутки?', [70, 220, 940, 340]); E.H.id = 'H';
     E.dial = K.el('', ''); E.dial.id = 'dial';
     [['0', 0], ['6', 90], ['12', 180], ['18', 270]].forEach(function (l) { var d = K.el(l[0], 'lb', E.dial); d.dataset.a = l[1]; });
@@ -69,9 +69,9 @@ KIT.run({
     // Крючок с ножом — в начале и снова в конце (петля).
     var hookOn = t < 1.92 || t >= 17.28;
     var kOp = t < 1.92 ? 1 : t >= 17.28 ? K.ease((t - 17.28) / 0.4) : 0;
-    E.knife.style.opacity = kOp; E.halo.style.opacity = (0.7 * kOp).toFixed(2);
+     E.halo.style.opacity = (0.7 * kOp).toFixed(2);
     var c = K.vivid(knife.tint); E.halo.style.background = 'radial-gradient(' + K.rgba(c, .8) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';
-    E.knife.style.transform = 'rotate(' + (-12 + Math.sin(t * 0.9) * 5) + 'deg) scale(' + (1 + 0.03 * Math.sin(t * 1.3)) + ')';
+    E.knife.pose(t, { rz: -12 + Math.sin(t * 0.9) * 5, ry: Math.sin(t * 0.9) * 36, rx: 12, s: 1 + 0.03 * Math.sin(t * 1.3), op: kOp });
     if (t < 2) K.slam(E.H, t, 0.05, 'z', 1.8, 'l'); else K.slam(E.H, t, 17.4, 'z');
 
     // Циферблат: сверху во время гонки, крупно в конце.

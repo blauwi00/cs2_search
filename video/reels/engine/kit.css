@@ -37,3 +37,10 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 .pop span{display:flex;align-items:center;gap:16px}
 .pop .sh{position:absolute;top:-60px;left:-300px;width:140px;height:300px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
 .star{width:1em;height:1em;flex:none;filter:drop-shadow(0 0 10px rgba(255,210,63,.6))}
+/* Объёмная пушка (K.gun3d): слои картинки по глубине дают толщину, поворот в 3D, блик по форме скина, тень на полу. */
+.g3{position:absolute;perspective:1700px}
+.g3 .obj{position:absolute;inset:0;transform-style:preserve-3d}
+.g3 .obj img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.g3 .gls{position:absolute;inset:0;-webkit-mask-size:contain;-webkit-mask-repeat:no-repeat;-webkit-mask-position:center;mix-blend-mode:screen;
+  background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.65) 50%,transparent 58%);background-size:300% 100%}
+.g3 .shd{position:absolute;left:12%;right:12%;bottom:-6%;height:16%;border-radius:50%;background:radial-gradient(rgba(0,0,0,.75),transparent 70%);filter:blur(14px)}

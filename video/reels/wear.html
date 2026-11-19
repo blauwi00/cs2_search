@@ -34,11 +34,11 @@ KIT.run({
   punches: [[3.84, 0.03], [5.76, 0.03], [7.68, 0.09], [9.60, 0.05], [11.52, 0.04]],
   mb: [[1.95, 'r', 486, 2, 1], [11.52, 'off'], [15.4, 'c', 486, 0, 1], [17.2, 'off']],
   segs: [{ t0: 13.44, t1: 15.36, clip: 'wear2', c0: 4.95, n: 299, rect: [150, 600, 680, 840], tilt: [14, 0],
-    k: [[0, 540, 700, 1.15], [1.0, 540, 423, 1.3], [1.4, 540, 423, 2.2], [1.92, 540, 423, 2.2]] }],
+    k: [[0, 540, 700, 1.0], [1.0, 540, 500, 1.0], [1.92, 540, 500, 1.0]] }],
   pops: [{ at: 15.0, box: [13, 125.7, 364, 54], text: 'Field-Tested', size: 110, to: [475, 1020] }],
   init: function (K) {
     E.halo = K.el('', ''); E.halo.id = 'halo';
-    E.ak = {}; ['FN', 'FT', 'BS', 'MW', 'WW'].forEach(function (w) { var i = K.img(K.B + by[w].img, 'ak'); i.style.left = '60px'; i.style.top = '600px'; E.ak[w] = i; });
+    E.ak = {}; ['FN', 'FT', 'BS', 'MW', 'WW'].forEach(function (w) { E.ak[w] = K.gun3d(K.B + by[w].img, [80, 610, 780, 440], 20, 3.2); });
     E.P = K.plate('<div class="pr g" id="pr"></div><div class="wn" id="wn"></div>', [70, 220, 940, 250]); E.P.id = 'P';
     E.S = K.plate('<div class="tt">ИЗНОС</div><div id="trk"><div id="rail"></div><div id="knob"></div></div>', [70, 1110, 810, 330]); E.S.id = 'S';
     var trk = E.S.querySelector('#trk'), W = 730 / 5;
@@ -59,9 +59,8 @@ KIT.run({
       var i = E.ak[w], src = by[w].img, isCur = src === by[cur].img, isPrev = src === by[prev].img;
       var own = ['FN', 'FT', 'BS', 'MW', 'WW'].filter(function (x) { return by[x].img === src; })[0] === w; // одна картинка на одинаковые файлы
       var op = !own ? 0 : isCur && isPrev ? 1 : isCur ? mix : isPrev ? 1 - mix : 0;
-      i.style.opacity = op.toFixed(3);
-      i.style.transform = 'rotate(' + (-6 + jolt * 3) + 'deg) scale(' + (scAk * (1 + jolt * 0.06)).toFixed(3) + ')';
-      i.style.filter = 'drop-shadow(0 40px 50px rgba(0,0,0,.6))' + (blurAk > 0.3 ? ' blur(' + blurAk.toFixed(1) + 'px)' : '');
+      // 3D: автомат медленно качается по оси Y, на смене износа — доворот рывком.
+      i.pose(t, { rz: -6 + jolt * 3, ry: Math.sin(t * 0.75) * 32 + jolt * 16, rx: 10 + Math.sin(t * 0.5) * 4, s: scAk * (1 + jolt * 0.06), blur: blurAk, op: op });
     });
     var c = K.vivid(by[cur].tint);
     E.halo.style.background = 'radial-gradient(' + K.rgba(c, .85) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';

@@ -10,10 +10,14 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 .hook{position:absolute;left:80px;right:80px;top:226px;color:#fff;z-index:50;text-align:center;
   font-weight:900;font-size:84px;line-height:1.05;letter-spacing:-2px;text-shadow:0 6px 0 rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.65)}
 .hook .r{display:inline-block}.hook .g{color:#FFD23F;text-shadow:0 6px 0 rgba(0,0,0,.45),0 0 30px rgba(255,210,63,.6)}
-.mb{position:absolute;left:0;top:0;height:112px;border-radius:56px;background:rgba(10,22,16,.82);backdrop-filter:blur(12px);border:3px solid #FFD23F;
-  box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:55;display:flex;align-items:center;gap:16px;padding:0 34px 0 11px;white-space:nowrap;
-  font-weight:800;font-size:68px;color:#FFD23F;letter-spacing:-1px}
-.mb img{width:84px;height:84px;border-radius:50%}
+.mb{position:absolute;left:0;top:0;width:250px;height:290px;border-radius:20px;z-index:55;overflow:hidden;
+  background:linear-gradient(160deg,#1b1406,#0b0a07 60%);border:3px solid #FFD23F;box-shadow:0 0 24px rgba(255,210,63,.45),0 16px 40px rgba(0,0,0,.6);
+  text-align:center;color:#fff;letter-spacing:-.3px}
+.mb img{display:block;width:124px;height:124px;border-radius:22px;margin:18px auto 8px}
+.mb .t{font-weight:900;font-size:40px;line-height:1;color:#FFD23F;text-transform:uppercase;letter-spacing:.5px}
+.mb .u{font-weight:700;font-size:27px;margin-top:6px;opacity:.95}
+.mb .b{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:8px;background:#FFD23F;color:#111;font-weight:900;font-size:21px;letter-spacing:.5px}
+.mb .sh{position:absolute;top:-40px;left:-200px;width:90px;height:400px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
 .word{position:absolute;left:60px;right:60px;top:1330px;height:130px;text-align:center;font-weight:900;font-size:124px;line-height:130px;z-index:60;
   color:#FFD23F;text-shadow:0 0 30px rgba(255,210,63,.6),0 6px 0 rgba(0,0,0,.35);letter-spacing:1px}
 /* Сцена 1: огромный скин со светом его цвета */
@@ -34,10 +38,10 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 #line{position:absolute;width:10px;height:1250px;left:948px;top:500px;border-radius:5px;background:linear-gradient(#b8ffcf,#41e08a);box-shadow:0 0 30px #41e08a,0 0 80px #41e08a;opacity:0}
 /* Сцена 3: итог на стеклянной плите */
 #tot{position:absolute;inset:0;perspective:1600px}
-#plate{position:absolute;left:50px;width:980px;top:580px;height:700px;border-radius:44px;transform-style:preserve-3d;
+#plate{position:absolute;left:50px;width:980px;top:660px;height:640px;border-radius:44px;transform-style:preserve-3d;
   background:linear-gradient(140deg,rgba(130,240,180,.28),rgba(20,70,48,.7) 50%,rgba(6,30,20,.9));border:2px solid rgba(190,255,215,.35);
   box-shadow:0 60px 120px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.25);text-align:center;overflow:hidden}
-#plate .big{display:inline-block;margin-top:50px;font-weight:900;font-size:200px;line-height:1;color:#FFD23F;text-shadow:0 0 50px rgba(255,210,63,.55);letter-spacing:-7px;white-space:nowrap}
+#plate .big{display:inline-block;margin-top:30px;font-weight:900;font-size:200px;line-height:1;color:#FFD23F;text-shadow:0 0 50px rgba(255,210,63,.55);letter-spacing:-7px;white-space:nowrap}
 #plate .l{font-weight:700;font-size:68px;line-height:1.12;margin-top:40px;letter-spacing:-1px}
 #plate .m{font-weight:600;font-size:68px;line-height:1.12;margin-top:34px;opacity:.7;letter-spacing:-1px}
 #plate .sh{position:absolute;top:-100px;width:200px;height:900px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);transform:rotate(18deg)}
@@ -48,7 +52,7 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 <div id="stage"><div id="deck"></div><div id="line"></div></div>
 <div id="tot"><div id="plate"><div class="sh" id="psh"></div><div class="big" id="big"></div><div class="l" id="netl"></div><div class="m" id="note"></div></div></div>
 <div class="hook" id="hook"></div>
-<div class="mb" id="mb"><img src="assets/avatar.png" onerror="this.style.display='none'">@cenolow_bot</div>
+<div class="mb" id="mb"><img src="assets/avatar.png" onerror="this.style.display='none'"><div class="t">Ценолов</div><div class="u">@cenolow_bot</div><div class="b">ЦЕНЫ СКИНОВ CS2</div><div class="sh" id="mbsh"></div></div>
 <div class="word" id="word"></div>
 <canvas id="grain" width="540" height="960" style="width:1080px;height:1920px"></canvas>
 <script src="work/vdata.js"></script>
@@ -70,19 +74,21 @@ function drawHook(t) {
   });
 }
 
-// Мини-баннер Ценолова: прыгает по экрану. [с, x ('c' — по центру, 'r' — правый край на 900), y, угол, масштаб]
-var MB = [[0.2, 'c', 470, -3, 1], [1.5, 80, 1180, 3, 1], [4.5, 'r', 1180, -3, 1], [8, 80, 470, -4, 1], [10, 'r', 470, 3, 1], [11.5, 'c', 460, 0, 1], [14, 'c', 1150, 0, 1.25]];
+// Мини-баннер Ценолова, как реклама на стриме: квадрат въезжает из-за края экрана, держится, уезжает; место меняется.
+// [с, сторона ('l' слева, 'r' справа — правый край на 900, 'c' по центру), y, угол, масштаб]
+var MB = [[0.2, 'r', 440, 3, 1], [1.5, 'l', 1050, -3, 1], [4.5, 'r', 1050, 3, 1], [8, 'l', 425, -3, 0.75], [10, 'r', 425, 3, 0.75], [11.5, 'r', 425, 3, 0.75], [14, 'c', 1000, 0, 1.3]];
 function drawMb(t) {
-  var el = $('mb'), w = el.offsetWidth, cur = -1;
+  var el = $('mb'), cur = -1;
   for (var i = 0; i < MB.length; i++) if (t >= MB[i][0]) cur = i;
-  var nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9;
   if (cur < 0) { el.style.opacity = 0; return; }
-  var m = MB[cur], x = m[1] === 'c' ? 540 - w / 2 : m[1] === 'r' ? 900 - w : m[1];
-  var inP = (t - m[0]) / 0.25, outP = (t - (nxt - 0.1)) / 0.1;
-  var sc = m[4] * (outP > 0 ? 1 - clamp(outP, 0, 1) : 0.5 + 0.5 * back(inP));
-  var rot = m[3] + (inP < 1 ? (1 - ease(inP)) * (cur % 2 ? 6 : -6) : Math.sin(t * 3) * 1);
-  el.style.opacity = 1;
-  el.style.transform = 'translate(' + x + 'px,' + m[2] + 'px) rotate(' + rot.toFixed(2) + 'deg) scale(' + Math.max(0, sc).toFixed(3) + ')';
+  var m = MB[cur], nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9, W = 250 * m[4];
+  var x = m[1] === 'c' ? 540 - W / 2 : m[1] === 'r' ? 900 - W : 70, off = m[1] === 'r' ? 1080 - x + 40 : m[1] === 'l' ? -(x + W + 40) : 0;
+  var inP = back((t - m[0]) / 0.3), outP = ease((t - (nxt - 0.2)) / 0.2);
+  var dx = off * (1 - inP) + off * clamp(outP, 0, 1), dy = m[1] === 'c' ? (1 - inP) * 700 : 0;
+  var rot = m[3] + Math.sin(t * 2.4) * 0.8;
+  el.style.opacity = 1; el.style.transformOrigin = '0 0';
+  el.style.transform = 'translate(' + (x + dx).toFixed(1) + 'px,' + (m[2] + dy).toFixed(1) + 'px) rotate(' + rot.toFixed(2) + 'deg) scale(' + m[4] + ')';
+  $('mbsh').style.left = (-200 + ((t - m[0] - 0.3) % 1.6) / 0.6 * 560) + 'px';
 }
 
 // Цвет света скина (vfetch.py): усиливаем до яркого; почти серым скинам — фирменный зелёный.

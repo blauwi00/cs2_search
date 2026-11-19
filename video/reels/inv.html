@@ -4,12 +4,12 @@
 <html><head><meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:1080px;height:1920px;overflow:hidden;background:#04100B}
+html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg)}
 body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative}
 #bg{position:absolute;inset:0}
 .hook{position:absolute;left:70px;width:940px;top:200px;height:230px;color:#fff;z-index:50;text-align:center;border-radius:34px;
   padding-top:31px;
-  background:linear-gradient(135deg,rgba(120,230,170,.30),rgba(30,90,62,.6) 45%,rgba(8,40,27,.9));border:2px solid rgba(190,255,215,.35);
+  background:linear-gradient(135deg,rgba(var(--hi),.30),rgba(var(--mid),.6) 45%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
   box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);
   font-weight:900;font-size:80px;line-height:1.05;letter-spacing:-2px;text-shadow:0 4px 18px rgba(0,0,0,.45)}
 .hook .g{color:#FFD23F;text-shadow:0 0 28px rgba(255,210,63,.55)}
@@ -22,6 +22,12 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 .word{position:absolute;left:60px;right:60px;top:1330px;height:130px;text-align:center;font-weight:900;font-size:124px;line-height:130px;z-index:60;
   color:#FFD23F;text-shadow:0 0 30px rgba(255,210,63,.6),0 6px 0 rgba(0,0,0,.35);letter-spacing:1px}
 /* Сцена 1: огромный скин со светом его цвета */
+/* Окно основного видео: всё содержимое живёт в полосе y 555–1315 и не залезает на вопрос, баннер и жёлтое слово. */
+#fx{position:absolute;left:0;top:565px;width:1080px;height:750px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(transparent,#000 46px,#000 calc(100% - 46px),transparent)}
+#fxi{position:absolute;left:0;top:-565px;width:1080px;height:1920px;transform-origin:540px 935px}
+#flash{position:absolute;inset:0;z-index:65;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 48%,rgba(255,255,255,.9),rgba(255,255,255,.25) 45%,transparent 75%)}
+.card .sh{position:absolute;top:-60px;left:-300px;width:160px;height:400px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);transform:rotate(20deg)}
 #hero{position:absolute;inset:0}
 #halo{position:absolute;left:-200px;top:400px;width:1480px;height:1100px;border-radius:50%;filter:blur(90px);opacity:.75}
 #heroimg{position:absolute;left:40px;top:600px;width:1000px;height:680px;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.6))}
@@ -30,20 +36,20 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 #stage{position:absolute;inset:0;perspective:1600px;perspective-origin:50% 40%}
 #deck{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-style:preserve-3d}
 .card{position:absolute;left:70px;width:830px;height:230px;border-radius:34px;transform-style:preserve-3d;
-  background:linear-gradient(135deg,rgba(120,230,170,.30),rgba(30,90,62,.55) 45%,rgba(8,40,27,.85));
-  border:2px solid rgba(190,255,215,.35);box-shadow:0 40px 60px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.25)}
+  background:linear-gradient(135deg,rgba(var(--hi),.30),rgba(var(--mid),.55) 45%,rgba(var(--deep),.85));
+  border:2px solid rgba(var(--edge),.35);box-shadow:0 40px 60px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.25)}
 .card .clip{position:absolute;inset:0;border-radius:34px;overflow:hidden}.card .gl{position:absolute;right:-60px;top:-80px;width:420px;height:360px;border-radius:50%;filter:blur(60px);opacity:.7}
-.card img{position:absolute;left:20px;top:10px;width:380px;height:210px;object-fit:contain;filter:drop-shadow(0 14px 14px rgba(0,0,0,.6))}
+.card img{position:absolute;left:18px;top:14px;width:340px;height:202px;object-fit:contain;filter:drop-shadow(0 14px 14px rgba(0,0,0,.6))}
 .card .p{position:absolute;right:40px;top:58px;font-weight:900;font-size:110px;letter-spacing:-3px;text-shadow:0 4px 20px rgba(0,0,0,.4)}
 .card .n{position:absolute;right:40px;bottom:26px;font-weight:700;font-size:68px;letter-spacing:-1.5px;opacity:.92;white-space:nowrap}
 /* Сцена 3: итог на стеклянной плите */
 #tot{position:absolute;inset:0;perspective:1600px}
 #plate{position:absolute;left:50px;width:980px;top:600px;height:300px;border-radius:44px;transform-style:preserve-3d;
-  background:linear-gradient(140deg,rgba(130,240,180,.28),rgba(20,70,48,.7) 50%,rgba(6,30,20,.9));border:2px solid rgba(190,255,215,.35);
+  background:linear-gradient(140deg,rgba(var(--hi),.28),rgba(var(--mid),.7) 50%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
   box-shadow:0 60px 120px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.25);text-align:center;overflow:hidden}
 #plate .big{display:inline-block;margin-top:30px;font-weight:900;font-size:200px;line-height:1;color:#FFD23F;text-shadow:0 0 50px rgba(255,210,63,.55);letter-spacing:-7px;white-space:nowrap}
 .tc{position:absolute;left:70px;width:940px;border-radius:30px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:22px;white-space:nowrap;
-  background:linear-gradient(135deg,rgba(120,230,170,.26),rgba(30,90,62,.6) 45%,rgba(8,40,27,.9));border:2px solid rgba(190,255,215,.35);
+  background:linear-gradient(135deg,rgba(var(--hi),.26),rgba(var(--mid),.6) 45%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
   box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);letter-spacing:-1px}
 #fc{top:950px;height:150px}#fc b{font-weight:900;font-size:88px;color:#FF6B5B}#fc span{font-weight:700;font-size:60px}
 #nc{top:1130px;height:110px;font-weight:600;font-size:50px;color:rgba(255,255,255,.85)}
@@ -51,9 +57,11 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 #grain{position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none;z-index:70}
 </style></head><body>
 <canvas id="bg" width="1080" height="1920"></canvas>
-<div id="hero"><div id="halo"></div><img id="heroimg"><div id="streak"></div></div>
+<div id="fx"><div id="fxi"><div id="hero"><div id="halo"></div><img id="heroimg"><div id="streak"></div></div>
 <div id="stage"><div id="deck"></div></div>
 <div id="tot"><div id="plate"><div class="sh" id="psh"></div><div class="big" id="big"></div></div><div class="tc" id="fc"></div><div class="tc" id="nc"></div></div>
+</div></div>
+<div id="flash"></div>
 <div class="hook" id="hook"></div>
 <div class="mb" id="mb"><img src="assets/avatar.png" onerror="this.style.display='none'"><div><div class="t">Ценолов</div><div class="u">@cenolow_bot</div></div><div class="sh" id="mbsh"></div></div>
 <div class="word" id="word"></div>
@@ -61,6 +69,14 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 <script src="work/vdata.js"></script>
 <script>
 var V = window.V, $ = function (id) { return document.getElementById(id); };
+// Цветовые темы (?theme=blue|violet|ember). Жёлтые суммы одинаковы во всех.
+var THEMES = {
+  blue: { bg: '#050A18', hi: '110,160,255', mid: '30,50,110', deep: '8,14,40', edge: '170,200,255', glow: '40,80,200', glow2: '14,24,70', topo: '90,130,220', def: [80, 140, 255] },
+  violet: { bg: '#0B0614', hi: '190,140,255', mid: '70,35,120', deep: '22,10,40', edge: '215,185,255', glow: '120,60,220', glow2: '40,16,80', topo: '150,110,220', def: [160, 100, 255] },
+  ember: { bg: '#0A0A0C', hi: '255,170,90', mid: '60,45,35', deep: '18,16,16', edge: '255,200,150', glow: '200,90,20', glow2: '50,28,12', topo: '160,120,90', def: [255, 140, 40] }
+};
+var T = THEMES[(location.search.match(/theme=(\w+)/) || [])[1]] || THEMES.blue;
+['bg', 'hi', 'mid', 'deep', 'edge'].forEach(function (k) { document.documentElement.style.setProperty('--' + k, T[k]); });
 var usd = function (c) { return '$' + (c / 100).toFixed(2); };
 var clamp = function (x, a, b) { return Math.max(a, Math.min(b, x)); };
 var ease = function (x) { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 3); };
@@ -79,7 +95,7 @@ function drawHook(t) {
 
 // Мини-баннер Ценолова, как реклама на стриме: квадрат въезжает из-за края экрана, держится, уезжает; место меняется.
 // [с, сторона ('l' слева, 'r' справа — правый край на 900, 'c' по центру), y, угол, масштаб]
-var MB = [[0.6, 'r', 448, 2, 1], [1.5, 'l', 448, -2, 1], [4.5, 'r', 448, 2, 1], [8, 'l', 448, -2, 1], [10, 'r', 448, 2, 1], [11.5, 'c', 448, 0, 1], [14, 'c', 448, 0, 1]];
+var MB = [[0.6, 'r', 446, 2, 1], [1.5, 'l', 446, -2, 1], [4.5, 'r', 446, 2, 1], [8, 'l', 446, -2, 1], [10, 'r', 446, 2, 1], [11.5, 'c', 446, 0, 1], [14, 'c', 446, 0, 1]];
 function drawMb(t) {
   var el = $('mb'), cur = -1;
   for (var i = 0; i < MB.length; i++) if (t >= MB[i][0]) cur = i;
@@ -87,10 +103,12 @@ function drawMb(t) {
   var m = MB[cur], nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9, W = 280 * m[4];
   var x = m[1] === 'c' ? 540 - W / 2 : m[1] === 'r' ? 900 - W : 70, off = m[1] === 'r' ? 1080 - x + 40 : m[1] === 'l' ? -(x + W + 40) : 0;
   var inP = back((t - m[0]) / 0.3), outP = ease((t - (nxt - 0.2)) / 0.2);
-  var dx = off * (1 - inP) + off * clamp(outP, 0, 1), dy = m[1] === 'c' ? (1 - inP) * 700 : 0;
+  var dx = off * (1 - inP) + off * clamp(outP, 0, 1), dy = 0;
   var rot = m[3] + Math.sin(t * 2.4) * 0.8;
   el.style.opacity = 1; el.style.transformOrigin = '0 0';
-  el.style.transform = 'translate(' + (x + dx).toFixed(1) + 'px,' + (m[2] + dy).toFixed(1) + 'px) rotate(' + rot.toFixed(2) + 'deg) scale(' + m[4] + ')';
+  var sc = m[1] === 'c' ? m[4] * clamp(inP, 0, 1.2) * (1 - clamp(outP, 0, 1)) : m[4];
+  el.style.transformOrigin = '50% 50%';
+  el.style.transform = 'translate(' + (x + dx).toFixed(1) + 'px,' + (m[2] + dy).toFixed(1) + 'px) rotate(' + rot.toFixed(2) + 'deg) scale(' + sc.toFixed(3) + ')';
   $('mbsh').style.left = (-200 + ((t - m[0] - 0.3) % 1.6) / 0.6 * 600) + 'px';
 }
 
@@ -98,7 +116,7 @@ function drawMb(t) {
 var rgba = function (c, a) { return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')'; };
 function vivid(c) {
   var mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
-  if (mx - mn < 25) return [65, 224, 138];
+  if (mx - mn < 25) return T.def;
   return c.map(function (v) { return 255 * Math.pow((v - mn) / (mx - mn), 1.4) * 0.85 + 30; });
 }
 var tints = {}; V.items.forEach(function (it) { tints['work/' + it.img] = vivid(it.tint); });
@@ -107,11 +125,11 @@ var tints = {}; V.items.forEach(function (it) { tints['work/' + it.img] = vivid(
 var bg = $('bg').getContext('2d');
 var centers = [[180, 380, 1.3], [900, 860, 2.1], [300, 1500, 0.7], [960, 1750, 2.9], [560, 1100, 4.2]];
 function drawBg(t) {
-  bg.fillStyle = '#04100B'; bg.fillRect(0, 0, 1080, 1920);
+  bg.fillStyle = T.bg; bg.fillRect(0, 0, 1080, 1920);
   var lx = 540 + 220 * Math.sin(t * 0.5), ly = 900 + 180 * Math.cos(t * 0.37);
-  var g = bg.createRadialGradient(lx, ly, 0, lx, ly, 1100); g.addColorStop(0, 'rgba(40,140,90,.55)'); g.addColorStop(.5, 'rgba(14,60,40,.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  var g = bg.createRadialGradient(lx, ly, 0, lx, ly, 1100); g.addColorStop(0, 'rgba(' + T.glow + ',.55)'); g.addColorStop(.5, 'rgba(' + T.glow2 + ',.35)'); g.addColorStop(1, 'rgba(0,0,0,0)');
   bg.fillStyle = g; bg.fillRect(0, 0, 1080, 1920);
-  bg.strokeStyle = 'rgba(80,170,125,.13)'; bg.lineWidth = 2;
+  bg.strokeStyle = 'rgba(' + T.topo + ',.13)'; bg.lineWidth = 2;
   var dy = (t * 15) % 1920;
   for (var c = 0; c < centers.length; c++) for (var pass = 0; pass < 2; pass++) {
     var cx = centers[c][0], cy = centers[c][1] - dy + pass * 1920, ph = centers[c][2];
@@ -123,6 +141,12 @@ function drawBg(t) {
       }
       bg.stroke();
     }
+  }
+  // Пылинки в свете — глубина кадра.
+  for (var q = 0; q < 26; q++) {
+    var px = (q * 397 % 1080) + Math.sin(t * 0.6 + q) * 30, py = ((q * 733 % 1920) - t * (20 + q % 5 * 8) + 1920 * 4) % 1920, pr = 6 + q % 4 * 7;
+    var pg = bg.createRadialGradient(px, py, 0, px, py, pr * 3); pg.addColorStop(0, 'rgba(' + T.edge + ',.22)'); pg.addColorStop(1, 'rgba(0,0,0,0)');
+    bg.fillStyle = pg; bg.fillRect(px - pr * 3, py - pr * 3, pr * 6, pr * 6);
   }
   var v = bg.createRadialGradient(540, 960, 500, 540, 960, 1250); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.7)');
   bg.fillStyle = v; bg.fillRect(0, 0, 1080, 1920);
@@ -140,7 +164,7 @@ var WORDS = [[0, 'СКИНЫ'], [1.5, 'ОТКРЫВАЕМ'], [2.5, 'ВХОДИМ
 function word(t) {
   var w = WORDS[0]; for (var i = 0; i < WORDS.length; i++) if (t >= WORDS[i][0]) w = WORDS[i];
   $('word').textContent = w[1];
-  $('word').style.transform = 'scale(' + (1 + 0.28 * (1 - clamp((t - w[0]) / 0.1, 0, 1))) + ')';
+  $('word').style.transform = 'scale(' + (1 + 0.1 * (1 - clamp((t - w[0]) / 0.1, 0, 1))) + ')';
 }
 
 // Сцена 1 (0–1,5 с): три крупных скина со светом своего цвета, смена на долю такта с ударом и бликом.
@@ -149,7 +173,7 @@ function drawHero(t) {
   var on = t < 1.5; $('hero').style.display = on ? 'block' : 'none'; if (!on) return;
   var i = Math.min(2, Math.floor(t / 0.5)), l = t - i * 0.5, src = 'work/' + HERO[i].img, im = $('heroimg');
   if (im.getAttribute('src') !== src) im.src = src;
-  var c = tints[src] || [65, 224, 138];
+  var c = tints[src] || T.def;
   $('halo').style.background = 'radial-gradient(' + rgba(c, .9) + ',' + rgba(c, .25) + ' 45%,transparent 70%)';
   var punch = 1 - ease(l / 0.18);
   im.style.transform = 'rotate(' + (-9 + l * 4) + 'deg) scale(' + (1.02 + 0.22 * punch + l * 0.06) + ')';
@@ -161,18 +185,18 @@ function drawHero(t) {
 var deck = $('deck');
 var cards = V.items.map(function (it) {
   var d = document.createElement('div'); d.className = 'card';
-  d.innerHTML = '<div class="clip"><div class="gl"></div></div><img src="work/' + it.img + '"><div class="p">' + usd(it.cents) + '</div>';
+  d.innerHTML = '<div class="clip"><div class="gl"></div><div class="sh"></div></div><img src="work/' + it.img + '"><div class="p">' + usd(it.cents) + '</div>';
   deck.appendChild(d); return d;
 });
 var C0 = 8.0, CSTEP = 0.48;
 function drawCards(t) {
-  var on = t >= C0 && t < 11.9; $('stage').style.display = on ? 'block' : 'none'; if (!on) return;
-  var k = (t - C0) / 3.5, collapse = ease((t - 11.5) / 0.4);
+  var on = t >= C0 && t < 11.5; $('stage').style.display = on ? 'block' : 'none'; if (!on) return;
+  var k = (t - C0) / 3.5, collapse = ease((t - 11.3) / 0.2);
   // Камера: медленный наезд и доворот всей колоды.
   var n = clamp((t - C0) / CSTEP, 0, cards.length - 1), scroll = Math.max(0, n - 1.6) * 250;
   deck.style.transform = 'translateY(' + (60 - scroll) + 'px) rotateX(' + (24 - k * 6) + 'deg) rotateZ(' + (-7 + k * 3) + 'deg) scale(' + (0.98 + k * 0.05) + ')';
   for (var i = 0; i < cards.length; i++) {
-    var d = cards[i], src = 'work/' + V.items[i].img, c = tints[src] || [65, 224, 138];
+    var d = cards[i], src = 'work/' + V.items[i].img, c = tints[src] || T.def;
     d.querySelector('.gl').style.background = rgba(c, .9);
     var p = (t - C0 - i * CSTEP) / 0.4;
     if (p < 0) { d.style.opacity = 0; continue; }
@@ -180,7 +204,8 @@ function drawCards(t) {
     d.style.top = y + 'px'; d.style.zIndex = 10 + i;
     d.style.transform = 'translateX(' + ((1 - e) * 1100) + 'px) translateZ(' + (collapse * -600) + 'px)';
     d.style.filter = 'blur(' + ((1 - ease(p)) * 10).toFixed(1) + 'px)';
-    d.style.opacity = (1 - collapse) * clamp((sy - 480) / 160, 0, 1);
+    d.style.opacity = 1 - collapse;
+    d.querySelector('.sh').style.left = (-300 + ease((p - 0.8) / 1.2) * 1300) + 'px';
   }
 }
 
@@ -208,9 +233,24 @@ function drawTotal(t) {
 
 // ?preview — черновик без записи экрана: 0–1,5 с скины, затем сразу карточки и итог (8–14 с).
 var PREVIEW = /preview/.test(location.search);
+// Монтаж: на склейках «хлыст» (резкий сдвиг с размытием) и вспышка; на каждую долю такта — лёгкий удар камеры.
+var CUTS = [1.5, 8, 11.5, 14], WH = 0.16;
+function drawCam(t) {
+  var x = 0, bl = 0, fl = 0;
+  for (var i = 0; i < CUTS.length; i++) {
+    var dt = t - CUTS[i];
+    if (dt > -WH && dt < 0) { var a = ease((dt + WH) / WH); x = -a * 620; bl = a * 26; }
+    if (dt >= 0 && dt < WH) { var b = 1 - ease(dt / WH); x = b * 620; bl = b * 26; fl = Math.max(fl, b); }
+  }
+  var bt = t % 0.48, pulse = 1 + 0.018 * Math.exp(-bt * 9);
+  var dr = Math.sin(t * 0.7) * 6;
+  $('fxi').style.transform = 'translate(' + (x + dr).toFixed(1) + 'px,0) scale(' + pulse.toFixed(4) + ')';
+  $('fxi').style.filter = bl > 0.3 ? 'blur(' + bl.toFixed(1) + 'px)' : 'none';
+  $('flash').style.opacity = (fl * 0.45).toFixed(3);
+}
 window.frameAt = function (t) {
   if (PREVIEW && t >= 1.5) t = t - 1.5 + 8;
-  drawBg(t); drawHero(t); drawCards(t); drawTotal(t); word(t); drawHook(t); drawMb(t); drawGrain(t);
+  drawBg(t); drawHero(t); drawCards(t); drawTotal(t); drawCam(t); word(t); drawHook(t); drawMb(t); drawGrain(t);
 };
 window.frameAt(0);
 </script></body></html>

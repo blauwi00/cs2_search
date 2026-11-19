@@ -165,7 +165,10 @@ function drawTotal(t) {
   $('psh').style.left = (-300 + ease((t - 12.0) / 0.8) * 1500) + 'px';
 }
 
+// ?preview — черновик без записи экрана: 0–1,5 с скины, затем сразу карточки и итог (8–14 с).
+var PREVIEW = /preview/.test(location.search);
 window.frameAt = function (t) {
+  if (PREVIEW && t >= 1.5) t = t - 1.5 + 8;
   drawBg(t); drawHero(t); drawCards(t); drawTotal(t); word(t); drawGrain(t);
   $('hook').style.transform = 'scale(' + (0.9 + 0.1 * back(t / 0.25)) + ')';
 };

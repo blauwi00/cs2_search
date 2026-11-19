@@ -69,13 +69,13 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 <script src="work/vdata.js"></script>
 <script>
 var V = window.V, $ = function (id) { return document.getElementById(id); };
-// Цветовые темы (?theme=blue|violet|ember). Жёлтые суммы одинаковы во всех.
+// Цветовые темы (?theme=blue|violet|ember; по умолчанию ember — выбор владельца). Жёлтые суммы одинаковы во всех.
 var THEMES = {
   blue: { bg: '#050A18', hi: '110,160,255', mid: '30,50,110', deep: '8,14,40', edge: '170,200,255', glow: '40,80,200', glow2: '14,24,70', topo: '90,130,220', def: [80, 140, 255] },
   violet: { bg: '#0B0614', hi: '190,140,255', mid: '70,35,120', deep: '22,10,40', edge: '215,185,255', glow: '120,60,220', glow2: '40,16,80', topo: '150,110,220', def: [160, 100, 255] },
   ember: { bg: '#0A0A0C', hi: '255,170,90', mid: '60,45,35', deep: '18,16,16', edge: '255,200,150', glow: '200,90,20', glow2: '50,28,12', topo: '160,120,90', def: [255, 140, 40] }
 };
-var T = THEMES[(location.search.match(/theme=(\w+)/) || [])[1]] || THEMES.blue;
+var T = THEMES[(location.search.match(/theme=(\w+)/) || [])[1]] || THEMES.ember;
 ['bg', 'hi', 'mid', 'deep', 'edge'].forEach(function (k) { document.documentElement.style.setProperty('--' + k, T[k]); });
 var usd = function (c) { return '$' + (c / 100).toFixed(2); };
 var clamp = function (x, a, b) { return Math.max(a, Math.min(b, x)); };

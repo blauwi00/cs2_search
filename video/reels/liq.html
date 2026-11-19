@@ -20,6 +20,8 @@
 .row .bar{position:absolute;left:170px;top:22px;height:74px;border-radius:20px;background:linear-gradient(90deg,#f0a020,#ffd23f);box-shadow:0 0 24px rgba(255,180,60,.5)}
 .row .num{position:absolute;top:18px;font-weight:900;font-size:64px;letter-spacing:-2px;color:#fff;text-shadow:0 4px 18px rgba(0,0,0,.5)}
 #big{position:absolute}
+
+.cta{font-size:72px}
 </style></head><body>
 <script src="work/liq/vdata.js"></script>
 <script src="engine/kit.js"></script>
@@ -34,10 +36,10 @@ var short = function (x) { return x.short.split(' | ')[1]; };
 var R0 = 1.92, RD = 6.72, E = {};
 var knifeAt = M > 0 ? Array.apply(null, Array(Math.min(M, 6))).map(function (_, i) { return R0 + RD * (i + 1) / (Math.min(M, 6) + 1); }) : [];
 KIT.run({
-  base: 'work/liq/', dur: 25.6, holds: [[1.6, 1.4], [9.2, 1.2], [11.4, 1.2], [13.0, 2.4], [16.6, 1.4]],
-  cuts: [1.92, 9.60, 13.44, 15.36],
+  base: 'work/liq/', dur: 27.6, holds: [[1.6, 1.4], [9.2, 1.2], [11.4, 1.2], [13.0, 2.4], [16.6, 1.4]],
+  cuts: [1.92, 9.60, 13.44, 15.36, 17.28],
   punches: knifeAt.map(function (t) { return [t, 0.08]; }).concat([[8.64, 0.07], [11.52, 0.04]]),
-  mb: [[2.0, 70, 250, -2, 0.8], [8.6, 'off'], [9.7, 'r', 440, 2, 1], [11.45, 'off'], [15.45, 'c', 470, 0, 1], [17.2, 'off']],
+  mb: [[2.0, 70, 250, -2, 0.8], [8.6, 'off'], [9.7, 'r', 440, 2, 1], [11.45, 'off'], [15.45, 'c', 470, 0, 1]],
   segs: [{ t0: 13.44, t1: 15.36, clip: 'liq1', c0: 7.90, n: 376, rect: [150, 600, 680, 840], tilt: [-14, 0],
     k: [[0, 540, 1500, 1.0], [1.92, 540, 1550, 1.0]] }],
   pops: [{ at: 15.0, box: [29, 537.7, 332, 44], text: 'Подробнее', size: 120, to: [475, 1020] }],
@@ -62,17 +64,22 @@ KIT.run({
       r.style.top = (640 + i * 132) + 'px'; return r;
     });
     E.ANS = K.plate('Нож — ' + M + ' ' + plural(M, 'продажа', 'продажи', 'продаж') + ' за сутки<br>' + (KX ? 'в <span class="g">' + KX + '</span> ' + plural(KX, 'раз', 'раза', 'раз') + ' реже, чем ' + short(lead) : 'ни одной продажи'), [70, 220, 940, 300]); E.ANS.id = 'ANS';
+    E.c0 = K.plate('Перед покупкой<br><span class="g">ножа</span>', [70, 220, 940, 220]); E.c0.style.fontSize = '76px';
+    E.c1 = K.plate('Проверь, как быстро<br><span class="g">он продаётся</span>', [70, 640, 810, 260]); E.c1.classList.add('cta');
+    E.c2 = K.plate('Бесплатно —<br><span class="g">@cenolow_bot</span>', [70, 940, 810, 260]); E.c2.classList.add('cta');
     E.NOTE = K.plate('продажи Steam за сутки · ' + V.date, [70, 220, 940, 110]); E.NOTE.id = 'NOTE';
     E.TIP = K.plate('В боте: «Как быстро продаётся»', [70, 1320, 810, 120]); E.TIP.id = 'TIP';
   },
   scene: function (t, K) {
     // Крючок с ножом — в начале и снова в конце (петля).
     var hookOn = t < 1.92 || t >= 17.28;
-    var kOp = t < 1.92 ? 1 : t >= 17.28 ? K.ease((t - 17.28) / 0.4) : 0;
+    var kOp = t < 1.92 ? 1 : t >= 17.28 ? 0.5 * K.ease((t - 17.28) / 0.4) : 0;
      E.halo.style.opacity = (0.7 * kOp).toFixed(2);
     var c = K.vivid(knife.tint); E.halo.style.background = 'radial-gradient(' + K.rgba(c, .8) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';
-    E.knife.pose(K.tr, { rz: -12 + Math.sin(K.tr * 0.9) * 5, ry: Math.sin(K.tr * 0.9) * 36, rx: 12, s: 1 + 0.03 * Math.sin(t * 1.3), op: kOp });
-    if (t < 2) K.slam(E.H, t, 0.05, 'z', 1.8, 'l'); else K.slam(E.H, t, 17.4, 'z');
+    E.knife.pose(K.tr, { rz: -12 + Math.sin(K.tr * 0.9) * 5, ry: Math.sin(K.tr * 0.9) * 36, rx: 12, s: 1 + 0.03 * Math.sin(t * 1.3), op: kOp, blur: t >= 17.28 ? 12 : 0 });
+    K.slam(E.H, t, 0.05, 'z', 1.8, 'l');
+    // Концовка — призыв (вместо повтора начала).
+    K.slam(E.c0, t, 17.35, 'z'); K.slam(E.c1, t, 17.5, 'r'); K.slam(E.c2, t, 17.9, 'l');
 
     // Циферблат: сверху во время гонки, крупно в конце.
     var dialOn = (t >= 1.92 && t < 8.64) || (t >= 15.36 && t < 17.28);

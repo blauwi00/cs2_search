@@ -15,6 +15,8 @@
 #C{font-size:50px}
 #H{font-size:100px}#A{font-size:64px}#N{font-size:48px;font-weight:700}
 #P2 .pr{font-size:170px;letter-spacing:-6px;line-height:1}#P2 .wn{font-size:58px}
+
+.cta{font-size:72px}
 </style></head><body>
 <script src="work/wear/vdata.js"></script>
 <script src="engine/kit.js"></script>
@@ -24,15 +26,15 @@ var ORDER = ['FN', 'MW', 'FT', 'WW', 'BS'], NAME = { FN: 'Factory New', MW: 'Min
 ORDER.forEach(function (w) { if (!by[w]) throw new Error('нет цены износа ' + w); });
 // Интрига держится только на настоящих ценах: если потёртые перестали быть дороже FT — стоп, не показывать ложь.
 if (!(by.WW.cents > by.FT.cents && by.BS.cents > by.FT.cents)) throw new Error('интрига пропала: WW/BS не дороже FT');
-var STEPS = [[1.92, 'FN'], [3.84, 'MW'], [5.76, 'FT'], [7.68, 'WW'], [9.60, 'BS'], [11.52, 'FT'], [17.28, 'FN']];
+var STEPS = [[1.92, 'FN'], [3.84, 'MW'], [5.76, 'FT'], [7.68, 'WW'], [9.60, 'BS'], [11.52, 'FT']];
 function wearAt(t) { var w = STEPS[0]; for (var i = 0; i < STEPS.length; i++) if (t >= STEPS[i][0]) w = STEPS[i]; return w; }
 function prevOf(i) { return i > 0 ? STEPS[i - 1][1] : 'FN'; }
 var E = {};
 KIT.run({
-  base: 'work/wear/', dur: 28.0, holds: [[1.6, 1.4], [2.9, 0.8], [4.8, 1.0], [6.7, 1.0], [8.6, 1.2], [10.5, 1.0], [12.6, 2.4], [16.2, 1.2]],
-  cuts: [1.92, 13.44, 15.36],
+  base: 'work/wear/', dur: 30.0, holds: [[1.6, 1.4], [2.9, 0.8], [4.8, 1.0], [6.7, 1.0], [8.6, 1.2], [10.5, 1.0], [12.6, 2.4], [16.2, 1.2]],
+  cuts: [1.92, 13.44, 15.36, 17.28],
   punches: [[3.84, 0.03], [5.76, 0.03], [7.68, 0.09], [9.60, 0.05], [11.52, 0.04]],
-  mb: [[1.95, 'r', 486, 2, 1], [11.52, 'off'], [15.4, 'c', 486, 0, 1], [17.2, 'off']],
+  mb: [[1.95, 'r', 486, 2, 1], [11.52, 'off'], [15.4, 'c', 486, 0, 1]],
   segs: [{ t0: 13.44, t1: 15.36, clip: 'wear2', c0: 4.95, n: 299, rect: [150, 600, 680, 840], tilt: [14, 0],
     k: [[0, 540, 700, 1.0], [1.0, 540, 500, 1.0], [1.92, 540, 500, 1.0]] }],
   pops: [{ at: 15.0, box: [13, 125.7, 364, 54], text: 'Field-Tested', size: 110, to: [475, 1020] }],
@@ -47,13 +49,16 @@ KIT.run({
     E.H = K.plate('Хуже износ —<br><span class="g">дешевле?</span>', [70, 760, 810, 300]); E.H.id = 'H';
     E.P2 = K.plate('<div class="wn mut">Дешевле всех — FT</div><div class="pr g">' + K.usd(by.FT.cents) + '</div>', [70, 220, 940, 250]); E.P2.id = 'P2';
     E.A = K.plate('Battle-Scarred дороже<br>на <span class="g">' + K.usd(by.BS.cents - by.FT.cents) + '</span>, чем Field-Tested', [70, 1110, 810, 330]); E.A.id = 'A';
+    E.c0 = K.plate('Цена сильно зависит<br>от <span class="g">износа</span>', [70, 220, 940, 220]); E.c0.style.fontSize = '76px';
+    E.c1 = K.plate('Проверь износ<br><span class="g">перед покупкой</span>', [70, 640, 810, 260]); E.c1.classList.add('cta');
+    E.c2 = K.plate('Бесплатно —<br><span class="g">@cenolow_bot</span>', [70, 940, 810, 260]); E.c2.classList.add('cta');
     E.N = K.plate('пример · цены Steam на ' + V.date, [70, 220, 940, 110]); E.N.id = 'N';
   },
   scene: function (t, K) {
     var st = wearAt(t), idx = STEPS.indexOf(st), cur = st[1], prev = prevOf(idx), since = t - st[0];
     // Автомат: смена картинки износа перекрёстным затуханием; в крючке и на вставке бота — размыт и отодвинут.
-    var mix = K.ease(since / 0.35), blurAk = t < 1.92 ? 14 : (t >= 13.44 && t < 15.36) ? 16 : t >= 17.28 ? 14 * K.ease((t - 17.28) / 0.6) : 0;
-    var scAk = t < 1.92 ? 1.3 : t >= 17.28 ? 1 + 0.3 * K.ease((t - 17.28) / 0.6) : (t >= 13.44 && t < 15.36) ? 0.8 : 1;
+    var mix = K.ease(since / 0.35), blurAk = t < 1.92 ? 14 : (t >= 13.44 && t < 15.36) ? 16 : t >= 17.28 ? 14 * K.ease((t - 17.28) / 0.4) : 0;
+    var scAk = t < 1.92 ? 1.3 : t >= 17.28 ? 1 - 0.1 * K.ease((t - 17.28) / 0.4) : (t >= 13.44 && t < 15.36) ? 0.8 : 1;
     var jolt = Math.exp(-Math.max(0, since) * 10) * (t >= 1.92 ? 1 : 0);
     ['FN', 'FT', 'BS', 'MW', 'WW'].forEach(function (w) {
       var i = E.ak[w], src = by[w].img, isCur = src === by[cur].img, isPrev = src === by[prev].img;
@@ -67,7 +72,9 @@ KIT.run({
     E.halo.style.opacity = (0.55 + 0.3 * jolt).toFixed(2);
 
     // Крючок: в начале и снова в конце (петля).
-    if (t < 2) K.slam(E.H, t, 0.05, 'z', 1.8, 'l'); else K.slam(E.H, t, 17.45, 'z');
+    K.slam(E.H, t, 0.05, 'z', 1.8, 'l');
+    // Концовка — призыв (вместо повтора начала).
+    K.slam(E.c0, t, 17.35, 'z'); K.slam(E.c1, t, 17.5, 'r'); K.slam(E.c2, t, 17.9, 'l');
 
     // Цена и ползунок.
     var showPS = t >= 1.92 && t < 13.44;

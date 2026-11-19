@@ -171,6 +171,15 @@ const CLIPS = {
     await a.p.evaluate(() => document.querySelector('#dons').scrollIntoView({ block: 'center', behavior: 'smooth' })); await a.wait(900);
     await a.tap('#dons button[data-n="50"]', { label: 'stars50', keep: true, after: 900 }); await a.wait(1200);
   },
+  // Ролик «поддержка»: подарок скином — выбор «для розыгрыша подписчикам» / «подарок автору» (сервер с VID_TRADE_URL).
+  async don2(a) {
+    await a.p.click('.tab[data-t=more]'); await a.wait(1100);
+    await a.tap('#m-support', { label: 'support', after: 900 }); await a.wait(1200);
+    await a.p.waitForSelector('#tseg button', { timeout: 8000 });
+    await a.p.evaluate(() => document.querySelector('#tradebox').scrollIntoView({ block: 'center', behavior: 'smooth' })); await a.wait(1200);
+    await a.tap('#tseg button[data-k=raffle]', { label: 'raffle', after: 1200 }); await a.wait(800);
+    await a.tap('#tseg button[data-k=gift]', { label: 'gift', after: 1200 }); await a.wait(1200);
+  },
   async buys(a) {
     await a.p.click('.tab[data-t=inv]'); await a.wait(1400);
     await a.tap('#skseg button[data-k=mine]', { label: 'buys' }); await a.wait(2200);

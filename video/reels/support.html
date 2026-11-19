@@ -31,59 +31,64 @@ var SVGSTAR = '<svg viewBox="0 0 24 24" class="star"><path d="M12 1.8l3.1 6.4 7 
 var LINES = [[2.8, 'Цена ножа в Steam'], [4.0, 'На руки после комиссии'], [5.2, 'Уведомление о цене'], [6.4, 'Поиск по-русски'], [7.6, 'Продажи за сутки']];
 var E = {};
 KIT.run({
-  base: 'work/', dur: 25, beat: 0.6, pulse: 0.012, whip: { dist: 480, blur: 20, flash: 0.35 },
-  cuts: [2.4, 12.6, 18.3, 21.6],
-  punches: LINES.map(function (l) { return [l[0], 0.03]; }).concat([[9.0, 0.08], [9.5, 0.04], [18.8, 0.03]]),
-  mb: [[3.2, 'r', 446, 2, 1], [8.0, 'off'], [21.9, 'c', 446, 0, 1], [24.6, 'off']],
+  base: 'work/', dur: 30.4, beat: 0.6, pulse: 0.012, whip: { dist: 480, blur: 20, flash: 0.35 },
+  cuts: [2.4, 12.6, 18.3, 23.4, 27.0],
+  punches: LINES.map(function (l) { return [l[0], 0.03]; }).concat([[9.0, 0.08], [9.5, 0.04], [23.9, 0.03], [24.5, 0.03]]),
+  mb: [[3.2, 'r', 446, 2, 1], [8.0, 'off'], [27.3, 'c', 446, 0, 1], [30.0, 'off']],
   segs: [{ base: 'work/don/', t0: 13.0, t1: 18.3, clip: 'don', c0: 1.0, n: 260, rect: [150, 600, 680, 840], tilt: [14, 0],
-    k: [[0, 540, 1300, 1.0], [1.2, 540, 1600, 1.0], [2.6, 540, 1450, 1.0], [5.3, 540, 1600, 1.0]] }],
+    k: [[0, 540, 1300, 1.0], [1.2, 540, 1600, 1.0], [2.6, 540, 1450, 1.0], [5.3, 540, 1600, 1.0]] },
+    // Подарок скином: выбор «для розыгрыша подписчикам» / «подарок автору» (клип don2, касания raffle 5.83, gift 8.46).
+    { base: 'work/don/', t0: 18.3, t1: 23.4, clip: 'don2', c0: 3.63, n: 345, rect: [150, 600, 680, 840], tilt: [-14, 0],
+      k: [[0, 540, 1300, 1.0], [1.4, 540, 1640, 1.0], [5.1, 540, 1640, 1.0]] }],
   pops: [{ at: 13.96, box: [13, 585.4, 364, 83.6], text: 'Поддержать проект', size: 62, to: [475, 1000] },
-         { at: 18.0, box: [200, 587.5, 176, 58], text: SVGSTAR + '50', size: 150, to: [475, 1000] }],
+         { at: 18.0, box: [200, 587.5, 176, 58], text: SVGSTAR + '50', size: 150, to: [475, 1000] },
+         { at: 20.5, box: [19, 594.7, 176, 52.6], text: 'Для розыгрыша подписчикам', size: 52, to: [475, 1000] },
+         { at: 23.13, box: [195, 594.7, 176, 52.6], text: 'Подарок автору', size: 96, to: [475, 1000] }],
   init: function (K) {
     E.halo = K.el('', ''); E.halo.style.cssText = 'position:absolute;left:-60px;top:560px;width:1200px;height:800px;border-radius:50%;filter:blur(90px);background:radial-gradient(' + K.rgba(K.vivid(knife.tint), .8) + ',' + K.rgba(K.vivid(knife.tint), .2) + ' 45%,transparent 70%)';
     E.knife = K.gun3d(K.B + knife.img, [130, 650, 820, 460], 20, 3.2);
-    E.tops = [[0.15, 2.3, 'Сколько стоит узнать<br>цену <span class="g">ножа</span>?'], [2.5, 9.45, 'Чек за всё,<br>что делает бот'], [9.6, 12.5, 'Бот <span class="g">бесплатный</span>.<br>Для всех.'],
-      [12.7, 15.2, 'Ещё → <span class="g">Поддержать проект</span>'], [15.3, 18.2, 'Звёзды Telegram:<br><span class="g">25 · 50 · 100 · 250 · 500</span>'],
-      [18.4, 21.45, 'Звёзды <span class="g">ничего</span><br>не открывают'], [21.8, 24.6, 'Ценолов — бесплатный<br>бот цен CS2']]
-      .map(function (x) { var p = K.plate(x[2], [70, 210, 940, 220]); p.classList.add('top'); return { el: p, a: x[0], b: x[1] }; });
+    E.tops = [[0.15, 2.3, 'Сколько надо заплатить,<br>чтобы использовать<br><span class="g">функцию в боте</span>?', 62], [2.5, 9.45, 'Чек за всё,<br>что делает бот'], [9.6, 12.5, 'Бот <span class="g">бесплатный</span>.<br>Для всех.'],
+      [12.7, 15.2, 'Ещё →<br><span class="g">Поддержать проект</span>'], [15.3, 18.2, 'Звёзды Telegram:<br><span class="g">25 · 50 · 100 · 250 · 500</span>'],
+      [18.4, 20.9, 'Или подари <span class="g">скин</span><br>трейдом в Steam'], [21.0, 23.3, 'Скин — <span class="g">в розыгрыш</span><br>подписчикам или автору', 66],
+      [23.5, 26.9, 'Поддержка ничего<br><span class="g">не открывает</span>'], [27.3, 30.0, 'Ценолов — бесплатный<br>бот цен CS2']]
+      .map(function (x) { var p = K.plate(x[2], [70, 210, 940, 220]); p.classList.add('top'); if (x[3]) p.style.fontSize = x[3] + 'px'; return { el: p, a: x[0], b: x[1] }; });
     E.slot = K.el('', ''); E.slot.id = 'slot';
     E.rw = K.el('', ''); E.rw.id = 'rw';
     var h = '<div class="hd">ЦЕНОЛОВ · ЧЕК<div id="stamp">БЕСПЛАТНО</div></div>';
     LINES.forEach(function (l, i) { h += '<div class="ln" data-i="' + i + '">' + (i === 0 ? '<img class="ic" id="kic" src="' + K.B + knife.img + '">' : '') + '<span>' + l[1] + '</span><span class="dt"></span><span class="v">$0</span></div>'; });
     h += '<div class="tot"><span class="l">ИТОГО</span><span class="v">$0</span></div>';
     h += '<div class="ln" data-i="5"><span>Звёзды Telegram</span><span class="dt"></span><span class="v">по желанию</span></div>';
+    h += '<div class="ln" data-i="6"><span>Скин трейдом</span><span class="dt"></span><span class="v">по желанию</span></div>';
     E.rc = K.el(h, '', E.rw); E.rc.id = 'rc';
     E.lines = [].slice.call(E.rc.querySelectorAll('.ln')); E.tot = E.rc.querySelector('.tot'); E.stamp = E.rc.querySelector('#stamp');
-    E.c1 = K.plate('Помог бот — можешь<br>поддержать <span class="g">звёздами</span>.', [70, 720, 810, 250]); E.c1.classList.add('cta');
+    E.c1 = K.plate('Помог бот — поддержи<br><span class="g">звёздами</span> или <span class="g">скином</span>.', [70, 720, 810, 250]); E.c1.classList.add('cta');
     E.c2 = K.plate('Не помог —<br>пользуйся <span class="g">бесплатно</span>.', [70, 1010, 810, 250]); E.c2.classList.add('cta');
   },
   scene: function (t, K) {
     E.tops.forEach(function (p) { K.slam(p.el, t, p.a, 'z', p.b, 'l'); });
 
     // Нож: крупно в крючке, на 2,4–2,8 садится значком в первую строку чека (там его заменяет картинка в строке).
-    var fly = K.ease((t - 2.4) / 0.4), kOn = t < 2.8 || t >= 24.55;
-    var kop = t >= 24.55 ? K.ease((t - 24.55) / 0.45) : 1;
+    var fly = K.ease((t - 2.4) / 0.4), kOn = t < 2.8, kop = 1;
     E.knife.pose(K.tr, { rz: -10, ry: Math.sin(K.tr * 0.9) * 30, rx: 12, s: 1 - 0.9 * fly, tx: -fly * 330, ty: -fly * 190, op: kOn ? kop : 0 });
     E.halo.style.opacity = ((kOn ? kop : 0) * (1 - fly) * 0.7).toFixed(2);
 
     // Чек: печатается из щели, по строке на шаг; уезжает вверх на 12,6, возвращается на 18,3 со строкой «Звёзды Telegram — по желанию».
-    var on = (t >= 2.4 && t < 12.9) || (t >= 18.3 && t < 21.8);
+    var on = (t >= 2.4 && t < 12.9) || (t >= 23.4 && t < 27.2);
     E.rw.style.display = E.slot.style.display = on ? 'block' : 'none';
     if (on) {
-      E.lines[5].style.display = t < 18.8 ? 'none' : 'flex'; E.tot.style.display = t >= 9.0 ? 'flex' : 'none';
-      var n = LINES.filter(function (l) { return t >= l[0]; }).length, H = 24 + 90 + n * 80 + (t >= 9.0 ? 170 : 0) + (t >= 18.8 ? 80 : 0) + 40;
-      var full = E.rc.offsetHeight, back2 = t >= 18.3, sc = back2 ? 0.9 : 1;
+      E.lines[5].style.display = t < 23.9 ? 'none' : 'flex'; E.lines[6].style.display = t < 24.5 ? 'none' : 'flex'; E.tot.style.display = t >= 9.0 ? 'flex' : 'none';
+      var n = LINES.filter(function (l) { return t >= l[0]; }).length, H = 24 + 90 + n * 80 + (t >= 9.0 ? 170 : 0) + (t >= 23.9 ? 80 : 0) + (t >= 24.5 ? 80 : 0) + 40;
+      var full = E.rc.offsetHeight, back2 = t >= 23.4, sc = back2 ? 0.82 : 1;
       if (back2) H = full;
       // Бумага выходит из щели верхом вперёд: видна верхняя часть высотой H.
-      var lift = back2 ? (1 - K.back((t - 18.3) / 0.5)) * -900 : t >= 12.6 ? K.ease((t - 12.6) / 0.3) * -900 : 0;
+      var lift = back2 ? (1 - K.back((t - 23.4) / 0.5)) * -900 : t >= 12.6 ? K.ease((t - 12.6) / 0.3) * -900 : 0;
       E.rw.style.height = (t < 2.5 ? 0 : Math.min(740, H * sc)).toFixed(1) + 'px';
       E.rc.style.transform = 'translateY(' + lift.toFixed(1) + 'px) scale(' + sc.toFixed(3) + ')';
       E.rc.style.filter = t >= 12.6 && t < 12.9 ? 'blur(' + (K.ease((t - 12.6) / 0.3) * 14).toFixed(1) + 'px)' : 'none';
-      E.rw.style.opacity = t >= 21.6 ? 1 - K.ease((t - 21.6) / 0.2) : 1;
+      E.rw.style.opacity = t >= 27.0 ? 1 - K.ease((t - 27.0) / 0.2) : 1;
       E.lines.forEach(function (ln, i) {
-        var at = i < 5 ? LINES[i][0] : 18.8, p = K.clamp((t - at) / 0.25, 0, 1);
+        var at = i < 5 ? LINES[i][0] : i === 5 ? 23.9 : 24.5, p = K.clamp((t - at) / 0.25, 0, 1);
         ln.style.clipPath = 'inset(0 ' + ((1 - p) * 100).toFixed(1) + '% 0 0)';
-        ln.style.display = i === 5 && t < 18.8 ? 'none' : 'flex';
       });
       E.rc.querySelector('#kic').style.opacity = t >= 2.75 ? 1 : 0;
       var tp = K.clamp((t - 9.0) / 0.3, 0, 1); E.tot.style.opacity = tp; E.tot.style.display = t >= 9.0 ? 'flex' : 'none';
@@ -93,7 +98,7 @@ KIT.run({
     }
 
     // Призыв.
-    K.slam(E.c1, t, 21.7, 'r', 24.6, 'l'); K.slam(E.c2, t, 22.2, 'l', 24.6, 'r');
+    K.slam(E.c1, t, 27.1, 'r', 30.0, 'l'); K.slam(E.c2, t, 27.6, 'l', 30.0, 'r');
   }
 });
 </script></body></html>

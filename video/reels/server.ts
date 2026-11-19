@@ -92,6 +92,8 @@ exec('INSERT INTO catalog_chunks (chunk, names, updated_at) VALUES (0, ?, ?)', c
 exec(`INSERT INTO scheduler_jobs (name, interval_sec, next_run_at, last_run_at, last_ok_at) VALUES ('evaluate', 60, 0, ?, ?)`, NOW + 1e6, NOW + 1e6);
 await db.sourceOk(D, 'collector', NOW + 1e6, 100);
 if (!STEAM_ONLY) await db.sourceOk(D, 'skinport', NOW + 1e6, 100);
+// Ролик «поддержка»: блок «Подарить скином» виден только при заданной трейд-ссылке владельца. Сама ссылка в кадр не попадает.
+if (process.env.VID_TRADE_URL) exec(`INSERT INTO meta (key, value) VALUES ('trade_url', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, process.env.VID_TRADE_URL);
 exec(`INSERT INTO meta (key, value) VALUES ('bot_username', 'cenolow_bot') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 
 const initData = await signInitData({ auth_date: String(NOW), query_id: 'AAE', user: JSON.stringify({ id: TID, first_name: 'Eldar', language_code: 'ru' }) }, 'TEST_TOKEN');

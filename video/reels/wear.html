@@ -1,29 +1,102 @@
 <!doctype html>
-<!-- Ролик «Износ»: один AK-47 | Asiimov в пяти износах — цена в разы разная. Данные work/wear (vfetch.py --names, vdata.ts --out), записи wear1/wear2. -->
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/engine.css"><link rel="stylesheet" href="engine/extra.css"></head><body>
+<!-- Ролик «Износ» (свой каркас): огромный AK-47 | Asiimov на весь кадр, ползунок износа едет FN→BS, цена катится счётчиком.
+     Интрига из настоящих цен: потёртые WW и BS дороже FT. Данные work/wear (vfetch.py --names, vdata.ts --out), запись wear2. Монтаж — engine/kit.js. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/kit.css">
+<style>
+#halo{position:absolute;left:-100px;top:520px;width:1280px;height:700px;border-radius:50%;filter:blur(90px);opacity:.7}
+.ak{width:820px;height:460px;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.6))}
+#P .pr{font-size:180px;letter-spacing:-6px;line-height:1}#P .wn{font-size:56px;margin-top:6px}
+#S{justify-content:flex-start;padding-top:26px}#S .tt{font-size:48px;letter-spacing:4px;opacity:.8}
+#trk{position:absolute;left:40px;right:40px;top:120px;height:170px}
+.seg{position:absolute;top:0;height:170px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;font-size:52px;letter-spacing:0;color:rgba(255,255,255,.75)}
+.seg.on{color:#FFD23F}
+#rail{position:absolute;left:0;right:0;top:34px;height:14px;border-radius:7px;background:rgba(255,255,255,.14)}
+#knob{position:absolute;top:8px;width:120px;height:66px;border-radius:33px;background:linear-gradient(180deg,#ffe27a,#f0a020);box-shadow:0 0 30px rgba(255,210,63,.8),0 8px 20px rgba(0,0,0,.5)}
+#C{font-size:50px}
+#H{font-size:100px}#A{font-size:64px}#N{font-size:48px;font-weight:700}
+#P2 .pr{font-size:170px;letter-spacing:-6px;line-height:1}#P2 .wn{font-size:58px}
+</style></head><body>
 <script src="work/wear/vdata.js"></script>
-<script src="engine/engine.js"></script>
+<script src="engine/kit.js"></script>
 <script>
-var V = window.V, R = REEL, by = {}; V.items.forEach(function (x) { by[x.wear] = x; });
-['FN', 'MW', 'FT', 'WW', 'BS'].forEach(function (w) { if (!by[w]) throw new Error('нет цены износа ' + w); });
-var asc = V.items.slice().sort(function (a, b) { return a.cents - b.cents; }), lo = asc[0], FN = by.FN;
-var ratio = Math.floor(FN.cents / lo.cents * 10) / 10;
-REEL.run({
-  base: 'work/wear/',
-  hook: 'Один калаш —<br><span class="g">$' + Math.floor(lo.cents / 100) + '</span> и <span class="g">$' + Math.floor(FN.cents / 100) + '?</span>',
-  words: [[0, 'ОДИН СКИН'], [1.5, 'ИЩЕМ'], [2.7, 'ПО-РУССКИ'], [3.9, 'ЦЕНА'], [6, 'ТОТ ЖЕ'], [8, 'ИЗНОСЫ'], [11.5, 'РАЗНИЦА'], [14.5, 'ПРОВЕРЬ'], [17.5, 'БЕСПЛАТНО']],
-  hero: [FN, by.MW, lo],
-  cards: { items: asc.map(function (x) { return { img: x.img, tint: x.tint, p: R.usd(x.cents), n: x.wear }; }) },
-  total: { t0: 11.5, t1: 14.5,
-    big: function (t) { var v = 1 + (ratio - 1) * R.ease((t - 11.6) / 0.9); return '×' + v.toFixed(1).replace('.', ','); },
-    fc: { at: 12.35, html: '<b style="color:#FFD23F">' + R.usd(FN.cents - lo.cents) + '</b><span>разница за износ</span>' },
-    nc: { at: 12.8, text: 'пример · цены Steam на ' + V.date } },
-  segs: [
-    { t0: 1.5, t1: 3.9, clip: 'wear1', c0: 4.06, n: 289, k: [[0, 540, 760, 1.2], [1.4, 540, 575, 1.3], [2.1, 540, 575, 2.2], [2.4, 540, 575, 2.2]] },
-    { t0: 3.9, t1: 6.0, clip: 'wear1', c0: 7.0, n: 289, k: [[0, 540, 900, 1.05], [0.8, 420, 1880, 1.6], [2.1, 420, 1880, 1.75]] },
-    { t0: 6.0, t1: 8.0, clip: 'wear2', c0: 5.01, n: 299, k: [[0, 540, 700, 1.2], [0.9, 540, 423, 1.3], [1.5, 540, 423, 2.2], [2.0, 540, 423, 2.2]] },
-    { t0: 14.5, t1: 17.5, clip: 'wear2', c0: 6.9, n: 299, k: [[0, 540, 900, 1.05], [1.0, 420, 1880, 1.6], [3, 420, 1880, 1.85]] }
-  ],
-  pops: [{ at: 3.6, box: [13, 180.7, 364, 55], text: 'Factory New', size: 120 }, { at: 7.5, box: [13, 125.7, 364, 54], text: 'Field-Tested', size: 120 }]
+var V = window.V, by = {}; V.items.forEach(function (x) { by[x.wear] = x; });
+var ORDER = ['FN', 'MW', 'FT', 'WW', 'BS'], NAME = { FN: 'Factory New', MW: 'Minimal Wear', FT: 'Field-Tested', WW: 'Well-Worn', BS: 'Battle-Scarred' };
+ORDER.forEach(function (w) { if (!by[w]) throw new Error('нет цены износа ' + w); });
+// Интрига держится только на настоящих ценах: если потёртые перестали быть дороже FT — стоп, не показывать ложь.
+if (!(by.WW.cents > by.FT.cents && by.BS.cents > by.FT.cents)) throw new Error('интрига пропала: WW/BS не дороже FT');
+var STEPS = [[1.92, 'FN'], [3.84, 'MW'], [5.76, 'FT'], [7.68, 'WW'], [9.60, 'BS'], [11.52, 'FT'], [17.28, 'FN']];
+function wearAt(t) { var w = STEPS[0]; for (var i = 0; i < STEPS.length; i++) if (t >= STEPS[i][0]) w = STEPS[i]; return w; }
+function prevOf(i) { return i > 0 ? STEPS[i - 1][1] : 'FN'; }
+var E = {};
+KIT.run({
+  base: 'work/wear/', dur: 18,
+  cuts: [1.92, 13.44, 15.36],
+  punches: [[3.84, 0.03], [5.76, 0.03], [7.68, 0.09], [9.60, 0.05], [11.52, 0.04]],
+  mb: [[1.95, 'r', 486, 2, 1], [11.52, 'off'], [15.4, 'c', 486, 0, 1], [17.2, 'off']],
+  segs: [{ t0: 13.44, t1: 15.36, clip: 'wear2', c0: 4.95, n: 299, rect: [150, 600, 680, 840], tilt: [14, 0],
+    k: [[0, 540, 700, 1.15], [1.0, 540, 423, 1.3], [1.4, 540, 423, 2.2], [1.92, 540, 423, 2.2]] }],
+  pops: [{ at: 15.0, box: [13, 125.7, 364, 54], text: 'Field-Tested', size: 110, to: [475, 1020] }],
+  init: function (K) {
+    E.halo = K.el('', ''); E.halo.id = 'halo';
+    E.ak = {}; ['FN', 'FT', 'BS', 'MW', 'WW'].forEach(function (w) { var i = K.img(K.B + by[w].img, 'ak'); i.style.left = '60px'; i.style.top = '600px'; E.ak[w] = i; });
+    E.P = K.plate('<div class="pr g" id="pr"></div><div class="wn" id="wn"></div>', [70, 220, 940, 250]); E.P.id = 'P';
+    E.S = K.plate('<div class="tt">ИЗНОС</div><div id="trk"><div id="rail"></div><div id="knob"></div></div>', [70, 1110, 810, 330]); E.S.id = 'S';
+    var trk = E.S.querySelector('#trk'), W = 730 / 5;
+    E.seg = {}; ORDER.forEach(function (w, i) { var d = K.el(w, 'seg', trk); d.style.left = (i * W) + 'px'; d.style.width = W + 'px'; E.seg[w] = d; });
+    E.C = K.plate('', [70, 486, 450, 94]); E.C.id = 'C';
+    E.H = K.plate('Хуже износ —<br><span class="g">дешевле?</span>', [70, 760, 810, 300]); E.H.id = 'H';
+    E.P2 = K.plate('<div class="wn mut">Дешевле всех — FT</div><div class="pr g">' + K.usd(by.FT.cents) + '</div>', [70, 220, 940, 250]); E.P2.id = 'P2';
+    E.A = K.plate('Battle-Scarred дороже<br>на <span class="g">' + K.usd(by.BS.cents - by.FT.cents) + '</span>, чем Field-Tested', [70, 1110, 810, 330]); E.A.id = 'A';
+    E.N = K.plate('пример · цены Steam на ' + V.date, [70, 220, 940, 110]); E.N.id = 'N';
+  },
+  scene: function (t, K) {
+    var st = wearAt(t), idx = STEPS.indexOf(st), cur = st[1], prev = prevOf(idx), since = t - st[0];
+    // Автомат: смена картинки износа перекрёстным затуханием; в крючке и на вставке бота — размыт и отодвинут.
+    var mix = K.ease(since / 0.35), blurAk = t < 1.92 ? 14 : (t >= 13.44 && t < 15.36) ? 16 : t >= 17.28 ? 14 * K.ease((t - 17.28) / 0.6) : 0;
+    var scAk = t < 1.92 ? 1.3 : t >= 17.28 ? 1 + 0.3 * K.ease((t - 17.28) / 0.6) : (t >= 13.44 && t < 15.36) ? 0.8 : 1;
+    var jolt = Math.exp(-Math.max(0, since) * 10) * (t >= 1.92 ? 1 : 0);
+    ['FN', 'FT', 'BS', 'MW', 'WW'].forEach(function (w) {
+      var i = E.ak[w], src = by[w].img, isCur = src === by[cur].img, isPrev = src === by[prev].img;
+      var own = ['FN', 'FT', 'BS', 'MW', 'WW'].filter(function (x) { return by[x].img === src; })[0] === w; // одна картинка на одинаковые файлы
+      var op = !own ? 0 : isCur && isPrev ? 1 : isCur ? mix : isPrev ? 1 - mix : 0;
+      i.style.opacity = op.toFixed(3);
+      i.style.transform = 'rotate(' + (-6 + jolt * 3) + 'deg) scale(' + (scAk * (1 + jolt * 0.06)).toFixed(3) + ')';
+      i.style.filter = 'drop-shadow(0 40px 50px rgba(0,0,0,.6))' + (blurAk > 0.3 ? ' blur(' + blurAk.toFixed(1) + 'px)' : '');
+    });
+    var c = K.vivid(by[cur].tint);
+    E.halo.style.background = 'radial-gradient(' + K.rgba(c, .85) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';
+    E.halo.style.opacity = (0.55 + 0.3 * jolt).toFixed(2);
+
+    // Крючок: в начале и снова в конце (петля).
+    if (t < 2) K.slam(E.H, t, 0.05, 'z', 1.8, 'l'); else K.slam(E.H, t, 17.45, 'z');
+
+    // Цена и ползунок.
+    var showPS = t >= 1.92 && t < 13.44;
+    var pr = K.roll(by[prev].cents, by[cur].cents, t, st[0], 0.5);
+    E.P.querySelector('#pr').textContent = K.usd(Math.round(pr.v)); E.P.querySelector('#pr').style.filter = pr.blur > 0.3 ? 'blur(0 ' + pr.blur + 'px)' : 'none';
+    E.P.querySelector('#pr').style.filter = pr.blur > 0.3 ? 'blur(' + (pr.blur * 0.6).toFixed(1) + 'px)' : 'none';
+    E.P.querySelector('#wn').textContent = NAME[cur];
+    K.slam(E.P, t, 1.92, 't', 11.4, 't');
+    K.slam(E.S, t, t < 13.44 ? 1.92 : 15.36, 'b', t < 13.44 ? 11.45 : 17.4, 'b');
+    if (t >= 11.52 && t < 13.44) E.S.style.visibility = 'hidden';
+    var W = 730 / 5, ki = ORDER.indexOf(cur), kp = ORDER.indexOf(prev), u = K.back((t - st[0]) / 0.3);
+    var kx = (kp + (ki - kp) * u) * W + W / 2 - 60;
+    E.S.querySelector('#knob').style.left = kx.toFixed(1) + 'px';
+    E.S.querySelector('#knob').style.filter = since < 0.3 ? 'blur(' + ((1 - since / 0.3) * 4).toFixed(1) + 'px)' : 'none';
+    ORDER.forEach(function (w) { E.seg[w].className = 'seg' + (w === cur ? ' on' : ''); });
+
+    // Фишка разницы с прошлым износом: минус красным, плюс золотом.
+    var chipAt = st[0] + 0.1, inChip = idx >= 1 && idx <= 4 && since < 1.4;
+    if (inChip) {
+      var d = by[cur].cents - by[prev].cents;
+      E.C.querySelector('.in').innerHTML = '<span class="' + (d < 0 ? 'r' : 'g') + '">' + (d < 0 ? '−' : '+') + K.usd(Math.abs(d)) + '</span> <span class="mut" style="font-size:40px">' + prev + '→' + cur + '</span>';
+      K.slam(E.C, t, chipAt, 'l', st[0] + 1.3, 'l');
+    } else { E.C.style.visibility = 'hidden'; }
+
+    // Ответ: дешевле всех — FT; BS дороже.
+    K.slam(E.P2, t, 11.52, 'r', 13.35, 'l');
+    K.slam(E.A, t, 11.62, 'b', 13.35, 'b');
+    K.slam(E.N, t, 15.4, 'r', 17.3, 'l');
+  }
 });
 </script></body></html>

@@ -1,11 +1,12 @@
 # Звук ролика «инвентарь» (20 с, 125 BPM): бит, «хлыст» на склейках, щелчки карточек и касаний, подъём на итоге, звон цели.
 # Всё синтезом (numpy), без чужих записей. Запуск: python3 vaudio.py out.wav (звук inv) или python3 vaudio.py <ролик>.audio.json out.wav
-# В json: cuts, wordClicks, cardClicks, taps, riser, drop, ding, pops, chimes, finClicks (секунды). Чего нет — берётся как у inv.
+# В json: cuts, wordClicks, cardClicks, taps, riser, drop, ding, pops, chimes, finClicks, ticks, impacts (секунды), rattle [[t0,t1,в_сек]],
+# bpm (125), dur (20), kick (0.9 — громкость бочки). Чего нет — берётся как у inv.
 import sys, wave, json, numpy as np
 C = {'cuts': [1.5, 3.9, 6.0, 8.0, 11.5, 14.5, 17.5], 'wordClicks': [0, 2.7, 12.5], 'cardClicks': [8.0 + k * 0.48 + 0.28 for k in range(6)],
      'taps': [3.26, 6.39, 16.2], 'riser': 11.6, 'drop': 12.35, 'ding': 16.3, 'pops': [], 'chimes': [], 'finClicks': [17.8, 18.1, 18.4]}
 if len(sys.argv) > 2: C.update(json.load(open(sys.argv[1]))); sys.argv = [sys.argv[0], sys.argv[2]]
-SR, DUR, BEAT = 44100, 20.0, 0.48
+SR, DUR, BEAT = 44100, float(C.get('dur', 20.0)), 60 / C.get('bpm', 125)
 N = int(SR * DUR); t = np.arange(N) / SR; out = np.zeros(N)
 rng = np.random.default_rng(7)
 def add(at, sig, gain=1.0):
@@ -32,10 +33,10 @@ def drop(): d = 0.5; x = np.arange(int(SR * d)) / SR; f = 520 * np.exp(-x * 4); 
 # бит: бочка на долю, хэт на слабую долю, саб под бочкой; в финале затихает
 b = 0.0
 while b < DUR - 0.3:
-    g = 1.0 if b < 19.0 else 0.4
-    add(b, kick(), 0.9 * g); add(b + BEAT / 2, hat(), 0.25 * g); b += BEAT
+    g = 1.0 if b < DUR - 1.0 else 0.4
+    add(b, kick(), C.get('kick', 0.9) * g); add(b + BEAT / 2, hat(), 0.25 * g); b += BEAT
 bass_notes = [55, 55, 65.4, 49]  # A1 A1 C2 G1 — по такту
-for i, b in enumerate(np.arange(0, 19.2, BEAT * 4)):
+for i, b in enumerate(np.arange(0, DUR - 0.8, BEAT * 4)):
     f = bass_notes[i % 4]; d = BEAT * 4; x = np.arange(int(SR * d)) / SR
     add(b, np.sin(2 * np.pi * f * x) * np.minimum(1, x / 0.02) * np.exp(-x * 0.6) * 0.28)
 def pop(): d = 0.2; x = np.arange(int(SR * d)) / SR; w = rng.standard_normal(len(x)); return w * (x / d) ** 2 * 0.5
@@ -55,6 +56,11 @@ if C['drop'] is not None: add(C['drop'], drop(), 1.0)
 if C['ding'] is not None: add(C['ding'], ding(), 1.0)
 for c in C['chimes']: add(c, chime(), 0.9)
 for c in C['finClicks']: add(c, click(2200), 0.45)
+for c in C.get('ticks', []): add(c, click(3600), 0.18)
+for c in C.get('impacts', []): add(c, impact(), 0.7)
+for a, b, rate in C.get('rattle', []):
+    k = 0; x = a
+    while x < b: add(x, click(2800 + (k % 5) * 160), 0.22); k += 1; x += 1.0 / rate
 out *= np.minimum(1, (DUR - t) / 0.4)
 out = out / np.max(np.abs(out)) * 0.89
 with wave.open(sys.argv[1], 'w') as f:

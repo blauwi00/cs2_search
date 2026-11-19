@@ -1,0 +1,39 @@
+/* Набор приёмов для роликов со своим каркасом (kit.js). Качество монтажа как у inv: стекло, хлыст, вспышка, удар камеры, баннер. */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg)}
+body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative}
+#bg,#grain{position:absolute;inset:0}
+#grain{opacity:.07;mix-blend-mode:overlay;pointer-events:none;z-index:70}
+#fx{position:absolute;inset:0;overflow:hidden}
+#fxi{position:absolute;inset:0;transform-origin:540px 960px}
+#sc{position:absolute;inset:0}
+#pc{position:absolute;inset:0;pointer-events:none}
+#flash{position:absolute;inset:0;z-index:65;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 48%,rgba(255,255,255,.9),rgba(255,255,255,.25) 45%,transparent 75%)}
+/* Стеклянная плашка */
+.gl3{position:absolute;border-radius:32px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;white-space:nowrap;
+  background:linear-gradient(135deg,rgba(var(--hi),.30),rgba(var(--mid),.62) 45%,rgba(var(--deep),.92));border:2px solid rgba(var(--edge),.38);
+  box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);font-weight:900;letter-spacing:-1.5px;line-height:1.05;text-shadow:0 4px 18px rgba(0,0,0,.45)}
+.gl3 .sh{position:absolute;top:-80px;left:-300px;width:160px;height:600px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);transform:rotate(20deg)}
+.g{color:#FFD23F;text-shadow:0 0 28px rgba(255,210,63,.55)}
+.r{color:#FF6B5B}
+.mut{opacity:.8;font-weight:700}
+/* Мини-баннер */
+.mb{position:absolute;left:0;top:0;width:280px;height:96px;border-radius:16px;z-index:55;overflow:hidden;display:flex;align-items:center;gap:12px;padding:0 14px 0 10px;
+  background:linear-gradient(160deg,#1b1406,#0b0a07 60%);border:3px solid #FFD23F;box-shadow:0 0 20px rgba(255,210,63,.4),0 12px 30px rgba(0,0,0,.55);color:#fff;white-space:nowrap}
+.mb img{width:70px;height:70px;border-radius:14px;flex:none}
+.mb .t{font-weight:900;font-size:34px;line-height:1;color:#FFD23F;text-transform:uppercase;letter-spacing:.5px}
+.mb .u{font-weight:700;font-size:23px;margin-top:5px;opacity:.95}
+.mb .sh{position:absolute;top:-30px;left:-200px;width:70px;height:180px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
+/* Запись бота на наклонной стеклянной пластине */
+#slabw{position:absolute;inset:0;perspective:1800px;display:none}
+#slab{position:absolute;border-radius:40px;overflow:hidden;background:#000;border:3px solid rgba(var(--edge),.45);
+  box-shadow:0 50px 100px rgba(0,0,0,.65),0 0 70px rgba(var(--glow),.35)}
+#slabimg{position:absolute;left:0;top:0;width:1080px;transform-origin:0 0}
+/* Крупная кнопка (POP) */
+.pop{position:absolute;display:none;align-items:center;justify-content:center;gap:18px;height:220px;padding:0 64px;border-radius:36px;white-space:nowrap;z-index:40;overflow:hidden;
+  background:linear-gradient(135deg,rgba(var(--hi),.42),rgba(var(--mid),.75) 45%,rgba(var(--deep),.95));border:3px solid rgba(var(--edge),.55);
+  box-shadow:0 30px 70px rgba(0,0,0,.6),0 0 50px rgba(var(--glow),.35),inset 0 2px 0 rgba(255,255,255,.3);color:#FFD23F;font-weight:900;letter-spacing:-1px;
+  text-shadow:0 0 24px rgba(255,210,63,.45);transform-origin:50% 50%}
+.pop span{display:flex;align-items:center;gap:16px}
+.pop .sh{position:absolute;top:-60px;left:-300px;width:140px;height:300px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
+.star{width:1em;height:1em;flex:none;filter:drop-shadow(0 0 10px rgba(255,210,63,.6))}

@@ -1,29 +1,111 @@
 <!doctype html>
-<!-- Ролик «Где подвох?»: бот бесплатный, звёзды Telegram — по желанию и ничего не открывают. Записи work/don (rec.cjs don), суммы — DONATE_AMOUNTS из src/core/support.ts. -->
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/engine.css"><link rel="stylesheet" href="engine/extra.css">
-<style>#plate .big{color:#FFD23F}.card.ic .p{font-size:120px}</style></head><body>
-<script src="engine/engine.js"></script>
+<!-- Ролик «Поддержка» (свой каркас, спокойнее: 100 BPM): сундук бота открывается, в него по дуге прилетают звёзды Telegram 25/50/100/250/500.
+     Слова по одному на стеклянных плашках. Смысл из текста самого бота: звёзды добровольно и ничего не открывают, бот бесплатный для всех.
+     Суммы = DONATE_AMOUNTS (src/core/support.ts), запись work/don/clips/don. Монтаж — engine/kit.js. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/kit.css">
+<style>
+.wrow{position:absolute;left:70px;width:940px;display:flex;justify-content:center;gap:22px}
+.wrow .gl3{position:relative;padding:0 26px;height:100%;letter-spacing:-2px}
+#chest{position:absolute;left:170px;top:820px;width:680px;height:540px;perspective:1400px}
+#chest svg{position:absolute;left:0;width:100%;overflow:visible}
+#lid{transform-origin:50% 100%}
+.fly{position:absolute;width:300px;display:flex;flex-direction:column;align-items:center;margin-left:-150px;margin-top:-110px}
+.fly .st{width:150px;height:150px;filter:drop-shadow(0 0 22px rgba(255,210,63,.8))}
+.fly .gl3{position:relative;font-size:72px;padding:6px 30px;margin-top:-10px;height:auto}
+#TOP{font-size:84px}#THX{font-size:96px}
+</style></head><body>
+<script src="engine/kit.js"></script>
 <script>
-var R = REEL, AMOUNTS = [25, 50, 100, 250, 500]; // = DONATE_AMOUNTS в src/core/support.ts
-var STARSRC = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8 5.8 21.1 7 14.1 1.9 9.2l7-1z" fill="#FFD23F"/></svg>');
-var GOLD = [255, 190, 60];
-REEL.run({
-  base: 'work/don/',
-  hook: 'Бот за <span class="g">$0</span>.<br>Где подвох?',
-  words: [[0, 'БЕСПЛАТНО'], [1.5, 'ЕЩЁ'], [2.7, 'ПОДДЕРЖАТЬ'], [3.9, 'ДОБРОВОЛЬНО'], [6, 'ЗВЁЗДЫ'], [8, 'ПО ЖЕЛАНИЮ'], [11.5, 'ПОДВОХА НЕТ'], [14.5, 'СПАСИБО'], [17.5, 'ПОЛЬЗУЙСЯ']],
-  hero: [{ src: 'assets/avatar.png', color: GOLD, rot: -4, scale: 0.62 }, { src: STARSRC, color: GOLD, rot: -12, scale: 0.7 }, { src: 'assets/avatar.png', color: [255, 150, 40], rot: 6, scale: 0.7 }],
-  cards: { items: AMOUNTS.map(function (n, i) { return { icon: R.STAR, p: String(n) + '<small>звёзд</small>', color: [255, 170 + i * 15, 40] }; }), step: 0.6 },
-  total: { t0: 11.5, t1: 14.5,
-    big: function (t) { return '$0'; },
-    fc: { at: 12.35, html: '<b style="color:#FFD23F;font-size:72px">донат</b><span>ничего не открывает</span>' },
-    nc: { at: 12.8, text: 'бот бесплатный для всех' } },
-  stars: { t0: 11.5 },
-  segs: [
-    { t0: 1.5, t1: 3.9, clip: 'don', c0: 0.46, n: 260, k: [[0, 540, 1300, 1.05], [0.9, 540, 1737, 1.3], [1.5, 540, 1737, 2.2], [2.4, 540, 1500, 1.2]] },
-    { t0: 3.9, t1: 6.0, clip: 'don', c0: 3.0, n: 260, k: [[0, 540, 1263, 1.0], [2.1, 540, 1300, 1.0]] },
-    { t0: 6.0, t1: 8.0, clip: 'don', c0: 4.82, n: 260, k: [[0, 540, 1650, 1.2], [0.6, 700, 1706, 1.4], [1.2, 797, 1706, 2.2], [2.0, 797, 1706, 2.2]] },
-    { t0: 14.5, t1: 17.5, clip: 'don', c0: 5.6, n: 260, k: [[0, 540, 2000, 1.1], [3, 540, 2150, 1.3]] }
-  ],
-  pops: [{ at: 3.0, box: [13, 585.4, 364, 83.6], text: 'Поддержать проект', size: 76 }, { at: 7.2, box: [200, 587.5, 176, 58], text: R.STAR + '50', size: 140 }]
+var AMOUNTS = [25, 50, 100, 250, 500]; // = DONATE_AMOUNTS в src/core/support.ts
+var STAR_SVG = '<svg viewBox="0 0 24 24" class="st"><path d="M12 1.8l3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8 5.8 21.1 7 14.1 1.9 9.2l7-1z" fill="#FFD23F"/></svg>';
+// Сундук — SVG-копия аватара бота (у PNG тёмный квадратный фон, крышку из него не отделить).
+var DEFS = '<defs><linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB24A"/><stop offset=".55" stop-color="#F08A22"/><stop offset="1" stop-color="#B85E10"/></linearGradient>' +
+  '<linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD27A"/><stop offset="1" stop-color="#F29A30"/></linearGradient>' +
+  '<linearGradient id="gm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7A4A12"/><stop offset=".5" stop-color="#FFE08A"/><stop offset="1" stop-color="#7A4A12"/></linearGradient>' +
+  '<radialGradient id="gin" cx=".5" cy=".2" r=".8"><stop offset="0" stop-color="#FFE9A8"/><stop offset=".35" stop-color="#FFB040"/><stop offset="1" stop-color="#5A2A05"/></radialGradient></defs>';
+var LID = '<svg id="lid" viewBox="0 0 560 140" style="top:0;height:140px">' + DEFS + '<rect x="0" y="10" width="560" height="128" rx="40" fill="url(#gl)" stroke="#8A4A0C" stroke-width="4"/>' +
+  '<rect x="60" y="10" width="34" height="128" fill="url(#gm)"/><rect x="466" y="10" width="34" height="128" fill="url(#gm)"/><rect x="8" y="110" width="544" height="24" rx="12" fill="url(#gm)"/>' +
+  '<rect x="0" y="14" width="560" height="22" rx="11" fill="#FFF0C0" opacity=".45"/></svg>';
+var BODY = '<svg viewBox="0 0 640 420" style="top:128px;height:420px;left:-40px;width:760px">' + DEFS +
+  '<rect x="60" y="-6" width="520" height="70" rx="20" fill="url(#gin)" id="inside"/>' +
+  '<rect x="0" y="130" width="50" height="150" rx="18" fill="url(#gm)"/><rect x="590" y="130" width="50" height="150" rx="18" fill="url(#gm)"/>' +
+  '<rect x="40" y="10" width="560" height="350" rx="44" fill="url(#gw)" stroke="#8A4A0C" stroke-width="4"/>' +
+  '<rect x="100" y="10" width="34" height="350" fill="url(#gm)"/><rect x="506" y="10" width="34" height="350" fill="url(#gm)"/><rect x="44" y="300" width="552" height="30" rx="14" fill="url(#gm)"/>' +
+  '<rect x="258" y="-4" width="124" height="112" rx="22" fill="#2B1C0C" stroke="url(#gm)" stroke-width="6"/><circle cx="320" cy="44" r="16" fill="#FFD23F"/><rect x="312" y="52" width="16" height="34" rx="6" fill="#FFD23F"/></svg>';
+var CHEST = { x: 510, y: 960 }, E = {}, LAND = [4.4, 5.6, 6.8, 8.0, 9.2];
+function words(K, lines, y0, h, fs) {
+  return lines.map(function (ws, li) {
+    var row = K.el('', 'wrow'); row.style.top = (y0 + li * (h + 20)) + 'px'; row.style.height = h + 'px';
+    return ws.map(function (w) { var d = K.el('<div class="in">' + w + '</div><div class="sh"></div>', 'gl3', row); d.style.fontSize = fs + 'px'; return d; });
+  }).reduce(function (a, b) { return a.concat(b); }, []);
+}
+KIT.run({
+  dur: 18, beat: 0.6, pulse: 0.009, whip: { dist: 380, blur: 16, flash: 0.25 },
+  cuts: [3.6, 9.6, 12.0, 15.6],
+  punches: LAND.map(function (t) { return [t, 0.035]; }),
+  stars: { t0: 3.6 },
+  mb: [[3.8, 'c', 1380, 0, 1], [9.5, 'off'], [15.7, 'c', 1368, 0, 1], [17.4, 'off']],
+  segs: [{ base: 'work/don/', t0: 9.6, t1: 12.0, clip: 'don', c0: 4.22, n: 260, rect: [150, 560, 680, 860], tilt: [14, 0],
+    k: [[0, 540, 1650, 1.15], [1.2, 797, 1706, 1.4], [1.75, 797, 1706, 2.2], [2.4, 797, 1706, 2.2]] }],
+  pops: [{ at: 11.4, box: [200, 587.5, 176, 58], text: '<svg viewBox="0 0 24 24" class="star"><path d="M12 1.8l3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8 5.8 21.1 7 14.1 1.9 9.2l7-1z" fill="#FFD23F"/></svg>50', size: 150, to: [480, 1000] }],
+  init: function (K) {
+    E.halo = K.el('', ''); E.halo.style.cssText = 'position:absolute;left:-80px;top:620px;width:1240px;height:900px;border-radius:50%;filter:blur(90px);background:radial-gradient(rgba(255,170,60,.85),rgba(255,120,20,.2) 45%,transparent 70%)';
+    E.chest = K.el(LID + BODY, ''); E.chest.id = 'chest';
+    E.hook = words(K, [['Бот', 'бесплатный.'], ['Где', '<span class="g">подвох?</span>']], 270, 150, 84);
+    E.ans = words(K, [['Ничего', 'не открывают.'], ['Бот', 'бесплатный'], ['<span class="g">для всех.</span>']], 240, 140, 84);
+    E.top1 = K.plate('Звёзды Telegram', [70, 220, 790, 160]); E.top1.id = 'TOP';
+    E.top2 = K.plate('<span class="g">по желанию</span>', [70, 220, 790, 160]); E.top2.style.fontSize = '84px';
+    E.thx = K.plate('Спасибо', [70, 260, 940, 170]); E.thx.id = 'THX';
+    E.fly = AMOUNTS.map(function (n) { var d = K.el(STAR_SVG + '<div class="gl3"><div class="in">' + n + '</div></div>', 'fly'); return d; });
+  },
+  scene: function (t, K) {
+    // Слова крючка: по одному на долю (0,6 с), уходят на первой склейке; в конце — снова (петля).
+    E.hook.forEach(function (w, i) { K.slam(w, t, 0.15 + i * 0.6, 'z', 3.45, 'l'); });
+    E.ans.forEach(function (w, i) { K.slam(w, t, 12.2 + i * 0.6, 'z', 15.45, 'l'); });
+    K.slam(E.top1, t, 3.9, 'l', 6.55, 'l'); K.slam(E.top2, t, 6.75, 'r', 9.45, 'l');
+    K.slam(E.thx, t, 15.75, 'z', 17.4, 't');
+
+    // Сундук: крышка открывается на 3,6–4,4 и закрывается на 12–12,8; при каждой звезде пружинит.
+    var open = t < 3.6 ? 0 : t < 12 ? K.ease((t - 3.6) / 0.8) : 1 - K.ease((t - 12) / 0.8);
+    var hit = 0; LAND.forEach(function (lt) { var d = t - lt; if (d >= 0 && d < 0.6) hit = Math.max(hit, Math.exp(-d * 8) * Math.cos(d * 18)); });
+    var away = t >= 9.6 && t < 12 ? 1 : 0, fade = t >= 17.4 ? 1 - K.ease((t - 17.4) / 0.5) * 0 : 1;
+    E.chest.style.transform = 'translateY(' + (away * 120) + 'px) scale(' + ((1 + 0.04 * hit) * (away ? 0.8 : 1)).toFixed(3) + ')';
+    E.chest.style.filter = away ? 'blur(14px)' : 'none'; E.chest.style.opacity = away ? 0.5 : 1;
+    E.chest.querySelector('#lid').style.transform = 'rotateX(' + (-70 * open).toFixed(1) + 'deg)';
+    var breathe = 0.55 + 0.12 * Math.sin(t * 2.2) + 0.25 * open + 0.2 * Math.max(0, hit);
+    E.halo.style.opacity = (breathe * (away ? 0.4 : 1)).toFixed(2);
+
+    // Лучи из открытого сундука.
+    var g = K.pc;
+    if (open > 0.05 && !away) {
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (var r = 0; r < 9; r++) {
+        var a = -Math.PI / 2 + (r - 4) * 0.17 + Math.sin(t * 0.8 + r) * 0.03, L = 520 * open;
+        var gr = g.createLinearGradient(CHEST.x, 900, CHEST.x + Math.cos(a) * L, 900 + Math.sin(a) * L); gr.addColorStop(0, 'rgba(255,200,90,' + (0.35 * open) + ')'); gr.addColorStop(1, 'rgba(255,160,40,0)');
+        g.fillStyle = gr; g.beginPath(); g.moveTo(CHEST.x - 30, 900); g.lineTo(CHEST.x + Math.cos(a - 0.05) * L, 900 + Math.sin(a - 0.05) * L); g.lineTo(CHEST.x + Math.cos(a + 0.05) * L, 900 + Math.sin(a + 0.05) * L); g.lineTo(CHEST.x + 30, 900); g.fill();
+      }
+      g.restore();
+    }
+
+    // Звёзды по дуге: с левого края — снизу, с правого — только выше y 700; садятся в сундук, искры.
+    E.fly.forEach(function (d, i) {
+      var lt = LAND[i], st = lt - 1.0, p = (t - st) / 1.0;
+      if (p < 0 || p > 1.05 || away) { d.style.display = 'none'; return; }
+      d.style.display = 'flex';
+      var left = i % 2 === 0, x0 = left ? -150 : 1230, y0 = left ? 760 : 560, cx = left ? 260 : 780, cy = 420;
+      var u = K.inout(Math.min(1, p)), x = (1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * cx + u * u * CHEST.x, y = (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * cy + u * u * (CHEST.y - 40);
+      var sc = 1 - 0.55 * K.ease((p - 0.75) / 0.3);
+      d.style.left = x.toFixed(1) + 'px'; d.style.top = y.toFixed(1) + 'px';
+      d.style.transform = 'rotate(' + ((1 - u) * (left ? -30 : 30)).toFixed(1) + 'deg) scale(' + sc.toFixed(3) + ')';
+      d.style.opacity = p > 0.95 ? Math.max(0, 1 - (p - 0.95) / 0.1) : 1;
+    });
+    LAND.forEach(function (lt, i) {
+      var d = t - lt; if (d < 0 || d > 0.7 || away) return;
+      for (var q = 0; q < 16; q++) {
+        var a = -Math.PI / 2 + (q - 7.5) * 0.2, sp = 260 + (q * 37 % 5) * 60, x = CHEST.x + Math.cos(a) * sp * d, y = 900 + Math.sin(a) * sp * d + 300 * d * d;
+        g.save(); g.globalAlpha = 1 - d / 0.7; g.fillStyle = '#FFD23F'; g.shadowColor = 'rgba(255,210,63,.9)'; g.shadowBlur = 14; K.star(g, x, y, 12, q); g.fill(); g.restore();
+      }
+    });
+  }
 });
 </script></body></html>

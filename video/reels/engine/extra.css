@@ -1,0 +1,7 @@
+/* Подпись на карточке колоды — плашкой в углу над картинкой (не наезжает на цену). */
+.card .n{left:26px;top:18px;right:auto;bottom:auto;font-size:52px;font-weight:900;padding:4px 16px;border-radius:14px;background:rgba(0,0,0,.5);color:#FFD23F;letter-spacing:0;z-index:2}
+.card .p small{font-size:.45em;font-weight:700;opacity:.85;margin-left:8px;letter-spacing:0}
+#nc{font-size:44px}
+#plate .big small{font-size:.38em;letter-spacing:-1px;margin-left:14px}
+.card.ic .p{right:60px}
+.card .icon .star{width:170px;height:170px}

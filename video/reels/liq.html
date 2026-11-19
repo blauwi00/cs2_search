@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- Ролик «Продашь ли?»: сколько продаж за сутки в Steam у разных скинов — дорогое продаётся медленно. Данные work/liq, записи liq1/liq2. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/engine.css"><link rel="stylesheet" href="engine/extra.css"></head><body>
+<script src="work/liq/vdata.js"></script>
+<script src="engine/engine.js"></script>
+<script>
+var V = window.V, R = REEL;
+V.items.forEach(function (x) { if (!(x.volume >= 0)) throw new Error('нет объёма продаж: ' + x.name); });
+var byVol = V.items.slice().sort(function (a, b) { return b.volume - a.volume; }), lead = byVol[0];
+var knife = V.items.filter(function (x) { return /^★/.test(x.name); })[0]; if (!knife) throw new Error('нет ножа в наборе');
+var N = lead.volume, M = knife.volume, K = M > 0 ? Math.floor(N / M) : null;
+function plural(n, a, b, c) { var m = n % 100, d = n % 10; return m > 10 && m < 20 ? c : d === 1 ? a : d > 1 && d < 5 ? b : c; }
+var nm = function (x) { return x.short.replace(/^.*\| /, ''); };
+REEL.run({
+  base: 'work/liq/',
+  hook: '<span class="g">' + N + '</span> ' + plural(N, 'продажа', 'продажи', 'продаж') + ' в день,<br>а у ножа <span class="g">' + M + '?</span>',
+  words: [[0, 'ПРОДАШЬ?'], [1.5, 'ИЩЕМ'], [2.7, 'ПО-РУССКИ'], [3.9, 'ЦЕНА'], [6, 'ПРОДАЖИ'], [8, 'ЗА СУТКИ'], [11.5, 'РЕДКО'], [14.5, 'СМОТРИ'], [17.5, 'БЕСПЛАТНО']],
+  hero: [knife, byVol[1], V.items.filter(function (x) { return /^AWP/.test(x.name); })[0] || byVol[2]],
+  cards: { items: byVol.map(function (x) { return { img: x.img, tint: x.tint, p: x.volume + '<small>/день</small>', n: R.usd(x.cents) }; }) },
+  total: { t0: 11.5, t1: 14.5,
+    big: function (t) { var v = Math.round(N - (N - M) * R.inout((t - 11.7) / 0.9)); return v + '<small>в день</small>'; },
+    fc: { at: 12.35, html: K ? '<b style="color:#FF6B5B">в ' + K + ' ' + plural(K, 'раз', 'раза', 'раз') + '</b><span>реже покупают</span>' : '<b style="color:#FF6B5B">0 продаж</b><span>за сутки</span>' },
+    nc: { at: 12.8, text: 'пример · продажи Steam за сутки, ' + V.date } },
+  segs: [
+    { t0: 1.5, t1: 3.9, clip: 'liq1', c0: 3.58, n: 376, k: [[0, 540, 600, 1.2], [1.4, 540, 422, 1.3], [2.1, 540, 422, 2.2], [2.4, 540, 422, 2.2]] },
+    { t0: 3.9, t1: 6.0, clip: 'liq1', c0: 6.6, n: 376, k: [[0, 540, 900, 1.05], [0.8, 420, 2100, 1.6], [2.1, 420, 2100, 1.75]] },
+    { t0: 6.0, t1: 7.0, clip: 'liq1', c0: 8.86, n: 376, k: [[0, 540, 1700, 1.3], [0.6, 540, 1550, 2.0], [1.0, 540, 1550, 1.6]] },
+    { t0: 7.0, t1: 8.0, clip: 'liq1', c0: 10.7, n: 376, k: [[0, 700, 1170, 1.5], [0.6, 760, 1170, 2.2], [1.0, 760, 1170, 2.2]] },
+    { t0: 14.5, t1: 17.5, clip: 'liq2', c0: 9.4, n: 386, k: [[0, 540, 1600, 1.2], [0.6, 540, 1500, 1.4], [1.4, 700, 1170, 1.6], [2.2, 760, 1170, 2.2], [3, 760, 1170, 2.2]] }
+  ],
+  pops: [{ at: 3.6, box: [13, 125.7, 364, 54], text: knife.short.replace(/ \| /, ' | '), size: 92 }, { at: 6.6, box: [29, 537.7, 332, 44], text: 'Подробнее', size: 120 }]
+});
+</script></body></html>

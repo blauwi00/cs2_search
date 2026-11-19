@@ -1,8 +1,14 @@
-# Живые цены Steam ($ и ₴) и картинки 1024 px для ролика «инвентарь» → work/. Запуск: python3 vfetch.py
-import json, subprocess, urllib.parse, re, time, os
+# Живые цены Steam ($ и ₴) и картинки 1024 px для ролика → папку данных.
+# python3 vfetch.py                                   — набор ролика «инвентарь» в work/
+# python3 vfetch.py --names names.txt --out work/wear — свой набор (по названию на строку)
+import json, subprocess, urllib.parse, re, time, os, sys
 NAMES = ["AK-47 | Redline (Field-Tested)", "AWP | Asiimov (Field-Tested)", "Desert Eagle | Printstream (Field-Tested)",
          "USP-S | Kill Confirmed (Field-Tested)", "M4A1-S | Printstream (Field-Tested)", "★ Gut Knife | Doppler (Factory New)"]
-W = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'work'); os.makedirs(W + '/img', exist_ok=True)
+W = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'work')
+a = sys.argv[1:]
+if '--names' in a: NAMES = [l.strip() for l in open(a[a.index('--names') + 1], encoding='utf8') if l.strip()]
+if '--out' in a: W = os.path.abspath(a[a.index('--out') + 1])
+os.makedirs(W + '/img', exist_ok=True)
 get = lambda url: subprocess.run(['curl', '-sS', '-m', '30', url], capture_output=True, text=True).stdout
 if not os.environ.get('ONLY_TINTS'):
   usd, uah = open(W + '/prices_usd.tsv', 'w'), open(W + '/prices.tsv', 'w')

@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- Ролик «Где подвох?»: бот бесплатный, звёзды Telegram — по желанию и ничего не открывают. Записи work/don (rec.cjs don), суммы — DONATE_AMOUNTS из src/core/support.ts. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/engine.css"><link rel="stylesheet" href="engine/extra.css">
+<style>#plate .big{color:#FFD23F}.card.ic .p{font-size:120px}</style></head><body>
+<script src="engine/engine.js"></script>
+<script>
+var R = REEL, AMOUNTS = [25, 50, 100, 250, 500]; // = DONATE_AMOUNTS в src/core/support.ts
+var STARSRC = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.4 7 1-5.1 4.9 1.2 7L12 17.8 5.8 21.1 7 14.1 1.9 9.2l7-1z" fill="#FFD23F"/></svg>');
+var GOLD = [255, 190, 60];
+REEL.run({
+  base: 'work/don/',
+  hook: 'Бот за <span class="g">$0</span>.<br>Где подвох?',
+  words: [[0, 'БЕСПЛАТНО'], [1.5, 'ЕЩЁ'], [2.7, 'ПОДДЕРЖАТЬ'], [3.9, 'ДОБРОВОЛЬНО'], [6, 'ЗВЁЗДЫ'], [8, 'ПО ЖЕЛАНИЮ'], [11.5, 'ПОДВОХА НЕТ'], [14.5, 'СПАСИБО'], [17.5, 'ПОЛЬЗУЙСЯ']],
+  hero: [{ src: 'assets/avatar.png', color: GOLD, rot: -4, scale: 0.62 }, { src: STARSRC, color: GOLD, rot: -12, scale: 0.7 }, { src: 'assets/avatar.png', color: [255, 150, 40], rot: 6, scale: 0.7 }],
+  cards: { items: AMOUNTS.map(function (n, i) { return { icon: R.STAR, p: String(n) + '<small>звёзд</small>', color: [255, 170 + i * 15, 40] }; }), step: 0.6 },
+  total: { t0: 11.5, t1: 14.5,
+    big: function (t) { return '$0'; },
+    fc: { at: 12.35, html: '<b style="color:#FFD23F;font-size:72px">донат</b><span>ничего не открывает</span>' },
+    nc: { at: 12.8, text: 'бот бесплатный для всех' } },
+  stars: { t0: 11.5 },
+  segs: [
+    { t0: 1.5, t1: 3.9, clip: 'don', c0: 0.46, n: 260, k: [[0, 540, 1300, 1.05], [0.9, 540, 1737, 1.3], [1.5, 540, 1737, 2.2], [2.4, 540, 1500, 1.2]] },
+    { t0: 3.9, t1: 6.0, clip: 'don', c0: 3.0, n: 260, k: [[0, 540, 1263, 1.0], [2.1, 540, 1300, 1.0]] },
+    { t0: 6.0, t1: 8.0, clip: 'don', c0: 4.82, n: 260, k: [[0, 540, 1650, 1.2], [0.6, 700, 1706, 1.4], [1.2, 797, 1706, 2.2], [2.0, 797, 1706, 2.2]] },
+    { t0: 14.5, t1: 17.5, clip: 'don', c0: 5.6, n: 260, k: [[0, 540, 2000, 1.1], [3, 540, 2150, 1.3]] }
+  ],
+  pops: [{ at: 3.0, box: [13, 585.4, 364, 83.6], text: 'Поддержать проект', size: 76 }, { at: 7.2, box: [200, 587.5, 176, 58], text: R.STAR + '50', size: 140 }]
+});
+</script></body></html>

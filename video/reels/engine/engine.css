@@ -1,0 +1,72 @@
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg)}
+body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative}
+#bg{position:absolute;inset:0}
+.hook{position:absolute;left:70px;width:940px;top:200px;height:230px;color:#fff;z-index:50;text-align:center;border-radius:34px;
+  padding-top:31px;
+  background:linear-gradient(135deg,rgba(var(--hi),.30),rgba(var(--mid),.6) 45%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
+  box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);
+  font-weight:900;font-size:80px;line-height:1.05;letter-spacing:-2px;text-shadow:0 4px 18px rgba(0,0,0,.45)}
+.hook .g{color:#FFD23F;text-shadow:0 0 28px rgba(255,210,63,.55)}
+.mb{position:absolute;left:0;top:0;width:280px;height:96px;border-radius:16px;z-index:55;overflow:hidden;display:flex;align-items:center;gap:12px;padding:0 14px 0 10px;
+  background:linear-gradient(160deg,#1b1406,#0b0a07 60%);border:3px solid #FFD23F;box-shadow:0 0 20px rgba(255,210,63,.4),0 12px 30px rgba(0,0,0,.55);color:#fff;white-space:nowrap}
+.mb img{width:70px;height:70px;border-radius:14px;flex:none}
+.mb .t{font-weight:900;font-size:34px;line-height:1;color:#FFD23F;text-transform:uppercase;letter-spacing:.5px}
+.mb .u{font-weight:700;font-size:23px;margin-top:5px;opacity:.95}
+.mb .sh{position:absolute;top:-30px;left:-200px;width:70px;height:180px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
+.word{position:absolute;left:60px;right:60px;top:1330px;height:130px;text-align:center;font-weight:900;font-size:124px;line-height:130px;z-index:60;
+  color:#FFD23F;text-shadow:0 0 30px rgba(255,210,63,.6),0 6px 0 rgba(0,0,0,.35);letter-spacing:1px}
+/* Сцена 1: огромный скин со светом его цвета */
+/* Окно основного видео: всё содержимое живёт в полосе y 555–1315 и не залезает на вопрос, баннер и жёлтое слово. */
+#fx{position:absolute;left:0;top:565px;width:1080px;height:750px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(transparent,#000 46px,#000 calc(100% - 46px),transparent)}
+#fxi{position:absolute;left:0;top:-565px;width:1080px;height:1920px;transform-origin:540px 935px}
+#flash{position:absolute;inset:0;z-index:65;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 48%,rgba(255,255,255,.9),rgba(255,255,255,.25) 45%,transparent 75%)}
+.card .sh{position:absolute;top:-60px;left:-300px;width:160px;height:400px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);transform:rotate(20deg)}
+#hero{position:absolute;inset:0}
+/* Экран настоящего бота (запись rec.cjs) в окне-телефоне; камера наезжает на нужное место. */
+#ph{position:absolute;left:150px;top:595px;width:780px;height:690px;border-radius:40px;overflow:hidden;background:#000;
+  border:2px solid rgba(var(--edge),.35);box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 60px rgba(var(--glow),.25)}
+#phimg{position:absolute;left:0;top:0;transform-origin:0 0}
+/* Финал */
+#fin{position:absolute;inset:0}
+#fin .tc{flex-direction:column;gap:0}
+#f1{top:600px;height:330px}#f1 img{width:170px;height:170px;border-radius:34px}#f1 b{font-weight:900;font-size:104px;color:#FFD23F;line-height:1;margin-top:14px;letter-spacing:1px;text-shadow:0 0 30px rgba(255,210,63,.5)}
+#f2{top:960px;height:150px;font-weight:900;font-size:84px;color:#fff}
+#f3{top:1140px;height:130px;font-weight:700;font-size:50px;color:rgba(255,255,255,.9)}
+#halo{position:absolute;left:-200px;top:400px;width:1480px;height:1100px;border-radius:50%;filter:blur(90px);opacity:.75}
+#heroimg{position:absolute;left:40px;top:600px;width:1000px;height:680px;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.6))}
+#streak{position:absolute;left:-400px;top:0;width:260px;height:1920px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);transform:skewX(-18deg);mix-blend-mode:screen}
+/* Сцена 2: карточки в перспективе */
+#stage{position:absolute;inset:0;perspective:1600px;perspective-origin:50% 40%}
+#deck{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-style:preserve-3d}
+.card{position:absolute;left:70px;width:830px;height:230px;border-radius:34px;transform-style:preserve-3d;
+  background:linear-gradient(135deg,rgba(var(--hi),.30),rgba(var(--mid),.55) 45%,rgba(var(--deep),.85));
+  border:2px solid rgba(var(--edge),.35);box-shadow:0 40px 60px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.25)}
+.card .clip{position:absolute;inset:0;border-radius:34px;overflow:hidden}.card .gl{position:absolute;right:-60px;top:-80px;width:420px;height:360px;border-radius:50%;filter:blur(60px);opacity:.7}
+.card img{position:absolute;left:18px;top:14px;width:340px;height:202px;object-fit:contain;filter:drop-shadow(0 14px 14px rgba(0,0,0,.6))}
+.card .p{position:absolute;right:40px;top:58px;font-weight:900;font-size:110px;letter-spacing:-3px;text-shadow:0 4px 20px rgba(0,0,0,.4)}
+.card .n{position:absolute;right:40px;bottom:26px;font-weight:700;font-size:68px;letter-spacing:-1.5px;opacity:.92;white-space:nowrap}
+/* Сцена 3: итог на стеклянной плите */
+#tot{position:absolute;inset:0;perspective:1600px}
+#plate{position:absolute;left:50px;width:980px;top:600px;height:300px;border-radius:44px;transform-style:preserve-3d;
+  background:linear-gradient(140deg,rgba(var(--hi),.28),rgba(var(--mid),.7) 50%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
+  box-shadow:0 60px 120px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.25);text-align:center;overflow:hidden}
+#plate .big{display:inline-block;margin-top:30px;font-weight:900;font-size:200px;line-height:1;color:#FFD23F;text-shadow:0 0 50px rgba(255,210,63,.55);letter-spacing:-7px;white-space:nowrap}
+.tc{position:absolute;left:70px;width:940px;border-radius:30px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:22px;white-space:nowrap;
+  background:linear-gradient(135deg,rgba(var(--hi),.26),rgba(var(--mid),.6) 45%,rgba(var(--deep),.9));border:2px solid rgba(var(--edge),.35);
+  box-shadow:0 30px 60px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);letter-spacing:-1px}
+#fc{top:950px;height:150px}#fc b{font-weight:900;font-size:88px;color:#FF6B5B}#fc span{font-weight:700;font-size:60px}
+#nc{top:1130px;height:110px;font-weight:600;font-size:50px;color:rgba(255,255,255,.85)}
+#plate .sh{position:absolute;top:-100px;width:200px;height:900px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);transform:rotate(18deg)}
+#grain{position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none;z-index:70}
+/* Крупная кнопка (POP): копия кнопки бота в стиле карточек */
+.pop{position:absolute;display:none;align-items:center;justify-content:center;gap:18px;height:220px;padding:0 64px;border-radius:36px;white-space:nowrap;z-index:40;overflow:hidden;
+  background:linear-gradient(135deg,rgba(var(--hi),.42),rgba(var(--mid),.75) 45%,rgba(var(--deep),.95));border:3px solid rgba(var(--edge),.55);
+  box-shadow:0 30px 70px rgba(0,0,0,.6),0 0 50px rgba(var(--glow),.35),inset 0 2px 0 rgba(255,255,255,.3);color:#FFD23F;font-weight:900;letter-spacing:-1px;
+  text-shadow:0 0 24px rgba(255,210,63,.45);transform-origin:50% 50%}
+.pop span{display:flex;align-items:center;gap:16px}
+.pop .sh{position:absolute;top:-60px;left:-300px;width:140px;height:300px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:rotate(20deg)}
+.star{width:1em;height:1em;flex:none;filter:drop-shadow(0 0 10px rgba(255,210,63,.6))}
+/* Карточка с рисунком вместо картинки скина (звёзды и т.п.) */
+.card .icon{position:absolute;left:30px;top:15px;width:300px;height:200px;display:flex;align-items:center;justify-content:center;font-size:150px}

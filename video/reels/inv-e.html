@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- Копия inv.html на движке engine/ — проверка, что движок даёт те же кадры до пикселя. -->
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="engine/engine.css"></head><body>
+<script src="work/vdata.js"></script>
+<script src="engine/engine.js"></script>
+<script>
+var V = window.V, R = REEL;
+if (!(V.total > 0 && V.net > 0)) throw new Error('нет данных цен: рендер остановлен');
+REEL.run({
+  base: 'work/',
+  hook: '<span>Скинов на <span class="g">$' + Math.floor(V.total / 100) + '</span>,</span><br><span>а на руки <span class="g">$' + Math.floor(V.net / 100) + '?</span></span>',
+  words: [[0, 'СКИНЫ'], [1.5, 'ВХОДИМ'], [2.7, 'БЕЗ ПАРОЛЯ'], [3.9, 'ИНВЕНТАРЬ'], [6, 'ЦЕНА'], [8, 'СЧИТАЕМ'], [11.5, 'ИТОГО'], [12.5, 'НА РУКИ'], [14.5, 'УВЕДОМИТ'], [17.5, 'БЕСПЛАТНО']],
+  hero: [V.items[1], V.items[0], V.items[2]],
+  cards: { items: V.items.map(function (it) { return { img: it.img, tint: it.tint, p: R.usd(it.cents) }; }) },
+  total: { t0: 11.5, t1: 14.5,
+    big: function (t) { var fee = V.total - V.net, down = R.inout((t - 12.5) / 0.7); var val = t < 12.5 ? Math.round(V.total * R.ease((t - 11.6) / 0.7)) : Math.round(V.total - fee * down); return '<span style="font-size:.6em">≈</span> ' + R.usd(val); },
+    fc: { at: 12.35, html: '<b>−' + R.usd(V.total - V.net) + '</b><span>комиссия Steam</span>' },
+    nc: { at: 12.8, text: 'пример · цены Steam на ' + V.date } },
+  segs: [
+    { t0: 1.5, t1: 3.9, clip: 'connect', c0: 0.5, n: 130, k: [[0, 540, 470, 1.12], [1.5, 540, 650, 1.12], [2.4, 540, 700, 1.05]] },
+    { t0: 3.9, t1: 6.0, clip: 'invsteam', c0: 0.3, n: 401, k: [[0, 540, 1150, 1.12], [2.1, 540, 1450, 1.0]] },
+    { t0: 6.0, t1: 8.0, clip: 'invsteam', c0: 5.4, n: 401, k: [[0, 540, 1350, 1.0], [0.5, 540, 600, 1.15], [2.0, 540, 520, 1.35]] },
+    { t0: 14.5, t1: 17.5, clip: 'invsteam', c0: 8.2, n: 401, k: [[0, 540, 1350, 1.08], [1.6, 540, 1450, 1.15], [2.2, 540, 1850, 1.1], [3, 540, 1900, 1.1]] }
+  ]
+});
+</script></body></html>

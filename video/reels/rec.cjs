@@ -26,13 +26,27 @@ const FINGER = `(() => {
   window.__hide = () => { f.style.opacity = '0'; };
 })();`;
 
+// Названия площадок в кадре не показываем (правило роликов): прячем строки, где они встречаются. Плюс скрыта строка «топ поддержки» (имена людей).
+const MARKETS = /skinport|csfloat|market\.csgo|csgomarket|waxpeer|lis-?skins|buff|cs\.money|dmarket/i;
+const SCRUB = `(() => {
+  const RX = ${MARKETS};
+  const css = () => { const st = document.createElement('style'); st.textContent = '#ticker2{display:none!important}'; document.head.appendChild(st); };
+  const scan = () => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; const hide = [];
+    while ((n = w.nextNode())) if (RX.test(n.textContent) && n.parentElement) hide.push(n.parentElement.closest('.kv,.row,button,.note,.mut,.sub,div') || n.parentElement);
+    hide.forEach((e) => { e.style.display = 'none'; }); };
+  const go = () => { css(); scan(); new MutationObserver(scan).observe(document.body, { childList: true, subtree: true, characterData: true }); };
+  if (document.body) go(); else document.addEventListener('DOMContentLoaded', go);
+})();`;
+
 async function record(name, steps) {
   const init = await (await fetch('http://localhost:8787/init')).text();
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: DSF, colorScheme: 'dark', hasTouch: false });
   await ctx.addInitScript((initData) => { try { localStorage.setItem('theme', 'neon'); } catch (e) {} window.Telegram = { WebApp: { initData, initDataUnsafe: {}, ready() {}, expand() {}, onEvent() {}, offEvent() {}, setHeaderColor() {}, setBackgroundColor() {}, setBottomBarColor() {}, HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} }, BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} }, MainButton: { show() {}, hide() {} }, themeParams: {}, colorScheme: 'dark', platform: 'ios', version: '8.0', isVersionAtLeast() { return true; }, openLink() {}, openTelegramLink() {}, disableVerticalSwipes() {}, requestFullscreen() {}, lockOrientation() {}, showConfirm(m, cb) { cb(true); } } }; }, init);
-  await ctx.addInitScript(FINGER);
+  await ctx.addInitScript(FINGER); await ctx.addInitScript(SCRUB);
   const p = await ctx.newPage();
+  // Донат: запрос «висит» — ни ошибки, ни настоящей оплаты в записи.
+  if (name === 'don') await p.route('**/app/api/donate', () => {});
   p.on('pageerror', (e) => console.log('PAGEERR', e.message));
   await p.goto('http://localhost:8787/app');
   await p.waitForTimeout(2200);
@@ -50,7 +64,8 @@ async function record(name, steps) {
       const bx = await el.boundingBox();
       const x = bx.x + (opt.dx ?? bx.width / 2), y = bx.y + (opt.dy ?? bx.height / 2);
       await p.evaluate(([x, y]) => window.__move(x, y), [x, y]); await p.waitForTimeout(opt.travel ?? 520);
-      marks.push({ label: 'tap:' + (opt.label || sel), t: Date.now() / 1000 - t0 });
+      const text = await el.evaluate((e) => e.innerText.trim()).catch(() => '');
+      marks.push({ label: 'tap:' + (opt.label || sel), t: Date.now() / 1000 - t0, box: [bx.x, bx.y, bx.width, bx.height].map((v) => +v.toFixed(1)), text });
       await p.evaluate(() => window.__press()); await p.waitForTimeout(90);
       await p.mouse.click(x, y); await p.waitForTimeout(220); if (!opt.keep) await p.evaluate(() => window.__hide()); await p.waitForTimeout(Math.max(0, (opt.after ?? 700) - 220));
     },
@@ -68,6 +83,9 @@ async function record(name, steps) {
   // Кадр-«пульс»: пока экран не меняется, screencast молчит — держим последний кадр.
   await steps(api);
   await p.waitForTimeout(400);
+  const leak = await p.evaluate((rx) => { const R = new RegExp(rx, 'i'); const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const e = n.parentElement; if (e && e.offsetParent !== null && R.test(n.textContent)) return n.textContent.trim().slice(0, 80); } return null; }, MARKETS.source);
+  if (leak) throw new Error(name + ': в кадре название площадки: ' + leak);
+  const shot = await p.evaluate(() => document.body.innerText);
   await cdp.send('Page.stopScreencast');
   const tEnd = Date.now() / 1000;
   await b.close();
@@ -84,10 +102,20 @@ async function record(name, steps) {
   fs.writeFileSync(fd + '/list.txt', list.join('\n'));
   // Метки — относительно первого кадра.
   const shift = base - (frames.length ? frames[0].t : 0);
-  fs.writeFileSync(`${DIR}/${name}.json`, JSON.stringify({ marks: marks.map((m) => ({ ...m, t: +(m.t - shift).toFixed(2) })), frames: frames.length }, null, 1));
+  fs.writeFileSync(`${DIR}/${name}.json`, JSON.stringify({ marks: marks.map((m) => ({ ...m, t: +(m.t - shift).toFixed(2) })), frames: frames.length, text: shot }, null, 1));
   execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', fd + '/list.txt', '-vf', 'scale=1080:-2:flags=lanczos,fps=30,format=yuv420p', '-c:v', 'libx264', '-crf', '14', '-preset', 'medium', `${DIR}/${name}.mp4`]);
   fs.rmSync(fd, { recursive: true, force: true });
   console.log(name, 'frames', frames.length, 'marks', JSON.stringify(marks.map((m) => m.label + '@' + m.t.toFixed(2))));
+}
+
+async function liq(a, q, pick) {
+  await a.p.click('.tab[data-t=market]'); await a.wait(1300);
+  await a.tap('#pq', { label: 'search' }); await a.type(q, 120); await a.wait(1400);
+  await a.tap(await a.p.locator('[data-pick]', { hasText: pick }).filter({ hasNotText: 'StatTrak' }).first().elementHandle(), { label: 'item', after: 900 }); await a.wait(1500);
+  const sm = await a.p.waitForSelector('details.more summary', { timeout: 8000 }); await sm.scrollIntoViewIfNeeded(); await a.wait(700);
+  await a.tap('details.more summary', { label: 'more', after: 700 });
+  await a.p.evaluate(() => { const k = [...document.querySelectorAll('.kv')].find((e) => /Как быстро продаётся/.test(e.innerText)); if (k) k.scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+  await a.wait(1800);
 }
 
 const CLIPS = {
@@ -121,6 +149,27 @@ const CLIPS = {
     const tg = await a.p.waitForSelector('#tg-q button[data-p="10"]', { timeout: 8000 });
     await tg.scrollIntoViewIfNeeded(); await a.wait(900);
     await a.tap('#tg-q button[data-p="10"]', { label: 'target' }); await a.wait(2200);
+  },
+  // Ролик «износ» (VID_DIR=work/wear): поиск по-русски, окно предмета.
+  async wear1(a) {
+    await a.p.click('.tab[data-t=market]'); await a.wait(1300);
+    await a.tap('#pq', { label: 'search' }); await a.type('калаш азимов', 120); await a.wait(1400);
+    await a.tap(await a.p.locator('[data-pick]', { hasText: 'Factory New' }).filter({ hasNotText: 'StatTrak' }).first().elementHandle(), { label: 'FN', after: 900 }); await a.wait(2000);
+  },
+  async wear2(a) {
+    await a.p.click('.tab[data-t=market]'); await a.wait(1300);
+    await a.tap('#pq', { label: 'search' }); await a.type('калаш азимов фт', 120); await a.wait(1400);
+    await a.tap(await a.p.locator('[data-pick]', { hasText: 'Field-Tested' }).filter({ hasNotText: 'StatTrak' }).first().elementHandle(), { label: 'FT', after: 900 }); await a.wait(2000);
+  },
+  // Ролик «продашь ли» (VID_DIR=work/liq): окно предмета → «Подробнее» → «Как быстро продаётся».
+  async liq1(a) { await liq(a, process.env.LIQ_Q1 || 'нож ночь', process.env.LIQ_P1 || 'Gut Knife'); },
+  async liq2(a) { await liq(a, process.env.LIQ_Q2 || 'ак сланец фт', process.env.LIQ_P2 || 'Slate (Field-Tested)'); },
+  // Ролик «поддержка» (VID_DIR=work/don): Ещё → «Поддержать проект» → кнопка 50 звёзд (оплата не идёт).
+  async don(a) {
+    await a.p.click('.tab[data-t=more]'); await a.wait(1300);
+    await a.tap('#m-support', { label: 'support', after: 900 }); await a.wait(1600);
+    await a.p.evaluate(() => document.querySelector('#dons').scrollIntoView({ block: 'center', behavior: 'smooth' })); await a.wait(900);
+    await a.tap('#dons button[data-n="50"]', { label: 'stars50', keep: true, after: 900 }); await a.wait(1200);
   },
   async buys(a) {
     await a.p.click('.tab[data-t=inv]'); await a.wait(1400);

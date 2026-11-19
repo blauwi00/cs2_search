@@ -1,6 +1,7 @@
 // Набор приёмов для роликов со СВОИМ каркасом (у каждого ролика своя сцена). Общее — только качество монтажа, как у эталона inv:
 // фон ember (свет, узор, пылинки, виньетка), зерно, хлыст на склейках (рывок, размытие, вспышка), удар камеры под бит, стеклянные плашки,
 // мини-баннер, запись бота на наклонной пластине и «крупная кнопка» (POP). Сцену ролик рисует сам в cfg.scene(t, K).
+// cfg.holds [[с сцены, +с]]: пауза для чтения — сцена стоит, а фон, камера и зерно живут дальше (ролик становится длиннее).
 // cfg: base, dur, beat, pulse, whip{dist,blur,flash}, cuts[], punches[[t,сила]], mb[], stars{t0}, segs[], pops[], init(K), scene(t,K)
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -140,7 +141,7 @@
 
     // Камера: хлыст на склейках, удар на долю, удары-«акценты» (punches), лёгкое плавание.
     var CUTS = cfg.cuts || [], PUN = cfg.punches || [];
-    function drawCam(t) {
+    function drawCam(t, tr) {
       var x = 0, bl = 0, fl = 0, kick = 0;
       for (var i = 0; i < CUTS.length; i++) {
         var dt = t - CUTS[i];
@@ -148,8 +149,8 @@
         if (dt >= 0 && dt < WH) { var b = 1 - ease(dt / WH); x = b * WD; bl = b * WB; fl = Math.max(fl, b); }
       }
       for (var j = 0; j < PUN.length; j++) { var d = t - PUN[j][0]; if (d >= 0 && d < 0.5) { var e = Math.exp(-d * 9); kick = Math.max(kick, PUN[j][1] * e); fl = Math.max(fl, PUN[j][1] * 4 * e); } }
-      var bt = t % BEAT, pulse = 1 + PULSE * Math.exp(-bt * 9) + kick;
-      var dr = Math.sin(t * 0.7) * 6;
+      var bt = tr % BEAT, pulse = 1 + PULSE * Math.exp(-bt * 9) + kick;
+      var dr = Math.sin(tr * 0.7) * 6;
       $('fxi').style.transform = 'translate(' + (x + dr).toFixed(1) + 'px,0) scale(' + pulse.toFixed(4) + ')';
       $('fxi').style.filter = bl > 0.3 ? 'blur(' + bl.toFixed(1) + 'px)' : 'none';
       $('flash').style.opacity = clamp(Math.max(fl * WF, popFlash * 0.35), 0, 0.6).toFixed(3);
@@ -197,10 +198,12 @@
     };
     if (cfg.init) cfg.init(K);
 
-    window.frameAt = function (t) {
-      var wait = drawSlab(t);
+    var HOLDS = (cfg.holds || []).slice().sort(function (a, b) { return a[0] - b[0]; });
+    function sceneT(t) { var acc = 0; for (var i = 0; i < HOLDS.length; i++) { var st = HOLDS[i][0] + acc; if (t < st) break; if (t < st + HOLDS[i][1]) return HOLDS[i][0]; acc += HOLDS[i][1]; } return t - acc; }
+    window.frameAt = function (tr) {
+      var t = sceneT(tr), wait = drawSlab(t);
       pc.clearRect(0, 0, 1080, 1920);
-      drawBg(t); cfg.scene(t, K); drawPops(t); drawCam(t); drawMb(t); drawGrain(t);
+      drawBg(tr); K.tr = tr; cfg.scene(t, K); drawPops(t); drawCam(t, tr); drawMb(t); drawGrain(tr);
       return wait;
     };
     window.frameAt(0);

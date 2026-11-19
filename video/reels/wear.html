@@ -29,7 +29,7 @@ function wearAt(t) { var w = STEPS[0]; for (var i = 0; i < STEPS.length; i++) if
 function prevOf(i) { return i > 0 ? STEPS[i - 1][1] : 'FN'; }
 var E = {};
 KIT.run({
-  base: 'work/wear/', dur: 18,
+  base: 'work/wear/', dur: 28.0, holds: [[1.6, 1.4], [2.9, 0.8], [4.8, 1.0], [6.7, 1.0], [8.6, 1.2], [10.5, 1.0], [12.6, 2.4], [16.2, 1.2]],
   cuts: [1.92, 13.44, 15.36],
   punches: [[3.84, 0.03], [5.76, 0.03], [7.68, 0.09], [9.60, 0.05], [11.52, 0.04]],
   mb: [[1.95, 'r', 486, 2, 1], [11.52, 'off'], [15.4, 'c', 486, 0, 1], [17.2, 'off']],
@@ -60,7 +60,7 @@ KIT.run({
       var own = ['FN', 'FT', 'BS', 'MW', 'WW'].filter(function (x) { return by[x].img === src; })[0] === w; // одна картинка на одинаковые файлы
       var op = !own ? 0 : isCur && isPrev ? 1 : isCur ? mix : isPrev ? 1 - mix : 0;
       // 3D: автомат медленно качается по оси Y, на смене износа — доворот рывком.
-      i.pose(t, { rz: -6 + jolt * 3, ry: Math.sin(t * 0.75) * 32 + jolt * 16, rx: 10 + Math.sin(t * 0.5) * 4, s: scAk * (1 + jolt * 0.06), blur: blurAk, op: op });
+      i.pose(K.tr, { rz: -6 + jolt * 3, ry: Math.sin(K.tr * 0.75) * 32 + jolt * 16, rx: 10 + Math.sin(K.tr * 0.5) * 4, s: scAk * (1 + jolt * 0.06), blur: blurAk, op: op });
     });
     var c = K.vivid(by[cur].tint);
     E.halo.style.background = 'radial-gradient(' + K.rgba(c, .85) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';

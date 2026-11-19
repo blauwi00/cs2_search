@@ -34,7 +34,7 @@ var short = function (x) { return x.short.split(' | ')[1]; };
 var R0 = 1.92, RD = 6.72, E = {};
 var knifeAt = M > 0 ? Array.apply(null, Array(Math.min(M, 6))).map(function (_, i) { return R0 + RD * (i + 1) / (Math.min(M, 6) + 1); }) : [];
 KIT.run({
-  base: 'work/liq/', dur: 18,
+  base: 'work/liq/', dur: 25.6, holds: [[1.6, 1.4], [9.2, 1.2], [11.4, 1.2], [13.0, 2.4], [16.6, 1.4]],
   cuts: [1.92, 9.60, 13.44, 15.36],
   punches: knifeAt.map(function (t) { return [t, 0.08]; }).concat([[8.64, 0.07], [11.52, 0.04]]),
   mb: [[2.0, 70, 250, -2, 0.8], [8.6, 'off'], [9.7, 'r', 440, 2, 1], [11.45, 'off'], [15.45, 'c', 470, 0, 1], [17.2, 'off']],
@@ -71,7 +71,7 @@ KIT.run({
     var kOp = t < 1.92 ? 1 : t >= 17.28 ? K.ease((t - 17.28) / 0.4) : 0;
      E.halo.style.opacity = (0.7 * kOp).toFixed(2);
     var c = K.vivid(knife.tint); E.halo.style.background = 'radial-gradient(' + K.rgba(c, .8) + ',' + K.rgba(c, .2) + ' 45%,transparent 70%)';
-    E.knife.pose(t, { rz: -12 + Math.sin(t * 0.9) * 5, ry: Math.sin(t * 0.9) * 36, rx: 12, s: 1 + 0.03 * Math.sin(t * 1.3), op: kOp });
+    E.knife.pose(K.tr, { rz: -12 + Math.sin(K.tr * 0.9) * 5, ry: Math.sin(K.tr * 0.9) * 36, rx: 12, s: 1 + 0.03 * Math.sin(t * 1.3), op: kOp });
     if (t < 2) K.slam(E.H, t, 0.05, 'z', 1.8, 'l'); else K.slam(E.H, t, 17.4, 'z');
 
     // Циферблат: сверху во время гонки, крупно в конце.

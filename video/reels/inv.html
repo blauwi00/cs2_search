@@ -1,0 +1,138 @@
+<!doctype html>
+<!-- Ролик «Сколько стоят твои скины»: смесь трёх образцов владельца (плашка-крючок, жёлтое слово, карточки цен).
+     Данные — work/vdata.js (живые цены Steam, собирает vdata.ts). Кадр задаёт window.frameAt(t); рендер: ../cinema/render.mjs -->
+<html><head><meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#06130E}
+body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative}
+#bg{position:absolute;inset:0}
+.hook{position:absolute;left:90px;right:90px;top:230px;height:190px;background:#fff;border-radius:28px;color:#0A0A0A;
+  font-weight:800;font-size:72px;line-height:1.08;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 30px;letter-spacing:-1px}
+.nick{position:absolute;left:0;right:0;top:446px;text-align:center;font-weight:700;font-size:68px;opacity:.85;letter-spacing:-.5px}
+.win{position:absolute;left:150px;top:560px;width:700px;height:760px;border-radius:36px;overflow:hidden;
+  background:#0d1f18;border:2px solid rgba(255,255,255,.12);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.win img{position:absolute;left:50%;top:50%;width:640px;transform:translate(-50%,-50%)}
+.word{position:absolute;left:60px;right:60px;top:1330px;height:130px;text-align:center;font-weight:900;font-size:120px;line-height:130px;
+  color:#FFD23F;text-shadow:0 0 28px rgba(255,210,63,.55);letter-spacing:1px}
+#cards{position:absolute;inset:0;perspective:1800px}
+.card{position:absolute;left:60px;width:840px;height:420px;top:600px;border-radius:36px;
+  background:linear-gradient(150deg,#1d4636,#0f2a20);border:2px solid rgba(255,255,255,.14);box-shadow:0 30px 70px rgba(0,0,0,.5);
+  transform-origin:50% 0}
+.card img{position:absolute;left:20px;top:24px;width:370px}
+.card .p{position:absolute;right:44px;top:70px;font-weight:900;font-size:100px;letter-spacing:-2px}
+.card .n{position:absolute;left:44px;right:44px;bottom:34px;font-weight:700;font-size:68px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-1px}
+#tot{position:absolute;left:0;right:0;top:680px;text-align:center}
+#tot .big{display:inline-block;font-weight:900;font-size:200px;line-height:1;color:#FFD23F;text-shadow:0 0 40px rgba(255,210,63,.5);letter-spacing:-6px;white-space:nowrap}
+#tot .l{font-weight:700;font-size:68px;line-height:1.15;margin-top:36px;letter-spacing:-.5px}
+#tot .m{font-weight:600;font-size:68px;line-height:1.15;margin-top:70px;opacity:.75;letter-spacing:-.5px}
+</style></head><body>
+<canvas id="bg" width="1080" height="1920"></canvas>
+<div class="win" id="win"><img id="wimg"></div>
+<div id="cards"></div>
+<div id="tot"><div class="big" id="big"></div><div class="l" id="netl"></div><div class="m" id="note"></div></div>
+<div class="hook" id="hook">Сколько на самом деле стоят твои скины CS2?</div>
+<div class="nick" id="nick">@cenolow_bot</div>
+<div class="word" id="word"></div>
+<script src="work/vdata.js"></script>
+<script>
+var V = window.V, $ = function (id) { return document.getElementById(id); };
+var BEAT = 0.48;
+var usd = function (c) { return '$' + (c / 100).toFixed(2); };
+var clamp = function (x, a, b) { return Math.max(a, Math.min(b, x)); };
+var ease = function (x) { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 3); };
+var back = function (x) { x = clamp(x, 0, 1); var c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+
+// Фон: тёмно-зелёный градиент + плывущая «топография» (замкнутые волнистые кольца вокруг нескольких центров).
+var bg = $('bg').getContext('2d');
+var centers = [[180, 380, 1.3], [900, 860, 2.1], [300, 1500, 0.7], [960, 1750, 2.9], [560, 1100, 4.2]];
+function drawBg(t) {
+  var g = bg.createLinearGradient(0, 0, 0, 1920); g.addColorStop(0, '#06130E'); g.addColorStop(1, '#0B2A1F');
+  bg.fillStyle = g; bg.fillRect(0, 0, 1080, 1920);
+  bg.strokeStyle = 'rgba(46,107,85,.35)'; bg.lineWidth = 2;
+  var dy = (t * 15) % 1920;
+  for (var c = 0; c < centers.length; c++) {
+    var cx = centers[c][0], cy = centers[c][1] - dy, ph = centers[c][2];
+    for (var pass = 0; pass < 2; pass++) {
+      var yy = cy + pass * 1920;
+      for (var k = 1; k <= 14; k++) {
+        bg.beginPath();
+        for (var a = 0; a <= 64; a++) {
+          var th = a / 64 * Math.PI * 2;
+          var r = k * 34 + 14 * Math.sin(3 * th + ph + k * 0.35 + t * 0.4) + 9 * Math.sin(5 * th - ph * 1.7 + k * 0.2);
+          var x = cx + r * Math.cos(th) * 1.15, y = yy + r * Math.sin(th);
+          if (a === 0) bg.moveTo(x, y); else bg.lineTo(x, y);
+        }
+        bg.stroke();
+      }
+    }
+  }
+}
+
+// Жёлтое слово: одно на сцену, удар 0,1 с при смене.
+var WORDS = [[0, 'СКИНЫ'], [1, 'ОТКРЫВАЕМ'], [2, 'ВХОДИМ'], [3, 'БЕЗ ПАРОЛЯ'], [4, 'ИНВЕНТАРЬ'], [5.5, 'ЦЕНА'], [7, 'СЕГОДНЯ'],
+  [8, 'СЧИТАЕМ'], [11.5, 'ИТОГО'], [14, 'УВЕДОМИТ'], [16, 'БЕСПЛАТНО']];
+function word(t) {
+  var w = WORDS[0];
+  for (var i = 0; i < WORDS.length; i++) if (t >= WORDS[i][0]) w = WORDS[i];
+  var el = $('word'); el.textContent = w[1];
+  var s = 1 + 0.25 * (1 - clamp((t - w[0]) / 0.1, 0, 1));
+  el.style.transform = 'scale(' + s + ')';
+}
+
+// Карточки: по одной на долю такта, новая влетает с наклоном, старые уходят назад стопкой.
+var cards = V.items.map(function (it) {
+  var d = document.createElement('div'); d.className = 'card';
+  d.innerHTML = '<img src="work/' + it.img + '"><div class="p">' + usd(it.cents) + '</div><div class="n"></div>';
+  d.querySelector('.n').textContent = it.short; $('cards').appendChild(d); return d;
+});
+var C0 = 8.0, CSTEP = (11.5 - 8.0 - 0.6) / cards.length;
+function drawCards(t) {
+  var on = t >= C0 && t < 11.9;
+  $('cards').style.display = on ? 'block' : 'none'; if (!on) return;
+  var collapse = ease((t - 11.5) / 0.4);
+  for (var i = 0; i < cards.length; i++) {
+    var t0 = C0 + i * CSTEP, p = (t - t0) / 0.42, d = cards[i];
+    if (p < 0) { d.style.opacity = 0; continue; }
+    var e = back(p), behind = Math.max(0, (t - t0 - 0.42) / CSTEP);
+    var depth = Math.min(behind, 5);
+    var y = 820 - depth * 58 + (1 - e) * 900;
+    var sc = (1 - depth * 0.05) * (1 - collapse * 0.7);
+    var rx = (1 - ease(p)) * 12 + depth * 2, ry = (1 - ease(p)) * -10;
+    d.style.top = (y + collapse * 120) + 'px';
+    d.style.transform = 'rotateX(' + rx + 'deg) rotateY(' + ry + 'deg) scale(' + sc + ')';
+    d.style.opacity = clamp(5 - depth, 0, 1) * (1 - collapse);
+    d.style.zIndex = 10 + i;
+    d.style.filter = depth > 0.3 ? 'brightness(' + (1 - Math.min(depth, 3) * 0.15) + ')' : 'none';
+  }
+}
+
+function drawTotal(t) {
+  var on = t >= 11.5 && t < 14;
+  $('tot').style.display = on ? 'block' : 'none'; if (!on) return;
+  var k = ease((t - 11.6) / 0.9);
+  $('big').innerHTML = '<span style="font-size:.6em">≈</span> ' + usd(Math.round(V.total * k));
+  var bw = $('big').scrollWidth, fit = Math.min(1, 940 / bw);
+  $('big').style.transform = 'scale(' + fit * (0.85 + 0.15 * back((t - 11.5) / 0.35)) + ')';
+  var v = clamp((t - 12.3) / 0.3, 0, 1);
+  $('netl').innerHTML = 'если продать ≈ ' + usd(V.net) + '<br>после 15% Steam'; $('netl').style.opacity = v;
+  $('note').innerHTML = 'пример, цены Steam<br>на ' + V.date; $('note').style.opacity = clamp((t - 12.6) / 0.3, 0, 1);
+}
+
+var imgs = V.items.slice(0, 3).map(function (x) { return 'work/' + x.img; });
+function drawWin(t) {
+  var on = t < 8.0;
+  $('win').style.display = on ? 'block' : 'none'; if (!on) return;
+  if (t < 1) {
+    var i = Math.min(2, Math.floor(t / 0.333)), l = t - i * 0.333;
+    var w = $('wimg'); if (w.getAttribute('src') !== imgs[i]) w.src = imgs[i];
+    w.style.transform = 'translate(-50%,-50%) scale(' + (1.25 - 0.25 * ease(l / 0.2)) + ')';
+  }
+}
+
+window.frameAt = function (t) {
+  drawBg(t); drawWin(t); drawCards(t); drawTotal(t); word(t);
+  $('hook').style.transform = 'scale(' + (0.92 + 0.08 * ease(t / 0.2)) + ')';
+};
+window.frameAt(0);
+</script></body></html>

@@ -1,0 +1,10 @@
+<!doctype html><meta charset=utf-8><style>
+*{margin:0;box-sizing:border-box}body{width:1080px;height:1920px;background:#F4F1EA;color:#14161A;font:900 80px/1.1 -apple-system,Helvetica,Arial,sans-serif;text-align:center;position:relative}
+.t{position:absolute;top:230px;width:100%;padding:0 80px}.t b{color:#0E7C66}
+img{position:absolute;top:430px;left:90px;width:900px}
+.n{position:absolute;top:1010px;width:100%;font-size:300px;line-height:1;color:#0E7C66}
+.d{position:absolute;top:1480px;width:100%;font-size:72px;padding:0 80px}
+.s{position:absolute;top:1370px;width:100%;font-size:72px;font-weight:700;padding:0 80px}
+</style><div class=t>Бот цен CS2 — <b>Ценолов</b></div><img id=i src=assets/skin.png>
+<div class=n id=n></div><div class=s id=s></div><div class=d id=d></div>
+<script>fetch('data.json').then(r=>r.json()).then(j=>{n.textContent=j.price;s.textContent=j.name;d.textContent='цена в Steam, '+j.date})</script>

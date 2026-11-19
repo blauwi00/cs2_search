@@ -109,6 +109,19 @@ const CLIPS = {
     await a.p.click('.tab[data-t=inv]'); await a.wait(1500);
     await a.scroll(2000, 1600); await a.wait(1800);
   },
+  // Ролик «инвентарь» (сервер с VID_STEAM_ONLY=1): вход, список, цена скина, цель продажи.
+  async connect(a) { // сервер с VID_LINKED=0
+    await a.p.click('.tab[data-t=inv]'); await a.wait(1600);
+    await a.tap('#st-login', { label: 'login', keep: true, after: 900 }); await a.wait(600);
+  },
+  async invsteam(a) {
+    await a.p.click('.tab[data-t=inv]'); await a.wait(1800);
+    await a.scroll(420, 1200); await a.wait(700); await a.scroll(-420, 800); await a.wait(500);
+    await a.tap('[data-sinv]', { label: 'skin' }); await a.wait(1800);
+    const tg = await a.p.waitForSelector('#tg-q button[data-p="10"]', { timeout: 8000 });
+    await tg.scrollIntoViewIfNeeded(); await a.wait(900);
+    await a.tap('#tg-q button[data-p="10"]', { label: 'target' }); await a.wait(2200);
+  },
   async buys(a) {
     await a.p.click('.tab[data-t=inv]'); await a.wait(1400);
     await a.tap('#skseg button[data-k=mine]', { label: 'buys' }); await a.wait(2200);

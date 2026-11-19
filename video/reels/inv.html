@@ -29,6 +29,16 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 #flash{position:absolute;inset:0;z-index:65;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 48%,rgba(255,255,255,.9),rgba(255,255,255,.25) 45%,transparent 75%)}
 .card .sh{position:absolute;top:-60px;left:-300px;width:160px;height:400px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);transform:rotate(20deg)}
 #hero{position:absolute;inset:0}
+/* Экран настоящего бота (запись rec.cjs) в окне-телефоне; камера наезжает на нужное место. */
+#ph{position:absolute;left:150px;top:595px;width:780px;height:690px;border-radius:40px;overflow:hidden;background:#000;
+  border:2px solid rgba(var(--edge),.35);box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 60px rgba(var(--glow),.25)}
+#phimg{position:absolute;left:0;top:0;transform-origin:0 0}
+/* Финал */
+#fin{position:absolute;inset:0}
+#fin .tc{flex-direction:column;gap:0}
+#f1{top:600px;height:330px}#f1 img{width:170px;height:170px;border-radius:34px}#f1 b{font-weight:900;font-size:104px;color:#FFD23F;line-height:1;margin-top:14px;letter-spacing:1px;text-shadow:0 0 30px rgba(255,210,63,.5)}
+#f2{top:960px;height:150px;font-weight:900;font-size:84px;color:#fff}
+#f3{top:1140px;height:130px;font-weight:700;font-size:50px;color:rgba(255,255,255,.9)}
 #halo{position:absolute;left:-200px;top:400px;width:1480px;height:1100px;border-radius:50%;filter:blur(90px);opacity:.75}
 #heroimg{position:absolute;left:40px;top:600px;width:1000px;height:680px;object-fit:contain;filter:drop-shadow(0 40px 50px rgba(0,0,0,.6))}
 #streak{position:absolute;left:-400px;top:0;width:260px;height:1920px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);transform:skewX(-18deg);mix-blend-mode:screen}
@@ -59,6 +69,8 @@ body{font-family:'Inter Display','Inter',sans-serif;color:#fff;position:relative
 <canvas id="bg" width="1080" height="1920"></canvas>
 <div id="fx"><div id="fxi"><div id="hero"><div id="halo"></div><img id="heroimg"><div id="streak"></div></div>
 <div id="stage"><div id="deck"></div></div>
+<div id="ph"><img id="phimg"></div>
+<div id="fin"><div class="tc" id="f1"><img src="assets/avatar.png"><b>ЦЕНОЛОВ</b></div><div class="tc" id="f2">@cenolow_bot</div><div class="tc" id="f3">не покупает и не просит пароль</div></div>
 <div id="tot"><div id="plate"><div class="sh" id="psh"></div><div class="big" id="big"></div></div><div class="tc" id="fc"></div><div class="tc" id="nc"></div></div>
 </div></div>
 <div id="flash"></div>
@@ -76,7 +88,7 @@ var THEMES = {
   ember: { bg: '#0A0A0C', hi: '255,170,90', mid: '60,45,35', deep: '18,16,16', edge: '255,200,150', glow: '200,90,20', glow2: '50,28,12', topo: '160,120,90', def: [255, 140, 40] }
 };
 var T = THEMES[(location.search.match(/theme=(\w+)/) || [])[1]] || THEMES.ember;
-['bg', 'hi', 'mid', 'deep', 'edge'].forEach(function (k) { document.documentElement.style.setProperty('--' + k, T[k]); });
+['bg', 'hi', 'mid', 'deep', 'edge', 'glow'].forEach(function (k) { document.documentElement.style.setProperty('--' + k, T[k]); });
 var usd = function (c) { return '$' + (c / 100).toFixed(2); };
 var clamp = function (x, a, b) { return Math.max(a, Math.min(b, x)); };
 var ease = function (x) { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 3); };
@@ -95,11 +107,12 @@ function drawHook(t) {
 
 // Мини-баннер Ценолова, как реклама на стриме: квадрат въезжает из-за края экрана, держится, уезжает; место меняется.
 // [с, сторона ('l' слева, 'r' справа — правый край на 900, 'c' по центру), y, угол, масштаб]
-var MB = [[0.6, 'r', 446, 2, 1], [1.5, 'l', 446, -2, 1], [4.5, 'r', 446, 2, 1], [8, 'l', 446, -2, 1], [10, 'r', 446, 2, 1], [11.5, 'c', 446, 0, 1], [14, 'c', 446, 0, 1]];
+var MB = [[0.6, 'r', 446, 2, 1], [1.5, 'l', 446, -2, 1], [3.9, 'r', 446, 2, 1], [6, 'l', 446, -2, 1], [8, 'r', 446, 2, 1], [10, 'l', 446, -2, 1], [11.5, 'c', 446, 0, 1], [14.5, 'r', 446, 2, 1], [17.5, 'off']];
 function drawMb(t) {
   var el = $('mb'), cur = -1;
   for (var i = 0; i < MB.length; i++) if (t >= MB[i][0]) cur = i;
-  if (cur < 0) { el.style.opacity = 0; return; }
+  if (cur < 0 || MB[cur][1] === 'off' && t > MB[cur][0] + 0.2) { el.style.opacity = 0; return; }
+  if (MB[cur][1] === 'off') cur--;
   var m = MB[cur], nxt = cur + 1 < MB.length ? MB[cur + 1][0] : 1e9, W = 280 * m[4];
   var x = m[1] === 'c' ? 540 - W / 2 : m[1] === 'r' ? 900 - W : 70, off = m[1] === 'r' ? 1080 - x + 40 : m[1] === 'l' ? -(x + W + 40) : 0;
   var inP = back((t - m[0]) / 0.3), outP = ease((t - (nxt - 0.2)) / 0.2);
@@ -159,8 +172,7 @@ function drawGrain(t) {
   gr.putImageData(gimg, 0, 0);
 }
 
-var WORDS = [[0, 'СКИНЫ'], [1.5, 'ОТКРЫВАЕМ'], [2.5, 'ВХОДИМ'], [3.5, 'БЕЗ ПАРОЛЯ'], [4.5, 'ИНВЕНТАРЬ'], [6, 'ЦЕНА'], [7, 'СЕГОДНЯ'],
-  [8, 'СЧИТАЕМ'], [11.5, 'ИТОГО'], [12.5, 'НА РУКИ'], [14, 'УВЕДОМИТ'], [16, 'БЕСПЛАТНО']];
+var WORDS = [[0, 'СКИНЫ'], [1.5, 'ВХОДИМ'], [2.7, 'БЕЗ ПАРОЛЯ'], [3.9, 'ИНВЕНТАРЬ'], [6, 'ЦЕНА'], [8, 'СЧИТАЕМ'], [11.5, 'ИТОГО'], [12.5, 'НА РУКИ'], [14.5, 'УВЕДОМИТ'], [17.5, 'БЕСПЛАТНО']];
 function word(t) {
   var w = WORDS[0]; for (var i = 0; i < WORDS.length; i++) if (t >= WORDS[i][0]) w = WORDS[i];
   $('word').textContent = w[1];
@@ -211,8 +223,8 @@ function drawCards(t) {
 
 // Сцена 3 (11,5–14 с): итог считается на стеклянной плите, плита чуть повёрнута и доворачивается к зрителю.
 function drawTotal(t) {
-  var on = t >= 11.5 && t < 14; $('tot').style.display = on ? 'block' : 'none'; if (!on) return;
-  var k = (t - 11.5) / 2.5, a = back((t - 11.5) / 0.45);
+  var on = t >= 11.5 && t < 14.5; $('tot').style.display = on ? 'block' : 'none'; if (!on) return;
+  var k = (t - 11.5) / 3, a = back((t - 11.5) / 0.45);
   $('plate').style.transform = 'translateY(' + ((1 - a) * 300) + 'px) rotateX(' + (14 - k * 10) + 'deg) rotateY(' + (-12 + k * 9) + 'deg)';
   $('plate').style.opacity = clamp((t - 11.5) / 0.15, 0, 1);
   var fee = V.total - V.net, down = inout((t - 12.5) / 0.7);
@@ -233,8 +245,43 @@ function drawTotal(t) {
 
 // ?preview — черновик без записи экрана: 0–1,5 с скины, затем сразу карточки и итог (8–14 с).
 var PREVIEW = /preview/.test(location.search);
+// Экран бота: отрезки записей (кадры work/frames/<клип>/NNNNN.jpg, 30 к/с), камера по ключам [с от начала отрезка, x, y, зум] в пикселях записи 1080×2338.
+var SEGS = [
+  { t0: 1.5, t1: 3.9, clip: 'connect', c0: 0.5, n: 130, k: [[0, 540, 470, 1.12], [1.5, 540, 650, 1.12], [2.4, 540, 700, 1.05]] },
+  { t0: 3.9, t1: 6.0, clip: 'invsteam', c0: 0.3, n: 401, k: [[0, 540, 1150, 1.12], [2.1, 540, 1450, 1.0]] },
+  { t0: 6.0, t1: 8.0, clip: 'invsteam', c0: 5.4, n: 401, k: [[0, 540, 1350, 1.0], [0.5, 540, 600, 1.15], [2.0, 540, 520, 1.35]] },
+  { t0: 14.5, t1: 17.5, clip: 'invsteam', c0: 8.2, n: 401, k: [[0, 540, 1350, 1.08], [1.6, 540, 1450, 1.15], [2.2, 540, 1850, 1.1], [3, 540, 1900, 1.1]] }
+];
+function keyAt(k, x) {
+  if (x <= k[0][0]) return k[0]; for (var i = 1; i < k.length; i++) if (x <= k[i][0]) { var a = k[i - 1], b = k[i], u = inout((x - a[0]) / (b[0] - a[0])); return [x, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u]; }
+  return k[k.length - 1];
+}
+function drawPhone(t) {
+  var sg = null; for (var i = 0; i < SEGS.length; i++) if (t >= SEGS[i].t0 && t < SEGS[i].t1) sg = SEGS[i];
+  $('ph').style.display = sg ? 'block' : 'none'; if (!sg) return null;
+  var x = t - sg.t0, f = Math.max(1, Math.min(sg.n, Math.round((sg.c0 + x) * 30) + 1));
+  var src = 'work/frames/' + sg.clip + '/' + ('0000' + f).slice(-5) + '.jpg', im = $('phimg');
+  var c = keyAt(sg.k, x), s = 780 * c[3] / 1080;
+  var L = clamp(390 - c[1] * s, 780 - 1080 * s, 0), Tp = clamp(345 - c[2] * s, 690 - 2338 * s, 0);
+  im.style.width = '1080px'; im.style.transform = 'translate(' + L.toFixed(1) + 'px,' + Tp.toFixed(1) + 'px) scale(' + s.toFixed(4) + ')';
+  var e = back(x / 0.3); $('ph').style.transform = 'scale(' + (0.92 + 0.08 * e).toFixed(3) + ')';
+  if (im.getAttribute('src') !== src) { im.src = src; return im.decode().catch(function () {}); }
+  return null;
+}
+// Финал (17,5–20 с): три карточки въезжают по очереди; в конце всё гаснет в фон — ролик закольцовывается.
+function drawFin(t) {
+  var on = t >= 17.5; $('fin').style.display = on ? 'block' : 'none'; if (!on) return;
+  [['f1', 17.55], ['f2', 17.85], ['f3', 18.15]].forEach(function (c) {
+    var p = (t - c[1]) / 0.4, e = back(p), el = $(c[0]);
+    el.style.opacity = p > 0 ? 1 : 0;
+    el.style.transform = 'translateX(' + ((1 - e) * 1100).toFixed(1) + 'px) rotate(' + ((1 - ease(p)) * -4).toFixed(2) + 'deg)';
+    el.style.filter = p < 1 ? 'blur(' + ((1 - ease(p)) * 10).toFixed(1) + 'px)' : 'none';
+  });
+  $('fin').style.opacity = 1 - ease((t - 19.55) / 0.45);
+}
+
 // Монтаж: на склейках «хлыст» (резкий сдвиг с размытием) и вспышка; на каждую долю такта — лёгкий удар камеры.
-var CUTS = [1.5, 8, 11.5, 14], WH = 0.16;
+var CUTS = [1.5, 3.9, 6, 8, 11.5, 14.5, 17.5], WH = 0.16;
 function drawCam(t) {
   var x = 0, bl = 0, fl = 0;
   for (var i = 0; i < CUTS.length; i++) {
@@ -250,7 +297,9 @@ function drawCam(t) {
 }
 window.frameAt = function (t) {
   if (PREVIEW && t >= 1.5) t = t - 1.5 + 8;
+  var wait = drawPhone(t); drawFin(t);
   drawBg(t); drawHero(t); drawCards(t); drawTotal(t); drawCam(t); word(t); drawHook(t); drawMb(t); drawGrain(t);
+  return wait;
 };
 window.frameAt(0);
 </script></body></html>

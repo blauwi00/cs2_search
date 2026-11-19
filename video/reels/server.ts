@@ -10,20 +10,26 @@ import { catalogLines } from '../../src/catalog.ts';
 import { TERMS_VERSION } from '../../src/core/terms.ts';
 
 const DIR = process.env.VID_DIR || new URL('./work', import.meta.url).pathname;
-const PORT = 8787, TID = 4242;
+const PORT = Number(process.env.VID_PORT || 8787), TID = 4242;
 const NOW = Math.floor(Date.now() / 1000);
-const USD = 41.4, EUR = 48.2;
+// Режим ролика «инвентарь» (VID_STEAM_ONLY=1): только живые цены Steam в долларах (work/prices_usd.tsv), без площадок,
+// демо-истории, покупок и баланса. Курс — целое число гривен за $, чтобы приложение показало ровно цену Steam в $.
+// VID_LINKED=0 — пользователь ещё не подключил Steam (экран «Войти через Steam»).
+const STEAM_ONLY = process.env.VID_STEAM_ONLY === '1', LINKED = process.env.VID_LINKED !== '0';
+const USD = STEAM_ONLY ? 45 : 41.4, EUR = 48.2;
 const d = migratedDb(); const D = d as unknown as D1Database; const env = testEnv(d);
 const exec = (sql: string, ...p: unknown[]) => d.db.prepare(sql).run(...(p as (string | number | null)[]));
 
-const prices = readFileSync(DIR + '/prices.tsv', 'utf8').trim().split('\n').map((l) => {
+const prices = readFileSync(DIR + (STEAM_ONLY ? '/prices_usd.tsv' : '/prices.tsv'), 'utf8').trim().split('\n').map((l) => {
   const [name, j] = l.split('\t'); const o = JSON.parse(j);
-  const uah = (s: string) => Math.round(Number(String(s).replace(/[^\d,]/g, '').replace(',', '.')) * 100);
+  const uah = STEAM_ONLY ? (s: string) => Math.round(Number(String(s).replace(/[^\d.]/g, '')) * 100) * USD
+    : (s: string) => Math.round(Number(String(s).replace(/[^\d,]/g, '').replace(',', '.')) * 100);
   return { name, low: uah(o.lowest_price), med: uah(o.median_price), vol: Number(String(o.volume).replace(/\D/g, '')) };
 });
 const file = (n: string) => n.replace(/[^A-Za-z0-9]/g, '_') + '.png';
 
-await db.storeFx(D, [{ base: 'USD', rateMicro: USD * 1e6, rateDate: '2026-11-08', source: 'nbu' }, { base: 'EUR', rateMicro: EUR * 1e6, rateDate: '2026-11-08', source: 'nbu' }], NOW);
+const RATE_DATE = STEAM_ONLY ? new Date((NOW) * 1000).toISOString().slice(0, 10) : '2026-11-08';
+await db.storeFx(D, [{ base: 'USD', rateMicro: USD * 1e6, rateDate: RATE_DATE, source: 'nbu' }, { base: 'EUR', rateMicro: EUR * 1e6, rateDate: RATE_DATE, source: 'nbu' }], NOW);
 const ids = new Map<string, number>();
 for (const p of prices) {
   const it = await db.upsertItem(D, p.name, NOW); ids.set(p.name, it.id);
@@ -31,6 +37,7 @@ for (const p of prices) {
     exec(`INSERT INTO market_quotes (source, item_id, price_type, price_minor, currency, price_kop, quantity, volume, volume_period, fetched_at, quality, snap_at)
       VALUES ('steam', ?, ?, ?, 'UAH', ?, NULL, ?, ?, ?, 'ok', ?)`, it.id, type, kop, kop, vol, vol ? '24h' : null, NOW - 900, NOW - 900);
   }
+  if (STEAM_ONLY) { if (existsSync(DIR + '/img/' + file(p.name))) exec('INSERT INTO item_images (name, url) VALUES (?, ?)', p.name, `http://localhost:${PORT}/img/${file(p.name)}`); continue; }
   // История для графика: плавная кривая за 30 дней, заканчивается на сегодняшней цене (демо — настоящей истории без входа в Steam нет).
   let seed = p.name.length * 7919;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -46,6 +53,7 @@ for (const p of prices) {
   if (existsSync(DIR + '/img/' + file(p.name))) exec('INSERT INTO item_images (name, url) VALUES (?, ?)', p.name, `http://localhost:${PORT}/img/${file(p.name)}`);
 }
 // Сканирование рынка для «Идей»: объявления на площадках и продажи Skinport.
+if (!STEAM_ONLY) {
 const scan = prices.map((p) => {
   const c = p.med / USD;
   return { name: p.name, at: NOW - 600, img: `http://localhost:${PORT}/img/${file(p.name)}`,
@@ -55,9 +63,17 @@ const scan = prices.map((p) => {
     steam: { lowestKop: p.low, medianKop: p.med, volume24h: p.vol, at: NOW - 900 } };
 });
 exec('INSERT INTO market_scan (id, data, fetched_at) VALUES (1, ?, ?)', JSON.stringify(scan), NOW - 600);
+}
 
 // Пользователь: Steam подключён, инвентарь, баланс, покупки (одна — под защитой обмена).
 await db.ensureUser(D, TID, false, NOW - 20 * 86400);
+if (STEAM_ONLY) {
+  for (const [k, v] of [['terms_ok', TERMS_VERSION], ['onboarded', '1'], ['currency', 'USD'], ['currency_ok', '1'], ['setup_hidden', '1'], ['notify_enabled', '1']] as const) await db.setSetting(D, TID, k as never, v, NOW);
+  if (LINKED) {
+    exec(`UPDATE users SET steam_id = '76561198000004242', steam_verified = 1, inv_synced_at = ?, inv_requested_at = ?, inv_status = 'ok' WHERE telegram_id = ?`, NOW - 120, NOW - 130, TID);
+    for (const p of prices) exec('INSERT INTO steam_inventory (telegram_id, item_id, qty, marketable) VALUES (?, ?, 1, 1)', TID, ids.get(p.name)!);
+  }
+} else {
 for (const [k, v] of [['terms_ok', TERMS_VERSION], ['onboarded', '1'], ['currency_ok', '1'], ['setup_hidden', '1'], ['notify_enabled', '1'],
   ['steam_balance_kop', '145000'], ['steam_balance_cur', 'UAH'], ['steam_balance_at', String(NOW - 2 * 86400)], ['recs_by_balance', '1']] as const) await db.setSetting(D, TID, k as never, v, NOW);
 exec(`UPDATE users SET steam_id = '76561198000004242', steam_verified = 1, inv_synced_at = ?, inv_requested_at = ?, inv_status = 'ok' WHERE telegram_id = ?`, NOW - 1200, NOW - 1300, TID);
@@ -70,11 +86,12 @@ await T.addTrade(D, { tid: TID, itemId: ids.get('AK-47 | Slate (Field-Tested)')!
 await T.addTrade(D, { tid: TID, itemId: ids.get('AWP | Atheris (Field-Tested)')!, signalId: null, quantity: 1, buyPriceKop: 21900, buyFeeKop: 0, platform: 'steam', buyDate: day(NOW - 2 * 86400), note: null, now: NOW - 2 * 86400 });
 await T.addTrade(D, { tid: TID, itemId: ids.get('Gallery Case')!, signalId: null, quantity: 9, buyPriceKop: 3100, buyFeeKop: 0, platform: 'csgomarket', buyDate: day(NOW - 12 * 86400), note: null, now: NOW - 12 * 86400 });
 for (const n of ['Kilowatt Case', 'Gallery Case', 'Desert Eagle | Printstream (Field-Tested)', 'AWP | Atheris (Field-Tested)']) await db.addWatch(D, TID, ids.get(n)!, NOW - 5 * 86400);
+}
 const extra = ['AK-47 | Slate (Minimal Wear)', 'AK-47 | Slate (Factory New)', 'StatTrak™ AK-47 | Slate (Field-Tested)', 'AK-47 | Redline (Field-Tested)', 'AK-47 | Asiimov (Field-Tested)', 'AK-47 | Bloodsport (Field-Tested)', 'AK-47 | Neon Rider (Field-Tested)', 'AK-47 | Vulcan (Field-Tested)'];
 exec('INSERT INTO catalog_chunks (chunk, names, updated_at) VALUES (0, ?, ?)', catalogLines([...prices.map((p) => p.name), ...extra]), NOW);
 exec(`INSERT INTO scheduler_jobs (name, interval_sec, next_run_at, last_run_at, last_ok_at) VALUES ('evaluate', 60, 0, ?, ?)`, NOW + 1e6, NOW + 1e6);
 await db.sourceOk(D, 'collector', NOW + 1e6, 100);
-await db.sourceOk(D, 'skinport', NOW + 1e6, 100);
+if (!STEAM_ONLY) await db.sourceOk(D, 'skinport', NOW + 1e6, 100);
 exec(`INSERT INTO meta (key, value) VALUES ('bot_username', 'cenolow_bot') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 
 const initData = await signInitData({ auth_date: String(NOW), query_id: 'AAE', user: JSON.stringify({ id: TID, first_name: 'Eldar', language_code: 'ru' }) }, 'TEST_TOKEN');

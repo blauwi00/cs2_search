@@ -190,6 +190,7 @@
           o.style.transform = 'translate(' + (p.tx || 0) + 'px,' + (p.ty || 0) + 'px) rotateZ(' + (p.rz || 0) + 'deg) rotateY(' + ry.toFixed(2) + 'deg) rotateX(' + rx.toFixed(2) + 'deg) scale(' + (p.s || 1).toFixed(3) + ')';
           g.style.backgroundPosition = (100 - ((ry + 30) / 60) * 100 + Math.sin(t * 0.7) * 20).toFixed(1) + '% 0';
           shd.style.transform = 'scaleX(' + (1 - Math.abs(ry) / 90).toFixed(3) + ')';
+          w.style.display = p.op === 0 ? 'none' : 'block'; // невидимые слои не рисуем — рендер быстрее
           w.style.opacity = p.op == null ? 1 : p.op; w.style.filter = p.blur > 0.3 ? 'blur(' + p.blur.toFixed(1) + 'px)' : 'none';
         } };
       },
